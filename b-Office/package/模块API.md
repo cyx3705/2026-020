@@ -1,4 +1,4 @@
-# HistoryJanus 3.3 模块 API
+# HistoryJanus 3.5 模块 API
 
 本文件是其他模块和项目消费 HistoryJanus 的唯一人工合同。运行时命令目录是参数、确认策略和可用性的最终真值；历史文档和 Janus 内部类型不构成公开 API。
 
@@ -6,11 +6,12 @@
 
 - 正式快照：`z-HistoryJanus`。
 - 模块名：`HistoryJanus`。
-- 版本：`3.4.0`。
+- 版本：`3.5.0`。
 - 入口：`HistoryJanus.dll`。
 - 宿主基线：HistoryVulcan `3.2.2` current-host 快照，从 `2026-023-HistoryVulcan/z-HistoryVulcan` 消费；该快照的 `sourceDirty` 仍由 HistoryVulcan manifest 如实标记。
 - 主题：页面使用 HistoryVulcan `Shell.Brush.*` 动态资源，跟随宿主深色/浅色切换，不在模块内维护第二套主题。
 - 命令来源：`module:HistoryJanus`。
+- 命令命名：`janus.<类>.<方法>` 三段式全小写（详见 `b-Office/current/指令优化规范.md`）。
 - UI：启用。
 - MCP：只读投影。
 
@@ -21,7 +22,7 @@
 Janus 实现 `IUiModule`、`IShellUiAware` 和 `IModuleContextAware`。HistoryVulcan 注入 `IModuleContext` 后，Janus 使用其中的 `Bus`、`Settings`、`Log`、`DataDirectory` 与命令注册事务。消费者模块通过自己的宿主上下文取得同一个 `CommandBus`，按命令名调用 Janus；不得构造 Janus 服务、引用内部 DTO，或自行加载 Janus DLL。
 
 ```csharp
-var result = await context.Bus.ExecuteAsync("proj.list", "filter=2026");
+var result = await context.Bus.ExecuteAsync("janus.proj.list", "filter=2026");
 if (!result.Success)
     throw new InvalidOperationException(result.Message);
 ```
@@ -36,58 +37,60 @@ if (!result.Success)
 | `projops` | 项目操作 | 右侧 | 创建、提交、推送，Git 文件规则与内嵌分支历史同级切换 |
 | `github` | github | 右侧 | 服务器 GitHub 凭据、SSH、提交身份、origin 与连接诊断 |
 
-三个 ID 是布局兼容合同。其他模块不能重复注册这些 ID；需要联动项目选择时应通过 Janus 命令读取事实，不访问页面私有状态。3.2.0 起撤销 `tree`、`meta` 两个窗口 ID：Meta 文件夹并入 `overview` 的元文件夹列，继承树只保留 `proj.tree` 后台命令供分支历史计算边界。3.3.0 起撤销 `history` 窗口 ID：分支历史作为 `projops` 的内嵌组件与 Git 文件规则同级切换，`proj.history*`、`proj.rollback`、`proj.reset`、`proj.forcepush` 命令全部保留。3.4.0 起并入原独立 GitHubConnection 模块：`github` 窗口注册在右侧（与 `projops` 同组标签），旧窗口 ID `github.account` 撤销；GitHub 写操作（登录、注销、提交身份、origin 修改）维持仅限页面内经确认执行，不进入命令总线。
+三个 ID 是布局兼容合同。其他模块不能重复注册这些 ID；需要联动项目选择时应通过 Janus 命令读取事实，不访问页面私有状态。3.2.0 起撤销 `tree`、`meta`；3.3.0 起撤销 `history`；3.4.0 起并入 `github` 窗口（旧 ID `github.account` 撤销）。GitHub 写操作（登录、注销、提交身份、origin 修改）维持仅限页面内经确认执行，不进入命令总线。
 
 ## 命令目录
+
+3.5.0 为破坏性改名：旧名（`proj.*` / `git.rule.*` / `github.*` / `debug.*` / `HistoryJanus.Status`）一次作废，不留别名。完整映射见 `指令优化规范.md`。
 
 ### 模块与读取
 
 | 命令 | 模式 | 用途 |
 | --- | --- | --- |
-| `HistoryJanus.Status` | 只读 | 返回模块身份和注册状态 |
-| `proj.list` | 只读 | 列出项目工作树 |
-| `proj.tree` | 只读 | 读取或刷新继承树 |
-| `proj.scan` | 只读 | 扫描项目大文件 |
-| `proj.config` | 只读 | 返回项目命令配置 |
-| `proj.metalist` | 只读 | 列出项目 z/Z 级元文件夹 |
-| `proj.history` | 只读 | 列出分支自有提交 |
-| `proj.history.show` | 只读 | 读取提交详情 |
-| `proj.history.diff` | 只读 | 预览历史节点与 HEAD 的差异 |
-| `git.rule.list` | 只读 | 列出 Git 文件规则与索引状态 |
-| `git.rule.scan` | 只读 | 扫描格式台账和覆盖率 |
-| `git.rule.review` | 只读 | 查看未决格式与规则建议 |
-| `github.status` | 只读 | 服务器 Git、GCM、提交身份、origin 和 SSH 状态 |
-| `github.accounts` | 只读 | 列出 GCM 中已知的 GitHub HTTPS 凭据账号 |
-| `github.test` | 只读 | 检测 GitHub SSH/HTTPS 连接（`transport=auto\|ssh\|https`，`timeout=1..120`），不执行 push |
+| `janus.status` | 只读 | 返回模块身份和注册状态 |
+| `janus.proj.list` | 只读 | 列出项目工作树 |
+| `janus.proj.tree` | 只读 | 读取或刷新继承树 |
+| `janus.proj.scan` | 只读 | 扫描项目大文件 |
+| `janus.proj.config` | 只读 | 返回项目命令配置 |
+| `janus.meta.list` | 只读 | 列出项目 z/Z 级元文件夹 |
+| `janus.history.list` | 只读 | 列出分支自有提交 |
+| `janus.history.show` | 只读 | 读取提交详情 |
+| `janus.history.diff` | 只读 | 预览历史节点与 HEAD 的差异 |
+| `janus.gitrule.list` | 只读 | 列出 Git 文件规则与索引状态 |
+| `janus.gitrule.scan` | 只读 | 扫描格式台账和覆盖率 |
+| `janus.gitrule.review` | 只读 | 查看未决格式与规则建议 |
+| `janus.github.status` | 只读 | 服务器 Git、GCM、提交身份、origin 和 SSH 状态 |
+| `janus.github.accounts` | 只读 | 列出 GCM 中已知的 GitHub HTTPS 凭据账号 |
+| `janus.github.test` | 只读 | 检测 GitHub SSH/HTTPS 连接（`transport=auto\|ssh\|https`，`timeout=1..120`），不执行 push |
 
 ### 项目写操作
 
 | 命令 | 用途 |
 | --- | --- |
-| `proj.create` | 创建编号项目工作树 |
-| `proj.delete` | 删除项目工作树 |
-| `proj.commit` | 提交指定项目 |
-| `proj.push` | 推送指定项目 |
-| `proj.commitall` | 批量提交项目 |
-| `proj.pushall` | 批量推送项目 |
-| `proj.open` | 请求打开项目位置 |
-| `proj.repair` | 修复项目工作树 |
-| `proj.note` | 写入项目历史说明 |
-| `proj.metaopen` | 打开项目 Meta 目录 |
-| `proj.rollback` | 回滚到指定历史节点 |
-| `proj.reset` | 重置到指定历史节点 |
-| `proj.forcepush` | 强制推送历史状态 |
-| `git.rule.sync` | 同步模板规则基线 |
-| `git.rule.set` | 保存单条 Git 文件规则 |
-| `git.rule.batch-set` | 原子保存多条 Git 文件规则 |
-| `git.rule.remove` | 删除 Git 文件规则 |
+| `janus.proj.create` | 创建编号项目工作树 |
+| `janus.proj.delete` | 删除项目工作树 |
+| `janus.proj.commit` | 提交指定项目 |
+| `janus.proj.push` | 推送指定项目 |
+| `janus.proj.commitall` | 批量提交项目 |
+| `janus.proj.pushall` | 批量推送项目 |
+| `janus.proj.open` | 请求打开项目位置 |
+| `janus.proj.repair` | 修复项目工作树 |
+| `janus.proj.note` | 写入项目历史说明 |
+| `janus.meta.open` | 打开项目 Meta 目录 |
+| `janus.history.rollback` | 回滚到指定历史节点 |
+| `janus.history.reset` | 重置到指定历史节点 |
+| `janus.history.forcepush` | 强制推送历史状态 |
+| `janus.gitrule.sync` | 同步模板规则基线 |
+| `janus.gitrule.set` | 保存单条 Git 文件规则 |
+| `janus.gitrule.batchset` | 原子保存多条 Git 文件规则 |
+| `janus.gitrule.remove` | 删除 Git 文件规则 |
 
 ### 诊断
 
 | 命令 | 用途 |
 | --- | --- |
-| `debug.logflood` | 生成限量日志负载 |
-| `debug.sleep` | 生成可取消延时任务 |
+| `janus.debug.logflood` | 生成限量日志负载 |
+| `janus.debug.sleep` | 生成可取消延时任务 |
 
 写操作必须尊重宿主返回的确认要求，不能通过直接调用 Janus 内部服务绕过确认。MCP 只允许投影只读命令，诊断命令不作为跨模块稳定业务合同。
 
@@ -98,9 +101,9 @@ if (!result.Success)
 - 热重载以完整模块快照替换旧注册；消费者不得长期缓存 Janus 服务实例或页面引用。
 - Janus 不公开旧 `OneHistoryStudio.exe`、`--service-host`、独立 Web/MCP 地址或旧进程名合同。
 
-## 兼容规则
+## 历史备注
 
-- `3.x` 内保持模块名和既有命令名；新增可选命令或参数属于兼容扩展。3.2.0 移除 `tree`、`meta` 窗口 ID、3.3.0 移除 `history` 窗口 ID 属于已公告的页面收口，命令名称、参数和结果结构不变。
-- 删除或改变命令语义、结果字段或确认策略需要提升主版本并更新本文件。
-- 正式消费前必须验证 `SHA256SUMS`；API 文档只说明合同，不能替代模块 manifest 与文件哈希校验。
-- V3.1.0 起模块身份由 `OneHistoryStudio` 改名为 `HistoryJanus`：模块名、命令前缀 `module:HistoryJanus`、部署槽、数据子目录与包目录同步切换；3.0.x 消费方须按新名称重新接入。V3.3.2 起包目录按 z 级命名规则由 `z-Package-HistoryJanus` 改名为 `z-HistoryJanus`，包内 API 文档位于 `docs/`。
+- V3.1.0：模块由 `OneHistoryStudio` 改名为 `HistoryJanus`。
+- V3.3.2：正式目录改名为 `z-HistoryJanus`，API 文档位于 `docs/`。
+- V3.4.0：GitHubConnection 并入为 `github` 页面与 `github.*` 命令。
+- V3.5.0：全部指令改为 `janus.<类>.<方法>`；github 页删除隐式 Button 样式并补齐 DataGrid Surface 刷子。
