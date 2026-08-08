@@ -6,19 +6,19 @@
 
 - 正式快照：`z-Package-HistoryJanus`。
 - 模块名：`HistoryJanus`。
-- 版本：`3.1.0`。
+- 版本：`3.1.1`。
 - 入口：`HistoryJanus.dll`。
-- 宿主基线：AppShell `3.1.9` current-host 快照，从 `2026-023-AppShell/z-Package-AppShell` 消费；该快照的 `sourceDirty` 仍由 AppShell manifest 如实标记。
-- 主题：页面使用 AppShell `Shell.Brush.*` 动态资源，跟随宿主深色/浅色切换，不在模块内维护第二套主题。
+- 宿主基线：HistoryVulcan `3.1.9` current-host 快照，从 `2026-023-HistoryVulcan/z-HistoryVulcan` 消费；该快照的 `sourceDirty` 仍由 HistoryVulcan manifest 如实标记。
+- 主题：页面使用 HistoryVulcan `Shell.Brush.*` 动态资源，跟随宿主深色/浅色切换，不在模块内维护第二套主题。
 - 命令来源：`module:HistoryJanus`。
 - UI：启用。
 - MCP：只读投影。
 
-其他项目只读取 z 级快照中的本文件、`module.manifest.json` 和 `SHA256SUMS`。不要从 `b-Publish`、Janus 的 `bin/obj`、AppShell 工作树或 Janus 历史文档建立依赖。
+其他项目只读取 z 级快照中的本文件、`module.manifest.json` 和 `SHA256SUMS`。不要从 `b-Publish`、Janus 的 `bin/obj`、HistoryVulcan 工作树或 Janus 历史文档建立依赖。
 
 ## 宿主接入
 
-Janus 实现 `IUiModule`、`IShellUiAware` 和 `IModuleContextAware`。AppShell 注入 `IModuleContext` 后，Janus 使用其中的 `Bus`、`Settings`、`Log`、`DataDirectory` 与命令注册事务。消费者模块通过自己的宿主上下文取得同一个 `CommandBus`，按命令名调用 Janus；不得构造 Janus 服务、引用内部 DTO，或自行加载 Janus DLL。
+Janus 实现 `IUiModule`、`IShellUiAware` 和 `IModuleContextAware`。HistoryVulcan 注入 `IModuleContext` 后，Janus 使用其中的 `Bus`、`Settings`、`Log`、`DataDirectory` 与命令注册事务。消费者模块通过自己的宿主上下文取得同一个 `CommandBus`，按命令名调用 Janus；不得构造 Janus 服务、引用内部 DTO，或自行加载 Janus DLL。
 
 ```csharp
 var result = await context.Bus.ExecuteAsync("proj.list", "filter=2026");
