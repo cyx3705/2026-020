@@ -4,9 +4,9 @@
 
 ## 正式消费入口
 
-- 正式快照：`z-Package-HistoryJanus`。
+- 正式快照：`z-HistoryJanus`。
 - 模块名：`HistoryJanus`。
-- 版本：`3.3.0`。
+- 版本：`3.3.2`。
 - 入口：`HistoryJanus.dll`。
 - 宿主基线：HistoryVulcan `3.2.2` current-host 快照，从 `2026-023-HistoryVulcan/z-HistoryVulcan` 消费；该快照的 `sourceDirty` 仍由 HistoryVulcan manifest 如实标记。
 - 主题：页面使用 HistoryVulcan `Shell.Brush.*` 动态资源，跟随宿主深色/浅色切换，不在模块内维护第二套主题。
@@ -99,4 +99,4 @@ if (!result.Success)
 - `3.x` 内保持模块名和既有命令名；新增可选命令或参数属于兼容扩展。3.2.0 移除 `tree`、`meta` 窗口 ID、3.3.0 移除 `history` 窗口 ID 属于已公告的页面收口，命令名称、参数和结果结构不变。
 - 删除或改变命令语义、结果字段或确认策略需要提升主版本并更新本文件。
 - 正式消费前必须验证 `SHA256SUMS`；API 文档只说明合同，不能替代模块 manifest 与文件哈希校验。
-- V3.1.0 起模块身份由 `OneHistoryStudio` 改名为 `HistoryJanus`：模块名、命令前缀 `module:HistoryJanus`、部署槽、数据子目录与包目录 `z-Package-HistoryJanus` 同步切换；3.0.x 消费方须按新名称重新接入。
+- V3.1.0 起模块身份由 `OneHistoryStudio` 改名为 `HistoryJanus`：模块名、命令前缀 `module:HistoryJanus`、部署槽、数据子目录与包目录同步切换；3.0.x 消费方须按新名称重新接入。V3.3.2 起包目录按 z 级命名规则由 `z-Package-HistoryJanus` 改名为 `z-HistoryJanus`，包内 API 文档位于 `docs/`。
