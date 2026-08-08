@@ -1,24 +1,24 @@
-# OneHistoryStudio 3.0 模块 API
+# HistoryJanus 3.1 模块 API
 
-本文件是其他模块和项目消费 OneHistoryStudio 的唯一人工合同。运行时命令目录是参数、确认策略和可用性的最终真值；历史文档和 OHS 内部类型不构成公开 API。
+本文件是其他模块和项目消费 HistoryJanus 的唯一人工合同。运行时命令目录是参数、确认策略和可用性的最终真值；历史文档和 Janus 内部类型不构成公开 API。
 
 ## 正式消费入口
 
-- 正式快照：`z-Package-OneHistoryStudio`。
-- 模块名：`OneHistoryStudio`。
-- 版本：`3.0.1`。
-- 入口：`OneHistoryStudio.dll`。
+- 正式快照：`z-Package-HistoryJanus`。
+- 模块名：`HistoryJanus`。
+- 版本：`3.1.0`。
+- 入口：`HistoryJanus.dll`。
 - 宿主基线：AppShell `3.1.9` current-host 快照，从 `2026-023-AppShell/z-Package-AppShell` 消费；该快照的 `sourceDirty` 仍由 AppShell manifest 如实标记。
 - 主题：页面使用 AppShell `Shell.Brush.*` 动态资源，跟随宿主深色/浅色切换，不在模块内维护第二套主题。
-- 命令来源：`module:OneHistoryStudio`。
+- 命令来源：`module:HistoryJanus`。
 - UI：启用。
 - MCP：只读投影。
 
-其他项目只读取 z 级快照中的本文件、`module.manifest.json` 和 `SHA256SUMS`。不要从 `b-Publish`、OHS 的 `bin/obj`、AppShell 工作树或 OHS 历史文档建立依赖。
+其他项目只读取 z 级快照中的本文件、`module.manifest.json` 和 `SHA256SUMS`。不要从 `b-Publish`、Janus 的 `bin/obj`、AppShell 工作树或 Janus 历史文档建立依赖。
 
 ## 宿主接入
 
-OHS 实现 `IUiModule`、`IShellUiAware` 和 `IModuleContextAware`。AppShell 注入 `IModuleContext` 后，OHS 使用其中的 `Bus`、`Settings`、`Log`、`DataDirectory` 与命令注册事务。消费者模块通过自己的宿主上下文取得同一个 `CommandBus`，按命令名调用 OHS；不得构造 OHS 服务、引用内部 DTO，或自行加载 OHS DLL。
+Janus 实现 `IUiModule`、`IShellUiAware` 和 `IModuleContextAware`。AppShell 注入 `IModuleContext` 后，Janus 使用其中的 `Bus`、`Settings`、`Log`、`DataDirectory` 与命令注册事务。消费者模块通过自己的宿主上下文取得同一个 `CommandBus`，按命令名调用 Janus；不得构造 Janus 服务、引用内部 DTO，或自行加载 Janus DLL。
 
 ```csharp
 var result = await context.Bus.ExecuteAsync("proj.list", "filter=2026");
@@ -26,7 +26,7 @@ if (!result.Success)
     throw new InvalidOperationException(result.Message);
 ```
 
-结构化结果跨宿主 HTTP 边界时可能表现为 `JsonElement`。消费者应按运行时目录说明投影为自己的 DTO，不依赖 OHS 页面内部模型。
+结构化结果跨宿主 HTTP 边界时可能表现为 `JsonElement`。消费者应按运行时目录说明投影为自己的 DTO，不依赖 Janus 页面内部模型。
 
 ## UI 窗口
 
@@ -38,7 +38,7 @@ if (!result.Success)
 | `projops` | 项目操作 | 右侧 | 创建、提交、推送和 Git 文件规则 |
 | `history` | 分支历史 | 左侧 | 提交历史、差异与回滚 |
 
-五个 ID 是布局兼容合同。其他模块不能重复注册这些 ID；需要联动项目选择时应通过 OHS 命令读取事实，不访问页面私有状态。
+五个 ID 是布局兼容合同。其他模块不能重复注册这些 ID；需要联动项目选择时应通过 Janus 命令读取事实，不访问页面私有状态。
 
 ## 命令目录
 
@@ -46,7 +46,7 @@ if (!result.Success)
 
 | 命令 | 模式 | 用途 |
 | --- | --- | --- |
-| `OneHistoryStudio.Status` | 只读 | 返回模块身份和注册状态 |
+| `HistoryJanus.Status` | 只读 | 返回模块身份和注册状态 |
 | `proj.list` | 只读 | 列出项目工作树 |
 | `proj.tree` | 只读 | 读取或刷新继承树 |
 | `proj.scan` | 只读 | 扫描项目大文件 |
@@ -88,17 +88,18 @@ if (!result.Success)
 | `debug.logflood` | 生成限量日志负载 |
 | `debug.sleep` | 生成可取消延时任务 |
 
-写操作必须尊重宿主返回的确认要求，不能通过直接调用 OHS 内部服务绕过确认。MCP 只允许投影只读命令，诊断命令不作为跨模块稳定业务合同。
+写操作必须尊重宿主返回的确认要求，不能通过直接调用 Janus 内部服务绕过确认。MCP 只允许投影只读命令，诊断命令不作为跨模块稳定业务合同。
 
 ## 数据与生命周期
 
-- OHS 在宿主数据根下使用 `OneHistoryStudio` 子目录；消费者不得假设绝对 `%APPDATA%` 路径。
-- 模块卸载时宿主撤销所有来源为 `module:OneHistoryStudio` 的命令并移除五个窗口。
-- 热重载以完整模块快照替换旧注册；消费者不得长期缓存 OHS 服务实例或页面引用。
-- OHS 不公开旧 `OneHistoryStudio.exe`、`--service-host`、独立 Web/MCP 地址或旧进程名合同。
+- Janus 在宿主数据根下使用 `HistoryJanus` 子目录；消费者不得假设绝对 `%APPDATA%` 路径。
+- 模块卸载时宿主撤销所有来源为 `module:HistoryJanus` 的命令并移除五个窗口。
+- 热重载以完整模块快照替换旧注册；消费者不得长期缓存 Janus 服务实例或页面引用。
+- Janus 不公开旧 `OneHistoryStudio.exe`、`--service-host`、独立 Web/MCP 地址或旧进程名合同。
 
 ## 兼容规则
 
 - `3.x` 内保持模块名、窗口 ID 和既有命令名；新增可选命令或参数属于兼容扩展。
 - 删除或改变命令语义、窗口 ID、结果字段或确认策略需要提升主版本并更新本文件。
 - 正式消费前必须验证 `SHA256SUMS`；API 文档只说明合同，不能替代模块 manifest 与文件哈希校验。
+- V3.1.0 起模块身份由 `OneHistoryStudio` 改名为 `HistoryJanus`：模块名、命令前缀 `module:HistoryJanus`、部署槽、数据子目录与包目录 `z-Package-HistoryJanus` 同步切换；3.0.x 消费方须按新名称重新接入。
