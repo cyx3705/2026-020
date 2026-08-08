@@ -6,7 +6,7 @@
 
 - 正式快照：`z-HistoryJanus`。
 - 模块名：`HistoryJanus`。
-- 版本：`3.3.2`。
+- 版本：`3.4.0`。
 - 入口：`HistoryJanus.dll`。
 - 宿主基线：HistoryVulcan `3.2.2` current-host 快照，从 `2026-023-HistoryVulcan/z-HistoryVulcan` 消费；该快照的 `sourceDirty` 仍由 HistoryVulcan manifest 如实标记。
 - 主题：页面使用 HistoryVulcan `Shell.Brush.*` 动态资源，跟随宿主深色/浅色切换，不在模块内维护第二套主题。
@@ -34,8 +34,9 @@ if (!result.Success)
 | --- | --- | --- | --- |
 | `overview` | 项目总览 | 左侧 | 项目列表、z/Z 级元文件夹与共享项目选择 |
 | `projops` | 项目操作 | 右侧 | 创建、提交、推送，Git 文件规则与内嵌分支历史同级切换 |
+| `github` | github | 右侧 | 服务器 GitHub 凭据、SSH、提交身份、origin 与连接诊断 |
 
-两个 ID 是布局兼容合同。其他模块不能重复注册这些 ID；需要联动项目选择时应通过 Janus 命令读取事实，不访问页面私有状态。3.2.0 起撤销 `tree`、`meta` 两个窗口 ID：Meta 文件夹并入 `overview` 的元文件夹列，继承树只保留 `proj.tree` 后台命令供分支历史计算边界。3.3.0 起撤销 `history` 窗口 ID：分支历史作为 `projops` 的内嵌组件与 Git 文件规则同级切换，`proj.history*`、`proj.rollback`、`proj.reset`、`proj.forcepush` 命令全部保留。
+三个 ID 是布局兼容合同。其他模块不能重复注册这些 ID；需要联动项目选择时应通过 Janus 命令读取事实，不访问页面私有状态。3.2.0 起撤销 `tree`、`meta` 两个窗口 ID：Meta 文件夹并入 `overview` 的元文件夹列，继承树只保留 `proj.tree` 后台命令供分支历史计算边界。3.3.0 起撤销 `history` 窗口 ID：分支历史作为 `projops` 的内嵌组件与 Git 文件规则同级切换，`proj.history*`、`proj.rollback`、`proj.reset`、`proj.forcepush` 命令全部保留。3.4.0 起并入原独立 GitHubConnection 模块：`github` 窗口注册在右侧（与 `projops` 同组标签），旧窗口 ID `github.account` 撤销；GitHub 写操作（登录、注销、提交身份、origin 修改）维持仅限页面内经确认执行，不进入命令总线。
 
 ## 命令目录
 
@@ -55,6 +56,9 @@ if (!result.Success)
 | `git.rule.list` | 只读 | 列出 Git 文件规则与索引状态 |
 | `git.rule.scan` | 只读 | 扫描格式台账和覆盖率 |
 | `git.rule.review` | 只读 | 查看未决格式与规则建议 |
+| `github.status` | 只读 | 服务器 Git、GCM、提交身份、origin 和 SSH 状态 |
+| `github.accounts` | 只读 | 列出 GCM 中已知的 GitHub HTTPS 凭据账号 |
+| `github.test` | 只读 | 检测 GitHub SSH/HTTPS 连接（`transport=auto\|ssh\|https`，`timeout=1..120`），不执行 push |
 
 ### 项目写操作
 
@@ -90,7 +94,7 @@ if (!result.Success)
 ## 数据与生命周期
 
 - Janus 在宿主数据根下使用 `HistoryJanus` 子目录；消费者不得假设绝对 `%APPDATA%` 路径。
-- 模块卸载时宿主撤销所有来源为 `module:HistoryJanus` 的命令并移除两个窗口。
+- 模块卸载时宿主撤销所有来源为 `module:HistoryJanus` 的命令并移除三个窗口。
 - 热重载以完整模块快照替换旧注册；消费者不得长期缓存 Janus 服务实例或页面引用。
 - Janus 不公开旧 `OneHistoryStudio.exe`、`--service-host`、独立 Web/MCP 地址或旧进程名合同。
 
