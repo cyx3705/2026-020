@@ -1,0 +1,70 @@
+name: HistoryJanus Quality Gate
+
+on:
+  push:
+    branches:
+      - 2026-020-HistoryJanus
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    name: Build, contracts and drift gates
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out HistoryJanus
+        uses: actions/checkout@v7
+        with:
+          path: 2026-020-HistoryJanus
+          lfs: true
+
+      # 模块以 Private=false 引用宿主的 z 级正式快照（相对路径在仓库根之外），
+      # 因此 CI 把 023 分支检出到并列目录，保持与本机 worktree 相同的布局。
+      - name: Check out the HistoryVulcan host snapshot
+        uses: actions/checkout@v7
+        with:
+          ref: 2026-023-HistoryVulcan
+          path: 2026-023-HistoryVulcan
+          lfs: true
+
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Restore locked dependencies
+        working-directory: 2026-020-HistoryJanus
+        run: dotnet restore .\HistoryJanus.sln --locked-mode -p:NuGetAudit=false
+
+      - name: Build Debug
+        working-directory: 2026-020-HistoryJanus
+        run: dotnet build .\HistoryJanus.sln -c Debug --no-restore -p:NuGetAudit=false
+
+      - name: Test contracts Debug
+        working-directory: 2026-020-HistoryJanus
+        run: >-
+          dotnet test .\b-Code-Verify\Contracts\Contracts.csproj
+          -c Debug --no-build --no-restore -p:NuGetAudit=false
+
+      - name: Build Release
+        working-directory: 2026-020-HistoryJanus
+        run: dotnet build .\HistoryJanus.sln -c Release --no-restore -p:NuGetAudit=false
+
+      - name: Test contracts Release
+        working-directory: 2026-020-HistoryJanus
+        run: >-
+          dotnet test .\b-Code-Verify\Contracts\Contracts.csproj
+          -c Release --no-build --no-restore -p:NuGetAudit=false
+
+      - name: Verify formatting
+        working-directory: 2026-020-HistoryJanus
+        run: dotnet format .\HistoryJanus.sln --verify-no-changes --no-restore
+
+      - name: Verify quality gate
+        working-directory: 2026-020-HistoryJanus
+        shell: pwsh
+        run: .\b-Code-Studio\eng\Test-QualityGate.ps1
