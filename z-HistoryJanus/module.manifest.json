@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "type": "HistoryVulcan.Module",
   "name": "HistoryJanus",
-  "version": "3.3.2",
+  "version": "3.4.0",
   "description": "HistoryJanus 项目与 Git 治理模块",
   "artifact": "HistoryJanus.dll",
   "docs": "HistoryJanus.xml",
