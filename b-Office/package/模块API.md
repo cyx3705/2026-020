@@ -1,4 +1,4 @@
-# HistoryJanus 3.7.0 模块 API
+# HistoryJanus 3.7.1 模块 API
 
 本文件是其他模块和项目消费 HistoryJanus 的唯一人工合同。运行时命令目录是参数、确认策略和可用性的最终真值；历史文档和 Janus 内部类型不构成公开 API。
 
@@ -6,7 +6,7 @@
 
 - 正式快照：`z-HistoryJanus`。
 - 模块名：`HistoryJanus`。
-- 版本：`3.7.0`。
+- 版本：`3.7.1`。
 - 入口：`HistoryJanus.dll`。
 - 宿主基线：HistoryVulcan `3.4.0` current-host 快照，从 `2026-023-HistoryVulcan/z-HistoryVulcan` 消费；该快照的 `sourceDirty` 仍由 HistoryVulcan manifest 如实标记。
 - 主题：页面使用 HistoryVulcan `Shell.Brush.*` 动态资源，跟随宿主深色/浅色切换，不在模块内维护第二套主题。
@@ -36,7 +36,7 @@ if (!result.Success)
 | `overview` | 项目总览 | 中央工具标签（`Tab→mcp`） | 项目列表、z/Z 级元文件夹、最近提交与共享项目选择 |
 | `projops` | 项目操作 | 右侧 | 创建、提交、推送；底部同一行分段切换 Git 文件规则、分支历史与 GitHub 连接治理 |
 
-两个 ID 是布局兼容合同。其他模块不能重复注册这些 ID；需要联动项目选择时应通过 Janus 命令读取事实，不访问页面私有状态。3.2.0 起撤销 `tree`、`meta`；3.3.0 起撤销 `history`；3.4.0 引入的 `github` 窗口在 3.7.0 退役，其内容并入 `projops` 底部分段。GitHub 写操作（登录、注销、提交身份、origin 修改）维持仅限页面内经确认执行，不进入命令总线。
+两个 ID 是布局兼容合同。**默认落位（3.7.1）**：`overview` 占中央工作区，`projops` 停靠左侧、默认宽度占比 0.38；`overview` 不再声明 `DefaultTabTarget`，落位不依赖 HistoryMercury 是否已装载。已保存的用户布局优先于默认落位。其他模块不能重复注册这些 ID；需要联动项目选择时应通过 Janus 命令读取事实，不访问页面私有状态。3.2.0 起撤销 `tree`、`meta`；3.3.0 起撤销 `history`；3.4.0 引入的 `github` 窗口在 3.7.0 退役，其内容并入 `projops` 底部分段。GitHub 写操作（登录、注销、提交身份、origin 修改）维持仅限页面内经确认执行，不进入命令总线。
 
 ## 命令目录
 
