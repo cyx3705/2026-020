@@ -1,0 +1,244 @@
+<UserControl x:Class="HistoryJanus.Views.ProjectOperationsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Background="{DynamicResource Shell.Brush.Surface}"
+             Foreground="{DynamicResource Shell.Brush.TextPrimary}">
+    <UserControl.Resources>
+        <Style TargetType="DataGridColumnHeader">
+            <Setter Property="Background" Value="{DynamicResource Shell.Brush.SurfaceAlt}" />
+            <Setter Property="Foreground" Value="{DynamicResource Shell.Brush.TextSecondary}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Shell.Brush.Hairline}" />
+            <Setter Property="BorderThickness" Value="0,0,0,1" />
+            <Setter Property="Padding" Value="6,4" />
+        </Style>
+        <Style TargetType="DataGridRow">
+            <Setter Property="Background" Value="{DynamicResource Shell.Brush.Surface}" />
+            <Setter Property="Foreground" Value="{DynamicResource Shell.Brush.TextPrimary}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Shell.Brush.Hairline}" />
+            <Style.Triggers>
+                <Trigger Property="IsSelected" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource Shell.Brush.AccentSoft}" />
+                    <Setter Property="Foreground" Value="{DynamicResource Shell.Brush.TextPrimary}" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+        <Style TargetType="DataGridCell">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource Shell.Brush.TextPrimary}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Shell.Brush.Hairline}" />
+        </Style>
+        <Style x:Key="OperationSegment" TargetType="RadioButton">
+            <Setter Property="MinHeight" Value="46" />
+            <Setter Property="Margin" Value="0,0,1,0" />
+            <Setter Property="Foreground" Value="{DynamicResource Shell.Brush.TextPrimary}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="SegmentBorder"
+                                BorderBrush="{DynamicResource Shell.Brush.ControlBorder}"
+                                BorderThickness="1"
+                                Background="{DynamicResource Shell.Brush.SurfaceAlt}" Padding="5,4">
+                            <TextBlock Text="{TemplateBinding Content}"
+                                       Foreground="{TemplateBinding Foreground}" TextAlignment="Center"
+                                       TextWrapping="Wrap" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="SegmentBorder" Property="Background"
+                                        Value="{DynamicResource Shell.Brush.AccentSoft}" />
+                                <Setter TargetName="SegmentBorder" Property="BorderBrush"
+                                        Value="{DynamicResource Shell.Brush.Accent}" />
+                                <Setter Property="FontWeight" Value="SemiBold" />
+                            </Trigger>
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsMouseOver" Value="True" />
+                                    <Condition Property="IsChecked" Value="False" />
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="SegmentBorder" Property="Background"
+                                        Value="{DynamicResource Shell.Brush.SurfaceHover}" />
+                            </MultiTrigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="SegmentBorder" Property="Opacity" Value="0.55" />
+                                <Setter Property="Foreground"
+                                        Value="{DynamicResource Shell.Brush.TextDisabled}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+    <DockPanel Margin="6">
+        <Grid DockPanel.Dock="Top" Margin="0,0,0,6">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" Text="新项目名称:"
+                       VerticalAlignment="Center" />
+            <TextBox Grid.Column="1" x:Name="NewProjectNameBox" Margin="0,0,6,0"
+                     VerticalContentAlignment="Center" TextChanged="OnNewProjectNameChanged" />
+            <Button Grid.Column="2" x:Name="CreateProjectButton" Content="新建"
+                    Padding="10,3" IsEnabled="False" Click="OnCreateClick" />
+        </Grid>
+
+        <Grid DockPanel.Dock="Top" Margin="0,0,0,6">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.Row="0" Grid.ColumnSpan="3" x:Name="SelectedActionTitle"
+                       Text="当前未选择项目" FontWeight="SemiBold" Margin="0,0,0,4"
+                       TextWrapping="Wrap" />
+            <TextBlock Grid.Row="1" Grid.Column="0" Text="提交描述:" Margin="0,0,6,4"
+                       VerticalAlignment="Center" />
+            <TextBox Grid.Row="1" Grid.Column="1" x:Name="SelectedCommitMessageBox"
+                     Margin="0,0,6,4" VerticalContentAlignment="Center"
+                     TextChanged="OnCommitMessageChanged" />
+            <StackPanel Grid.Row="1" Grid.Column="2" Orientation="Horizontal" Margin="0,0,0,4">
+                <Button x:Name="SelectedCommitButton" Content="提交" Padding="14,3"
+                        IsEnabled="False" Click="OnCommitSelectedClick" />
+                <Button x:Name="SelectedPushButton" Content="推送" Padding="14,3"
+                        Margin="6,0,0,0" IsEnabled="False" Click="OnPushSelectedClick" />
+            </StackPanel>
+            <UniformGrid Grid.Row="2" Grid.ColumnSpan="3" Columns="4">
+                <RadioButton x:Name="CurrentSubmodulesModeButton" GroupName="OperationMode"
+                             Content="当前&#10;仅子模块" Style="{StaticResource OperationSegment}"
+                             Click="OnOperationModeChanged" />
+                <RadioButton x:Name="CurrentBothModeButton" GroupName="OperationMode"
+                             Content="当前&#10;分支及子模块" Style="{StaticResource OperationSegment}"
+                             IsChecked="True" Click="OnOperationModeChanged" />
+                <RadioButton x:Name="AllSubmodulesModeButton" GroupName="OperationMode"
+                             Content="全部&#10;仅子模块" Style="{StaticResource OperationSegment}"
+                             Click="OnOperationModeChanged" />
+                <RadioButton x:Name="AllBothModeButton" GroupName="OperationMode"
+                             Content="全部&#10;分支及子模块" Style="{StaticResource OperationSegment}"
+                             Click="OnOperationModeChanged" />
+            </UniformGrid>
+        </Grid>
+
+        <!-- GitHub 面板与 Git 文件规则、分支历史同行切换，不独占宿主窗口。 -->
+        <UniformGrid DockPanel.Dock="Top" Columns="3" Margin="0,0,0,6">
+            <RadioButton x:Name="RulesPageButton" GroupName="BottomPage"
+                         Content="Git 文件规则" Style="{StaticResource OperationSegment}"
+                         MinHeight="26" IsChecked="True" Checked="OnBottomPageChanged" />
+            <RadioButton x:Name="HistoryPageButton" GroupName="BottomPage"
+                         Content="分支历史" Style="{StaticResource OperationSegment}"
+                         MinHeight="26" Checked="OnBottomPageChanged" />
+            <RadioButton x:Name="GitHubPageButton" GroupName="BottomPage"
+                         Content="GitHub" Style="{StaticResource OperationSegment}"
+                         MinHeight="26" Checked="OnBottomPageChanged" />
+        </UniformGrid>
+
+        <Grid>
+            <!-- 分段按钮已给出面板名，上方选中项标题已给出当前项目，面板内不重复标题行。 -->
+            <DockPanel x:Name="RulePanel" IsEnabled="False">
+            <Grid DockPanel.Dock="Top" Margin="0,0,0,6">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBox Grid.Column="0" x:Name="PatternBox" Text="*.xlsx"
+                         VerticalContentAlignment="Center"
+                         ToolTip="文件格式如 *.xlsx；目录规则以 / 结尾如 Library/（只用于忽略）" />
+                <Button Grid.Column="1" x:Name="AddRuleButton" Content="添加规则" Padding="10,3"
+                        Margin="6,0,0,0" Click="OnAddRuleClick" />
+            </Grid>
+
+            <ScrollViewer DockPanel.Dock="Top" HorizontalScrollBarVisibility="Auto"
+                          VerticalScrollBarVisibility="Disabled" Margin="0,0,0,6">
+                <StackPanel Orientation="Horizontal">
+                    <Button x:Name="RefreshRulesButton" Content="刷新规则" Padding="10,3"
+                            Click="OnRefreshRulesClick" />
+                    <Button x:Name="ReviewRulesButton" Content="未决与建议" Padding="10,3" Margin="6,0,0,0"
+                            Click="OnReviewRulesClick" />
+                    <Button x:Name="SyncBaselineButton" Content="同步基线" Padding="10,3" Margin="6,0,0,0"
+                            Click="OnSyncBaselineClick"
+                            ToolTip="只预览模板项目 baseline 规则同步；不会从页面直接写入" />
+                    <Button x:Name="DeleteRuleButton" Content="删除规则" Padding="10,3" Margin="6,0,0,0"
+                            IsEnabled="False" Click="OnDeleteRuleClick" />
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- 选择项目自动加载全格式台账；刷新规则强制刷新缓存。 -->
+            <Border DockPanel.Dock="Top"
+                    Background="{DynamicResource Shell.Brush.SurfaceAlt}"
+                    BorderBrush="{DynamicResource Shell.Brush.Hairline}" BorderThickness="1"
+                    Padding="6" Margin="0,0,0,6">
+                <TextBlock x:Name="CoverageText"
+                           Foreground="{DynamicResource Shell.Brush.TextSecondary}" TextWrapping="Wrap"
+                           Text="格式覆盖：选择项目后自动读取全部文件格式" />
+            </Border>
+
+            <DataGrid x:Name="RuleGrid"
+                      Background="{DynamicResource Shell.Brush.Surface}"
+                      Foreground="{DynamicResource Shell.Brush.TextPrimary}"
+                      BorderBrush="{DynamicResource Shell.Brush.Hairline}"
+                      RowBackground="{DynamicResource Shell.Brush.Surface}"
+                      AlternatingRowBackground="{DynamicResource Shell.Brush.SurfaceAlt}"
+                      HorizontalGridLinesBrush="{DynamicResource Shell.Brush.Hairline}"
+                      AutoGenerateColumns="False" CanUserAddRows="False"
+                      CanUserDeleteRows="False" SelectionMode="Single" SelectionUnit="FullRow"
+                      SelectionChanged="OnRuleSelected" HeadersVisibility="Column"
+                      GridLinesVisibility="Horizontal" HorizontalScrollBarVisibility="Auto">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="格式 / Pattern" Width="125" Binding="{Binding Pattern}" IsReadOnly="True" />
+                    <DataGridTextColumn Header="来源" Width="95" Binding="{Binding Source}" IsReadOnly="True" />
+                    <DataGridTextColumn Header="文件" Width="50" Binding="{Binding FileCount}" IsReadOnly="True" />
+                    <DataGridCheckBoxColumn Header="Git" Width="50" IsThreeState="True"
+                                            Binding="{Binding Track, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                        <DataGridCheckBoxColumn.ElementStyle>
+                            <Style TargetType="CheckBox">
+                                <Setter Property="IsEnabled" Value="{Binding CanEdit}" />
+                            </Style>
+                        </DataGridCheckBoxColumn.ElementStyle>
+                        <DataGridCheckBoxColumn.EditingElementStyle>
+                            <Style TargetType="CheckBox">
+                                <Setter Property="IsEnabled" Value="{Binding CanEdit}" />
+                            </Style>
+                        </DataGridCheckBoxColumn.EditingElementStyle>
+                    </DataGridCheckBoxColumn>
+                    <DataGridCheckBoxColumn Header="LFS 指针" Width="70" IsThreeState="True"
+                                            Binding="{Binding Lfs, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                        <DataGridCheckBoxColumn.ElementStyle>
+                            <Style TargetType="CheckBox">
+                                <Setter Property="IsEnabled" Value="{Binding CanEditAttributes}" />
+                            </Style>
+                        </DataGridCheckBoxColumn.ElementStyle>
+                        <DataGridCheckBoxColumn.EditingElementStyle>
+                            <Style TargetType="CheckBox">
+                                <Setter Property="IsEnabled" Value="{Binding CanEditAttributes}" />
+                            </Style>
+                        </DataGridCheckBoxColumn.EditingElementStyle>
+                    </DataGridCheckBoxColumn>
+                    <DataGridCheckBoxColumn Header="LF 文本" Width="65" IsThreeState="True"
+                                            Binding="{Binding Lf, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                        <DataGridCheckBoxColumn.ElementStyle>
+                            <Style TargetType="CheckBox">
+                                <Setter Property="IsEnabled" Value="{Binding CanEditAttributes}" />
+                            </Style>
+                        </DataGridCheckBoxColumn.ElementStyle>
+                        <DataGridCheckBoxColumn.EditingElementStyle>
+                            <Style TargetType="CheckBox">
+                                <Setter Property="IsEnabled" Value="{Binding CanEditAttributes}" />
+                            </Style>
+                        </DataGridCheckBoxColumn.EditingElementStyle>
+                    </DataGridCheckBoxColumn>
+                    <DataGridTextColumn Header="存储结果" Width="220" Binding="{Binding StorageResult}" IsReadOnly="True" />
+                    <DataGridTextColumn Header="当前状态" Width="280" Binding="{Binding Status}" IsReadOnly="True" />
+                </DataGrid.Columns>
+            </DataGrid>
+        </DockPanel>
+            <ContentControl x:Name="HistoryPanel" Visibility="Collapsed" />
+            <ContentControl x:Name="GitHubPanel" Visibility="Collapsed" />
+        </Grid>
+    </DockPanel>
+</UserControl>
