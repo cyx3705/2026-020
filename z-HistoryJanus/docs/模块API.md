@@ -1,4 +1,4 @@
-# HistoryJanus 3.5 模块 API
+# HistoryJanus 3.7.0 模块 API
 
 本文件是其他模块和项目消费 HistoryJanus 的唯一人工合同。运行时命令目录是参数、确认策略和可用性的最终真值；历史文档和 Janus 内部类型不构成公开 API。
 
@@ -6,9 +6,9 @@
 
 - 正式快照：`z-HistoryJanus`。
 - 模块名：`HistoryJanus`。
-- 版本：`3.6.0`。
+- 版本：`3.7.0`。
 - 入口：`HistoryJanus.dll`。
-- 宿主基线：HistoryVulcan `3.3.2` current-host 快照，从 `2026-023-HistoryVulcan/z-HistoryVulcan` 消费；该快照的 `sourceDirty` 仍由 HistoryVulcan manifest 如实标记。
+- 宿主基线：HistoryVulcan `3.4.0` current-host 快照，从 `2026-023-HistoryVulcan/z-HistoryVulcan` 消费；该快照的 `sourceDirty` 仍由 HistoryVulcan manifest 如实标记。
 - 主题：页面使用 HistoryVulcan `Shell.Brush.*` 动态资源，跟随宿主深色/浅色切换，不在模块内维护第二套主题。
 - 命令来源：`module:HistoryJanus`。
 - 命令命名：`janus.<类>.<方法>` 三段式全小写（详见 `b-Office/current/指令优化规范.md`）。
@@ -34,16 +34,15 @@ if (!result.Success)
 | ID | 标题 | 默认位置 | 用途 |
 | --- | --- | --- | --- |
 | `overview` | 项目总览 | 中央工具标签（`Tab→mcp`） | 项目列表、z/Z 级元文件夹、最近提交与共享项目选择 |
-| `projops` | 项目操作 | 右侧 | 创建、提交、推送，Git 文件规则与内嵌分支历史同级切换 |
-| `github` | github | 右侧 | 服务器 GitHub 凭据、SSH、提交身份、origin 与连接诊断（单页；诊断弹窗） |
+| `projops` | 项目操作 | 右侧 | 创建、提交、推送；底部同一行分段切换 Git 文件规则、分支历史与 GitHub 连接治理 |
 
-三个 ID 是布局兼容合同。其他模块不能重复注册这些 ID；需要联动项目选择时应通过 Janus 命令读取事实，不访问页面私有状态。3.2.0 起撤销 `tree`、`meta`；3.3.0 起撤销 `history`；3.4.0 起并入 `github` 窗口（旧 ID `github.account` 撤销）。GitHub 写操作（登录、注销、提交身份、origin 修改）维持仅限页面内经确认执行，不进入命令总线。
+两个 ID 是布局兼容合同。其他模块不能重复注册这些 ID；需要联动项目选择时应通过 Janus 命令读取事实，不访问页面私有状态。3.2.0 起撤销 `tree`、`meta`；3.3.0 起撤销 `history`；3.4.0 引入的 `github` 窗口在 3.7.0 退役，其内容并入 `projops` 底部分段。GitHub 写操作（登录、注销、提交身份、origin 修改）维持仅限页面内经确认执行，不进入命令总线。
 
 ## 命令目录
 
 3.5.0 为破坏性改名：旧名（`proj.*` / `git.rule.*` / `github.*` / `debug.*` / `HistoryJanus.Status`）一次作废，不留别名。完整映射见 `指令优化规范.md`。
 
-3.7.0 再次收敛指令类：`debug` 类整体退役（`janus.debug.logflood` 与宿主 `vulcan.log.flood` 重复，`janus.debug.sleep` 无调用点），`meta` 类并入 `proj`（`janus.meta.list` → `janus.proj.metas`，`janus.meta.open` → `janus.proj.metaopen`）。命令总数 33 → 31，类为 `proj` / `gitrule` / `history` / `github` 四类。
+3.7.0 再次收敛指令类：`debug` 类整体退役（`janus.debug.logflood` 与宿主 `vulcan.log.flood` 重复，`janus.debug.sleep` 无调用点），`meta` 类并入 `proj`（`janus.meta.list` → `janus.proj.metas`，`janus.meta.open` → `janus.proj.metaopen`）。业务命令由 33 条减为 31 条，类为 `proj` / `gitrule` / `history` / `github` 四类；加上模块宿主投影的 `janus.status`，运行时命令总数为 32 条。
 
 ### 模块与读取
 
@@ -87,17 +86,12 @@ if (!result.Success)
 | `janus.gitrule.batchset` | 原子保存多条 Git 文件规则 |
 | `janus.gitrule.remove` | 删除 Git 文件规则 |
 
-### 诊断
-
-| 命令 | 用途 |
-| --- | --- |
-
-写操作必须尊重宿主返回的确认要求，不能通过直接调用 Janus 内部服务绕过确认。MCP 只允许投影只读命令，诊断命令不作为跨模块稳定业务合同。
+写操作必须尊重宿主返回的确认要求，不能通过直接调用 Janus 内部服务绕过确认。MCP 只允许投影只读命令；Janus 不再公开 `debug` 类诊断命令。
 
 ## 数据与生命周期
 
 - Janus 在宿主数据根下使用 `HistoryJanus` 子目录；消费者不得假设绝对 `%APPDATA%` 路径。
-- 模块卸载时宿主撤销所有来源为 `module:HistoryJanus` 的命令并移除三个窗口。
+- 模块卸载时宿主撤销所有来源为 `module:HistoryJanus` 的命令并移除两个窗口。
 - 热重载以完整模块快照替换旧注册；消费者不得长期缓存 Janus 服务实例或页面引用。
 - Janus 不公开旧 `OneHistoryStudio.exe`、`--service-host`、独立 Web/MCP 地址或旧进程名合同。
 
@@ -109,3 +103,4 @@ if (!result.Success)
 - V3.5.0：全部指令改为 `janus.<类>.<方法>`；github 页删除隐式 Button 样式并补齐 DataGrid Surface 刷子。
 - V3.5.1：`CommandClass` 与命令名中间段对齐；清除宿主残留 `GitHubConnection` 独立域槽。
 - V3.6.0：总览以工具页挂入中央标签组；分支名唯一权威与路径解析；github 单页化；总览增加最近提交列。
+- V3.7.0：独立 github 窗口并入项目操作页；业务命令收敛为 31 条、运行时总计 32 条；Smoke 套件并行并具名超时。
