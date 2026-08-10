@@ -6,9 +6,9 @@
 
 - 正式快照：`z-HistoryJanus`。
 - 模块名：`HistoryJanus`。
-- 版本：`3.5.0`。
+- 版本：`3.6.0`。
 - 入口：`HistoryJanus.dll`。
-- 宿主基线：HistoryVulcan `3.2.2` current-host 快照，从 `2026-023-HistoryVulcan/z-HistoryVulcan` 消费；该快照的 `sourceDirty` 仍由 HistoryVulcan manifest 如实标记。
+- 宿主基线：HistoryVulcan `3.3.2` current-host 快照，从 `2026-023-HistoryVulcan/z-HistoryVulcan` 消费；该快照的 `sourceDirty` 仍由 HistoryVulcan manifest 如实标记。
 - 主题：页面使用 HistoryVulcan `Shell.Brush.*` 动态资源，跟随宿主深色/浅色切换，不在模块内维护第二套主题。
 - 命令来源：`module:HistoryJanus`。
 - 命令命名：`janus.<类>.<方法>` 三段式全小写（详见 `b-Office/current/指令优化规范.md`）。
@@ -33,15 +33,17 @@ if (!result.Success)
 
 | ID | 标题 | 默认位置 | 用途 |
 | --- | --- | --- | --- |
-| `overview` | 项目总览 | 左侧 | 项目列表、z/Z 级元文件夹与共享项目选择 |
+| `overview` | 项目总览 | 中央工具标签（`Tab→mcp`） | 项目列表、z/Z 级元文件夹、最近提交与共享项目选择 |
 | `projops` | 项目操作 | 右侧 | 创建、提交、推送，Git 文件规则与内嵌分支历史同级切换 |
-| `github` | github | 右侧 | 服务器 GitHub 凭据、SSH、提交身份、origin 与连接诊断 |
+| `github` | github | 右侧 | 服务器 GitHub 凭据、SSH、提交身份、origin 与连接诊断（单页；诊断弹窗） |
 
 三个 ID 是布局兼容合同。其他模块不能重复注册这些 ID；需要联动项目选择时应通过 Janus 命令读取事实，不访问页面私有状态。3.2.0 起撤销 `tree`、`meta`；3.3.0 起撤销 `history`；3.4.0 起并入 `github` 窗口（旧 ID `github.account` 撤销）。GitHub 写操作（登录、注销、提交身份、origin 修改）维持仅限页面内经确认执行，不进入命令总线。
 
 ## 命令目录
 
 3.5.0 为破坏性改名：旧名（`proj.*` / `git.rule.*` / `github.*` / `debug.*` / `HistoryJanus.Status`）一次作废，不留别名。完整映射见 `指令优化规范.md`。
+
+3.7.0 再次收敛指令类：`debug` 类整体退役（`janus.debug.logflood` 与宿主 `vulcan.log.flood` 重复，`janus.debug.sleep` 无调用点），`meta` 类并入 `proj`（`janus.meta.list` → `janus.proj.metas`，`janus.meta.open` → `janus.proj.metaopen`）。命令总数 33 → 31，类为 `proj` / `gitrule` / `history` / `github` 四类。
 
 ### 模块与读取
 
@@ -52,7 +54,7 @@ if (!result.Success)
 | `janus.proj.tree` | 只读 | 读取或刷新继承树 |
 | `janus.proj.scan` | 只读 | 扫描项目大文件 |
 | `janus.proj.config` | 只读 | 返回项目命令配置 |
-| `janus.meta.list` | 只读 | 列出项目 z/Z 级元文件夹 |
+| `janus.proj.metas` | 只读 | 列出项目 z/Z 级元文件夹 |
 | `janus.history.list` | 只读 | 列出分支自有提交 |
 | `janus.history.show` | 只读 | 读取提交详情 |
 | `janus.history.diff` | 只读 | 预览历史节点与 HEAD 的差异 |
@@ -76,7 +78,7 @@ if (!result.Success)
 | `janus.proj.open` | 请求打开项目位置 |
 | `janus.proj.repair` | 修复项目工作树 |
 | `janus.proj.note` | 写入项目历史说明 |
-| `janus.meta.open` | 打开项目 Meta 目录 |
+| `janus.proj.metaopen` | 打开项目 Meta 目录 |
 | `janus.history.rollback` | 回滚到指定历史节点 |
 | `janus.history.reset` | 重置到指定历史节点 |
 | `janus.history.forcepush` | 强制推送历史状态 |
@@ -89,8 +91,6 @@ if (!result.Success)
 
 | 命令 | 用途 |
 | --- | --- |
-| `janus.debug.logflood` | 生成限量日志负载 |
-| `janus.debug.sleep` | 生成可取消延时任务 |
 
 写操作必须尊重宿主返回的确认要求，不能通过直接调用 Janus 内部服务绕过确认。MCP 只允许投影只读命令，诊断命令不作为跨模块稳定业务合同。
 
@@ -107,3 +107,5 @@ if (!result.Success)
 - V3.3.2：正式目录改名为 `z-HistoryJanus`，API 文档位于 `docs/`。
 - V3.4.0：GitHubConnection 并入为 `github` 页面与 `github.*` 命令。
 - V3.5.0：全部指令改为 `janus.<类>.<方法>`；github 页删除隐式 Button 样式并补齐 DataGrid Surface 刷子。
+- V3.5.1：`CommandClass` 与命令名中间段对齐；清除宿主残留 `GitHubConnection` 独立域槽。
+- V3.6.0：总览以工具页挂入中央标签组；分支名唯一权威与路径解析；github 单页化；总览增加最近提交列。
