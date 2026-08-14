@@ -1,0 +1,52 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="..\JanusVersion.props" />
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>HistoryJanus</AssemblyName>
+    <RootNamespace>HistoryJanus.Module</RootNamespace>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1573;CS1591</NoWarn>
+    <HistoryVulcanPackageRoot Condition="'$(HistoryVulcanPackageRoot)' == ''">$(MSBuildThisFileDirectory)..\..\..\2026-023-HistoryVulcan\z-HistoryVulcan</HistoryVulcanPackageRoot>
+    <HistoryVulcanHostRoot Condition="'$(HistoryVulcanHostRoot)' == ''">$(HistoryVulcanPackageRoot)\host</HistoryVulcanHostRoot>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="HistoryVulcan.Core">
+      <HintPath>$(HistoryVulcanHostRoot)\HistoryVulcan.Core.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="HistoryVulcan.Extensibility">
+      <HintPath>$(HistoryVulcanHostRoot)\HistoryVulcan.Extensibility.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="HistoryVulcan.Services">
+      <HintPath>$(HistoryVulcanHostRoot)\HistoryVulcan.Services.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <!-- The first UI migration keeps the existing pages and their domain contracts
+       in one self-contained module assembly. Host-owned process and shell code
+       remains outside this project. -->
+  <ItemGroup>
+    <Compile Include="..\StudioBusinessComposition.cs" Link="StudioBusinessComposition.cs" />
+    <Compile Include="..\Git\**\*.cs" Link="Git\%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="..\GitHub\**\*.cs" Link="GitHub\%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="..\Views\**\*.cs"
+             Link="Views\%(RecursiveDir)%(Filename)%(Extension)" />
+    <Page Include="..\Views\**\*.xaml"
+          Link="Views\%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="module.manifest.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Smoke" />
+    <InternalsVisibleTo Include="Contracts" />
+  </ItemGroup>
+</Project>
