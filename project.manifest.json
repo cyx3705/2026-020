@@ -1,0 +1,85 @@
+{
+  "schemaVersion": 1,
+  "template": {
+    "isTemplate": false,
+    "source": "0000-001-AIReady",
+    "strictValidationArgument": "-Instantiation"
+  },
+  "project": {
+    "id": "2026-020",
+    "name": "HistoryJanus",
+    "title": "HistoryJanus 项目与 Git 治理模块",
+    "kind": [
+      "software",
+      "tooling",
+      "appshell-module"
+    ],
+    "status": "active",
+    "version": "4.0.0",
+    "branch": "main"
+  },
+  "paths": {
+    "activeRoots": [
+      "b-Code-Studio",
+      "b-Code-Verify",
+      "b-Office/current",
+      "b-Office/package"
+    ],
+    "sourceRoots": [
+      "b-Code-Studio",
+      "b-Code-Verify"
+    ],
+    "generatedRoots": [
+      "b-Code-Studio/**/bin",
+      "b-Code-Studio/**/obj",
+      "b-Code-Verify/**/bin",
+      "b-Code-Verify/**/obj",
+      "b-Publish/current"
+    ],
+    "archiveRoots": [
+      "b-Office/history",
+      "b-Publish"
+    ],
+    "releaseRoots": [
+      "z-HistoryJanus"
+    ],
+    "allowedRootDirectoryPrefixes": [
+      "a-",
+      "b-",
+      "z-"
+    ]
+  },
+  "documents": {
+    "center": "b-Office/文档中心.md",
+    "package": "b-Office/package/模块API.md",
+    "structure": "b-Office/文档中心.md",
+    "aiDevelopmentPlan": "b-Office/current/AI开发工作流与分支图谱计划.md",
+    "overview": "b-Office/current/项目概览.md",
+    "technicalContract": "b-Office/current/技术合同.md",
+    "decisions": "b-Office/current/有效决策.md",
+    "verification": "b-Office/current/验证合同.md"
+  },
+  "commands": {
+    "setup": "dotnet restore .\\HistoryJanus.sln --locked-mode -p:NuGetAudit=false",
+    "build": "dotnet build .\\HistoryJanus.sln -c Release --no-restore -p:NuGetAudit=false",
+    "test": "dotnet test .\\b-Code-Verify\\Contracts\\Contracts.csproj -c Release -p:NuGetAudit=false",
+    "verify": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\b-Code-Studio\\eng\\Test-QualityGate.ps1",
+    "run": null,
+    "package": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\b-Code-Studio\\eng\\Build-HistoryJanusPackage.ps1"
+  },
+  "externalDependencies": [
+    "HistoryVulcan >= 3.9.0 host snapshot from ../2026-023-HistoryVulcan/z-HistoryVulcan",
+    ".NET 8 SDK and Windows Desktop Runtime",
+    "Git command-line client"
+  ],
+  "contextExclusions": [
+    "b-Office/history/**",
+    "b-Publish/**",
+    "z-HistoryJanus/**",
+    "**/bin/**",
+    "**/obj/**",
+    "**/node_modules/**",
+    "**/.vs/**",
+    "artifacts/**"
+  ]
+}
