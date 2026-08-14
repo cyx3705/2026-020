@@ -1,3 +1,8 @@
+# Fallback default. Must stay ABOVE the baseline block: gitattributes takes the
+# LAST matching rule, so a trailing `* text=auto` would override every `-text`
+# declared for binary types below.
+* text=auto
+
 # HistoryJanus baseline begin
 *.1 filter=lfs diff=lfs merge=lfs -text
 *.48719 text eol=lf
@@ -208,8 +213,6 @@
 *.zw1 filter=lfs diff=lfs merge=lfs -text
 *._ text eol=lf
 # HistoryJanus baseline end
-
-* text=auto
 
 *.cs text eol=lf
 *.xaml text eol=lf
