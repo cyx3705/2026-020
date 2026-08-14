@@ -387,19 +387,24 @@ public sealed partial class GitFileRuleService
     }
 
     /// <summary>
-    /// 只重刷基线块：managed 块与块外手写内容逐字保留。
-    /// 基线块统一置于文件最前,便于人一眼看出"哪些是全库统一的"。
+    /// 只重刷基线块：managed 块与块外手写内容逐字保留,且基线块留在原位。
+    /// 新建文件才把基线块置于最前,便于人一眼看出"哪些是全库统一的";
+    /// 已有文件不得挪位——gitattributes 是最后匹配生效,把块前移会让块外
+    /// 手写的兜底规则(如 * text=auto)落到块后面,反过来盖掉块内的 -text。
     /// </summary>
     private static string RewriteBaselineBlock(TextDocument document, IReadOnlyList<string> baselineLines)
     {
         var output = new List<string>();
         var inside = false;
+        var anchor = -1;
         foreach (var line in document.Lines)
         {
             var trimmed = line.Trim();
             if (trimmed.Equals(BaselineBegin, StringComparison.Ordinal))
             {
                 inside = true;
+                if (anchor < 0)
+                    anchor = output.Count;
                 continue;
             }
 
@@ -420,12 +425,15 @@ public sealed partial class GitFileRuleService
 
         if (normalized.Count > 0)
         {
+            // 找不到旧块(新建文件)才落到最前
+            if (anchor < 0)
+                anchor = 0;
             var block = new List<string> { BaselineBegin };
             block.AddRange(normalized);
             block.Add(BaselineEnd);
-            if (output.Count > 0 && output[0].Trim().Length > 0)
+            if (anchor < output.Count && output[anchor].Trim().Length > 0)
                 block.Add(string.Empty);
-            output.InsertRange(0, block);
+            output.InsertRange(anchor, block);
         }
 
         while (output.Count > 0 && output[^1].Length == 0 && !document.EndsWithNewline)

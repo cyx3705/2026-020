@@ -339,6 +339,40 @@ internal static class GitRulesSuite
             True(repairedList.Success,
                 $"writing config.worktree with core.bare=false repairs the worktree: {repairedList.Message}");
 
+            // 基线同步必须把基线块留在原位:gitattributes 是最后匹配生效,
+            // 块被前移会让块外兜底的 * text=auto 落到块后面,反过来盖掉块内的 -text。
+            await File.WriteAllTextAsync(
+                Path.Combine(worktree, ".gitattributes"),
+                "# HistoryJanus baseline begin\r\n" +
+                "*.png filter=lfs diff=lfs merge=lfs -text\r\n" +
+                "# HistoryJanus baseline end\r\n",
+                new UTF8Encoding(true));
+            var target = Path.Combine(root, "baseline-target");
+            Ensure(await GitRunner.RunAsync(bare, ["worktree", "add", "-b", "baseline-target", target, "main"]),
+                "add baseline sync target worktree");
+            await File.WriteAllTextAsync(
+                Path.Combine(target, ".gitattributes"),
+                "* text=auto\r\n" +
+                "\r\n" +
+                "# HistoryJanus baseline begin\r\n" +
+                "*.stale filter=lfs diff=lfs merge=lfs -text\r\n" +
+                "# HistoryJanus baseline end\r\n" +
+                "\r\n" +
+                "*.md text eol=lf\r\n",
+                new UTF8Encoding(true));
+            var synced = await service.SyncBaselineAsync("baseline-target", apply: true, null);
+            True(synced.Success, $"baseline sync applies to the target worktree: {synced.Message}");
+            var syncedText = await File.ReadAllTextAsync(Path.Combine(target, ".gitattributes"));
+            var fallbackAt = syncedText.IndexOf("* text=auto", StringComparison.Ordinal);
+            var blockAt = syncedText.IndexOf("# HistoryJanus baseline begin", StringComparison.Ordinal);
+            True(fallbackAt >= 0 && blockAt > fallbackAt,
+                "baseline block stays below the hand-written * text=auto fallback");
+            True(syncedText.Contains("*.png filter=lfs", StringComparison.Ordinal)
+                 && !syncedText.Contains("*.stale", StringComparison.Ordinal),
+                "baseline block content is refreshed from the template");
+            True(syncedText.Contains("*.md text eol=lf", StringComparison.Ordinal),
+                "hand-written content after the baseline block survives the sync");
+
             var headAfter = await GitRunner.RunAsync(worktree, ["rev-parse", "HEAD"]);
             Ensure(headAfter, "read final HEAD");
             Equal(headBefore.Output, headAfter.Output, "rule operations do not commit or rewrite history");
