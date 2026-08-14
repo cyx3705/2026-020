@@ -15,8 +15,8 @@
       "appshell-module"
     ],
     "status": "active",
-    "version": "3.9.4",
-    "branch": "2026-020-HistoryJanus"
+    "version": "4.0.0",
+    "branch": "main"
   },
   "paths": {
     "activeRoots": [

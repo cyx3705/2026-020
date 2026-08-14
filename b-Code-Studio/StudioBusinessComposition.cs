@@ -56,7 +56,8 @@ public static class StudioBusinessCompositionFactory
         ISettingsService settings,
         IShellLog log,
         string dataDirectory,
-        string commandSource = "app")
+        string commandSource = "app",
+        Func<string?>? currentProjectName = null)
     {
         ArgumentNullException.ThrowIfNull(registry);
         ArgumentNullException.ThrowIfNull(bus);
@@ -76,8 +77,9 @@ public static class StudioBusinessCompositionFactory
         var gitRules = new GitFileRuleService(projects);
         var branchHistory = new BranchHistoryService(projects);
         var formatInventory = new FormatInventoryService(projects, log, dataDirectory);
-        // GitHub 事实读取与项目库共用同一 proj.barerepo 配置源，现读现生效
-        var gitHub = new GitHubConnectionService(() => projects.BareRepo);
+        // GitHub 事实读取指向当前选中项目仓；无选中时回退库根（非 git 仓则诊断失败）
+        var gitHub = new GitHubConnectionService(
+            () => projects.ResolveGitHubRepository(currentProjectName?.Invoke()));
         var graph = new GraphService(projects);
 
         ProjectCommands.RegisterAll(registry, projects, history, commandSource);

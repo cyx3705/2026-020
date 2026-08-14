@@ -73,45 +73,8 @@
             <summary>janus.proj.tree 跨进程传输合同；不携带 WPF 控件或展开状态。</summary>
         </member>
         <member name="T:HistoryJanus.Git.BranchTreeService">
-             <summary>
-             分支继承树的构建、渲染与文件缓存。
-             分支树构建服务只依赖裸仓库路径、根分支名、
-             数据目录和描述提供者,与提交/推送/修复互不相干,是最干净的一刀。
-             ProjectService 保留同名转调方法,调用方签名一字未改。
-            
-             节点类型仍是 ProjectService.BranchNode / BranchInfo:它们是嵌套公共类型,
-             移出会改变 11 处调用点的类型名。本版铁律是对外行为不变,不为整理而制造调用面变更。
-            
-             配置以委托方式注入而非快照：proj.barerepo / proj.basebranch 现读现生效，
-             构造时取值会让 app.set 改配置后本服务仍用旧路径。
-             </summary>
-        </member>
-        <member name="P:HistoryJanus.Git.BranchTreeService.NotesProvider">
             <summary>
-            分支描述提供者，由装配点连接 HistoryRecorder.AllNotes：
-            继承树在展示前用它覆盖节点描述——缓存里存的是构建时的提交信息,
-            覆盖在读取时进行,janus.proj.note 后无需重扫即可见。
-            </summary>
-        </member>
-        <member name="M:HistoryJanus.Git.BranchTreeService.BuildTreeAsync(System.IProgress{System.String},System.Boolean,System.Boolean)">
-            <summary>
-            继承树入口：默认读取文件缓存；refresh=true 时重扫并更新缓存；
-            cachedOnly=true 无缓存时不触发扫描(视图启动自动加载用)。
-            </summary>
-        </member>
-        <member name="M:HistoryJanus.Git.BranchTreeService.ApplyNotes(HistoryJanus.Git.ProjectService.BranchNode)">
-            <summary>用 branch_notes 的项目描述覆盖节点默认描述。</summary>
-        </member>
-        <member name="M:HistoryJanus.Git.BranchTreeService.BuildInheritanceTreeAsync(System.Collections.Generic.List{HistoryJanus.Git.ProjectService.BranchInfo},HistoryJanus.Git.ProjectService.BranchInfo,System.IProgress{System.String})">
-            <summary>
-            继承树算法一次性读取每个分支的完整提交链，比对全部在内存完成，
-            从而把 git 调用从 O(n²) 降到 O(n)。
-            判定规则——候选 P 是 child 的父分支候选,当且仅当 child 提交链上第一个
-            属于 P 的提交(分叉点)是 P 的**自有提交**(不在根模板分支历史内):
-            分叉点若落在模板历史里，说明两者只是共同的模板血统，不构成父子证据；
-            不能只按 merge-base 最短距离判断，否则同点分叉的兄弟分支可能被错误挂成父子。
-            多个候选同时成立时取分叉点最深(离 child tip 最近)者;仍并列按名称升序
-            (编号约定 = 创建顺序)。无任何候选 → 挂根模板。
+            继承树：按各仓 project.manifest.json 的 template.source 建树，缓存键为库根。
             </summary>
         </member>
         <member name="T:HistoryJanus.Git.FormatRow">
@@ -216,8 +179,10 @@
         </member>
         <member name="M:HistoryJanus.Git.GitFileRuleService.RewriteBaselineBlock(HistoryJanus.Git.GitFileRuleService.TextDocument,System.Collections.Generic.IReadOnlyList{System.String})">
             <summary>
-            只重刷基线块：managed 块与块外手写内容逐字保留。
-            基线块统一置于文件最前,便于人一眼看出"哪些是全库统一的"。
+            只重刷基线块：managed 块与块外手写内容逐字保留,且基线块留在原位。
+            新建文件才把基线块置于最前,便于人一眼看出"哪些是全库统一的";
+            已有文件不得挪位——gitattributes 是最后匹配生效,把块前移会让块外
+            手写的兜底规则(如 * text=auto)落到块后面,反过来盖掉块内的 -text。
             </summary>
         </member>
         <member name="M:HistoryJanus.Git.GitFileRuleService.LooksLikeDirectoryPattern(System.String)">
@@ -288,10 +253,10 @@
         </member>
         <member name="T:HistoryJanus.Git.GraphService">
             <summary>
-            当前编号项目窗口内的只读提交 DAG。
-            主线是编号分支本身；提交从相对父分支/模板的分叉点截断。
+            当前编号项目仓内的只读提交 DAG。
+            主线是仓内 main；范围天然是本仓。
             平行分支（主要是 ai/P/）含未合并与已合并历史；已合并行不在右侧画 tip。
-            git log --parents --date-order，不用 --first-parent，也不加载整个裸仓。
+            git log --parents --date-order，不用 --first-parent。
             </summary>
         </member>
         <member name="M:HistoryJanus.Git.GraphService.GetCommitsAsync(System.String,System.Int32,System.Int32,System.Threading.CancellationToken)">
@@ -299,7 +264,7 @@
             提交按 --date-order 新→旧排列；skip 从最新端跳过，与 GraphPage 一致。
             </summary>
         </member>
-        <member name="M:HistoryJanus.Git.GraphService.DiscoverMergedHistoriesAsync(System.String,System.String,System.Collections.Generic.HashSet{System.String},System.Collections.Generic.HashSet{System.String},System.Threading.CancellationToken)">
+        <member name="M:HistoryJanus.Git.GraphService.DiscoverMergedHistoriesAsync(System.String,System.String,System.String,System.Collections.Generic.HashSet{System.String},System.Collections.Generic.HashSet{System.String},System.Threading.CancellationToken)">
             <summary>
             已删除但仍被 --no-ff 合并提交第二父指向的历史：ref 没了，提交对象还在主线可达集里。
             squash / fast-forward 没有第二父，无法还原平行行。
@@ -321,72 +286,28 @@
         <member name="M:HistoryJanus.Git.ProjectCommands.RecordCommit(HistoryJanus.Git.HistoryRecorder,System.String,System.String,HistoryJanus.Git.CommitReport)">
             <summary>janus.proj.commit / janus.proj.commitall 共用的单项目提交留痕(R4:结果映射唯一实现)。</summary>
         </member>
+        <member name="T:HistoryJanus.Git.ProjectRepoLayout">
+            <summary>
+            一项目一仓的目录约定、工作树拷贝与清单字段。
+            不发 git 进程；身份规则与路径变换集中在此，避免撑破 ProjectService 行数上限。
+            </summary>
+        </member>
         <member name="T:HistoryJanus.Git.ProjectService">
             <summary>
             ProjectService 的提交与推送切面。提交链路与确认通道、gitlink 子模块发现、
             文件大小阈值和 LFS 预检共享状态，因此保留在同一个 partial 类型中。
             子仓库先于父仓库提交，target 决定操作范围。
             </summary>
-             <summary>
-             proj.* 指令域的业务实现:OneHistory 项目库(裸仓库 + worktree)管理。
-             确认交互统一走总线确认通道，运行参数通过配置服务现读现生效。
-            
-             ProjectService 按职责拆分为多个 partial 文件：
-             - 本文件:配置、工作树增删改查、扫描、打开、继承树转调、**路径守卫**;
-             - ProjectService.Commit.cs：提交与推送；
-             - ProjectService.Repair.cs：仓库修复；
-             - ProjectService.Meta.cs：Meta 文件夹；
-             - BranchTreeService.cs:继承树构建与缓存(已抽为独立类,本类保留转调)。
-            
-             路径守卫 TryValidateManagedDirectChild / TryValidateWorktreeRoot 刻意留在本文件:
-             它是四个切面共用的安全底座,不随任一职责外迁。
-             </summary>
+            <summary>
+            proj.* 指令域：HistoryClio 库根下一项目一仓。
+            确认交互统一走总线确认通道，运行参数通过配置服务现读现生效。
+            </summary>
             <summary>
             ProjectService 的 Meta 文件夹切面：项目根下以 z/Z 开头的一级子目录。
             </summary>
             <summary>
-            ProjectService 的仓库修复切面。
-            worktree 修复切面；路径守卫（TryValidateManagedDirectChild / TryValidateWorktreeRoot）
-            留在主文件,本块只调用,不改其行为——先生成完整计划、任何越界都在零删除状态下拒绝,
-            该安全次序一行未动。
+            逐仓诊断：独立 .git、能 status。指向旧裸仓的 .git 文件只报告，不删盘。
             </summary>
-        </member>
-        <member name="F:HistoryJanus.Git.ProjectService._tree">
-            <summary>继承树构建与缓存由 BranchTreeService 实现；本类保留同名转调方法。</summary>
-        </member>
-        <member name="F:HistoryJanus.Git.ProjectService._confirm">
-            <summary>执行中途的二次确认通道(LFS 启用询问等);由装配点接到总线 Confirmation。</summary>
-        </member>
-        <member name="P:HistoryJanus.Git.ProjectService.NotesProvider">
-            <summary>
-            分支描述提供者，由装配点连接 HistoryRecorder.AllNotes：
-            继承树在展示前用它覆盖节点描述——缓存里存的是构建时的提交信息,
-            覆盖在读取时进行,janus.proj.note 后无需重扫即可见。
-            </summary>
-        </member>
-        <member name="M:HistoryJanus.Git.ProjectService.EnsureDefaultSettings">
-            <summary>首启把默认配置写入 settings.json,使 app.get 可见、app.set 可改。</summary>
-        </member>
-        <member name="M:HistoryJanus.Git.ProjectService.ReadWorktreeStatusesAsync(System.Collections.Generic.IReadOnlyList{HistoryJanus.Git.WorktreeInfo},System.Threading.CancellationToken)">
-            <summary>并行读取项目总览所需的工作树状态；单个仓库失败时保留该行并标记为未知。</summary>
-        </member>
-        <member name="M:HistoryJanus.Git.ProjectService.ResolveWorktreeAsync(System.String)">
-            <summary>按登记分支解析工作树，并强制其仍是受管根下的直接、非重解析点子目录。</summary>
-        </member>
-        <member name="M:HistoryJanus.Git.ProjectService.ParseWorktreeList(System.String)">
-            <summary>解析 git worktree list --porcelain 输出。</summary>
-        </member>
-        <member name="M:HistoryJanus.Git.ProjectService.BuildTreeAsync(System.IProgress{System.String},System.Boolean,System.Boolean)">
-            <summary>
-            继承树入口：默认读取文件缓存；refresh=true 时重扫并更新缓存；
-            cachedOnly=true 无缓存时不触发扫描(视图启动自动加载用)。
-            </summary>
-        </member>
-        <member name="P:HistoryJanus.Git.ProjectService.BranchNode.Description">
-            <summary>展示描述默认使用最后提交信息，读取时可被 branch_notes 覆盖。</summary>
-        </member>
-        <member name="P:HistoryJanus.Git.ProjectService.BranchNode.IsExpanded">
-            <summary>继承树视图的展开状态，与 TreeViewItem 双向绑定。</summary>
         </member>
         <member name="M:HistoryJanus.Git.ProjectService.ListMetaFoldersAsync">
             <summary>
@@ -395,10 +316,10 @@
             </summary>
         </member>
         <member name="P:HistoryJanus.Git.WorktreeInfo.FolderName">
-            <summary>工作树目录名（路径权威侧的文件夹名，可能与分支名不一致）。</summary>
+            <summary>项目目录名（与已登记项目名相同）。</summary>
         </member>
         <member name="P:HistoryJanus.Git.WorktreeInfo.HasNameMismatch">
-            <summary>分支名是唯一身份权威；目录名必须与之相同，否则视为不合规则。</summary>
+            <summary>HEAD 不在 main 时总览可警告，不阻断列举与提交。</summary>
         </member>
         <member name="T:HistoryJanus.Git.MetaFolderInfo">
             <summary>某项目根下以 z/Z 开头的一级 Meta 文件夹。</summary>
@@ -435,33 +356,6 @@
             对一行台账给出建议;返回 null = 不建议(未知格式,留白待人工判定)。
             lfsThresholdBytes 取 proj.rejectmb(默认 100MB):最大单件超阈即建议 LFS。
             </summary>
-        </member>
-        <member name="T:HistoryJanus.Git.WorktreeBareMarker">
-             <summary>
-             工作树的裸标记覆盖：确保 <c>&lt;裸仓&gt;/worktrees/&lt;名&gt;/config.worktree</c> 里有
-             <c>[core] bare = false</c>。
-             </summary>
-             <remarks>
-             本项目库的裸仓同时开着 <c>core.bare = true</c> 与 <c>extensions.worktreeConfig = true</c>。
-             这种组合下每个工作树都必须自带一份 config.worktree 来覆盖 bare，否则 git 会沿用公共配置
-             把工作树当成裸仓，<c>status</c>、<c>ls-files --others/--ignored</c> 等一律报
-             "this operation must be run in a work tree"，Janus 在该项目上的规则扫描与格式台账整片失效。
-            
-             admin 目录不按工作树目录名推算，而是读工作树里的 <c>.git</c> 指针：目录改过名而 admin 目录
-             未同步时，按名推算会写到不存在的路径上，看起来成功却什么也没修。
-             </remarks>
-        </member>
-        <member name="M:HistoryJanus.Git.WorktreeBareMarker.Ensure(System.String)">
-            <summary>
-            确保该工作树带有裸标记覆盖。已存在且正确时不写盘。
-            </summary>
-            <returns>
-            Written 为 true 表示本次补写了标记；Message 在失败时说明原因，成功时为空。
-            找不到 admin 目录（例如传入的不是工作树）时返回 Success=false。
-            </returns>
-        </member>
-        <member name="M:HistoryJanus.Git.WorktreeBareMarker.ResolveAdminDirectory(System.String)">
-            <summary>读取工作树 <c>.git</c> 文件里的 <c>gitdir:</c> 指针，得到 admin 目录绝对路径。</summary>
         </member>
         <member name="T:HistoryJanus.GitHub.GitHubCommands">
             <summary>
@@ -783,7 +677,7 @@
             <summary>关键字同时匹配项目名、Meta 名、Meta 路径和最近提交描述。</summary>
         </member>
         <member name="M:HistoryJanus.Views.OverviewMetaMerge.BuildOpenCommand(HistoryJanus.Git.MetaFolderInfo)">
-            <summary>点击 Meta 名用登记路径打开，避免分支名≠目录名时误拼 WorktreeRoot。</summary>
+            <summary>点击 Meta 名用登记路径打开，避免误拼库根+项目名。</summary>
         </member>
         <member name="T:HistoryJanus.Views.OverviewView">
             <summary>项目工作树、Z 级元文件夹与共享项目选择。</summary>

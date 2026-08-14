@@ -43,7 +43,7 @@ public partial class OverviewView : UserControl
         public string MoreMetaLabel => HasAdditionalMeta ? $"+{MetaFolders.Count - 1}" : "";
         public string BranchDisplay => HasNameMismatch ? $"{BranchName} ⚠" : BranchName;
         public string BranchToolTip => HasNameMismatch
-            ? $"分支名是唯一权威值，但目录名为 {FolderName}，不合规则。请将分支改名为与目录一致。\n{WorktreePath}"
+            ? $"当前 HEAD 不是 main，不阻断列举与提交。\n{WorktreePath}"
             : WorktreePath;
         public string CommitDisplay => string.IsNullOrWhiteSpace(LastCommitMessage) ? "-" : LastCommitMessage;
         public string CleanStatusGlyph => IsClean switch

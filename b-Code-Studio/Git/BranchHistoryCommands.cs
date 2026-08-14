@@ -28,7 +28,7 @@ public static class BranchHistoryCommands
         Example = "janus.history.list name=2026-018-MyAPI limit=200 remote=false",
         Parameters =
         [
-            Text("name", "分支名（项目名）", required: true, position: 0),
+            Text("name", "已登记项目名（目录名）", required: true, position: 0),
             Int("limit", "本次最多显示的自有提交数（1~2000）", "200"),
             Int("skip", "从最新提交向前跳过的数量", "0"),
             Bool("refresh", "重新扫描继承树后计算父分支", "false"),
@@ -90,7 +90,7 @@ public static class BranchHistoryCommands
             Example = "janus.history.rollback name=2026-018-MyAPI sha=abc1234 msg=\"恢复到稳定版本\"",
             Parameters =
         [
-            Text("name", "分支名（项目名）", required: true, position: 0),
+            Text("name", "已登记项目名（目录名）", required: true, position: 0),
             Text("sha", "分叉点至 HEAD 范围内的提交 SHA", required: true, position: 1),
             Text("msg", "新恢复提交的说明", required: true, position: 2),
         ],
@@ -139,7 +139,7 @@ public static class BranchHistoryCommands
             CommandClass = "history",
             Summary = "使用 --force-with-lease 更新非保护远端分支",
             Example = "janus.history.forcepush name=2026-018-MyAPI",
-            Parameters = [Text("name", "分支名（项目名）", required: true, position: 0)],
+            Parameters = [Text("name", "已登记项目名（目录名）", required: true, position: 0)],
             ConfirmPrompt = ctx => service.BuildForcePushPrompt(ctx.RequireString("name")),
             Handler = async ctx =>
             {
@@ -155,7 +155,7 @@ public static class BranchHistoryCommands
 
     private static IReadOnlyList<ParameterSpec> TargetParameters() =>
     [
-        Text("name", "分支名（项目名）", required: true, position: 0),
+        Text("name", "已登记项目名（目录名）", required: true, position: 0),
         Text("sha", "分叉点至 HEAD 范围内的提交 SHA", required: true, position: 1),
     ];
 

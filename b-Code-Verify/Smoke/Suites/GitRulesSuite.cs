@@ -10,20 +10,21 @@ namespace HistoryJanus.Smoke.Suites;
 /// <summary>Git 文件规则、LFS/LF 规范化与格式台账。</summary>
 internal static class GitRulesSuite
 {
+    private const string Project = "2026-001-Sample";
+    private const string Template = "0000-000-Template";
+    private const string Target = "2026-002-Target";
+
     public static async Task RunAsync(string[] args)
     {
         var root = TemporaryDirectory("git-rules");
-        var seed = Path.Combine(root, "seed");
-        var bare = Path.Combine(root, "projects.git");
-        var worktree = Path.Combine(root, "sample");
+        var template = Path.Combine(root, Template);
+        var worktree = Path.Combine(root, Project);
         Directory.CreateDirectory(root);
 
         try
         {
-            Ensure(await GitRunner.RunAsync(root, ["init", "-b", "main", seed]), "init seed");
-            Ensure(await GitRunner.RunAsync(seed, ["config", "user.name", "Git Rules Smoke"]), "git user name");
-            Ensure(await GitRunner.RunAsync(seed, ["config", "user.email", "git-rules@example.invalid"]), "git user email");
-            Ensure(await GitRunner.RunAsync(seed, ["lfs", "install", "--local"]), "git lfs local install");
+            await InitStandaloneRepo(template, "Git Rules Smoke", "git-rules@example.invalid");
+            Ensure(await GitRunner.RunAsync(template, ["lfs", "install", "--local"]), "git lfs local install");
 
             var attributes =
                 "# manual attributes before\r\n" +
@@ -40,30 +41,26 @@ internal static class GitRulesSuite
                 "*.old\r\n" +
                 "# HistoryJanus managed end\r\n" +
                 "# manual ignore after\r\n";
-            await File.WriteAllTextAsync(Path.Combine(seed, ".gitattributes"), attributes, new UTF8Encoding(true));
-            await File.WriteAllTextAsync(Path.Combine(seed, ".gitignore"), ignore, new UTF8Encoding(true));
-            await File.WriteAllBytesAsync(Path.Combine(seed, "asset.bin"), [1, 2, 3, 4, 5]);
-            await File.WriteAllTextAsync(Path.Combine(seed, "readme.txt"), "hello\r\nworld\r\n", new UTF8Encoding(false));
-            Ensure(await GitRunner.RunAsync(seed, ["add", "."]), "git add seed");
-            Ensure(await GitRunner.RunAsync(seed, ["commit", "-m", "seed"]), "git commit seed");
-            Ensure(await GitRunner.RunAsync(root, ["clone", "--bare", seed, bare]), "clone bare");
-            Ensure(await GitRunner.RunAsync(bare, ["worktree", "add", worktree, "main"]), "add worktree");
-            Ensure(await GitRunner.RunAsync(worktree, ["lfs", "install", "--local"]), "worktree lfs install");
-            Ensure(await GitRunner.RunAsync(worktree, ["config", "user.name", "Git Rules Smoke"]), "worktree user name");
-            Ensure(await GitRunner.RunAsync(worktree, ["config", "user.email", "git-rules@example.invalid"]), "worktree user email");
+            await File.WriteAllTextAsync(Path.Combine(template, ".gitattributes"), attributes, new UTF8Encoding(true));
+            await File.WriteAllTextAsync(Path.Combine(template, ".gitignore"), ignore, new UTF8Encoding(true));
+            await File.WriteAllBytesAsync(Path.Combine(template, "asset.bin"), [1, 2, 3, 4, 5]);
+            await File.WriteAllTextAsync(Path.Combine(template, "readme.txt"), "hello\r\nworld\r\n", new UTF8Encoding(false));
+            Ensure(await GitRunner.RunAsync(template, ["add", "."]), "git add template");
+            Ensure(await GitRunner.RunAsync(template, ["commit", "-m", "seed"]), "git commit template");
 
             var settings = new MemorySettings();
-            settings.Set(ProjectService.KeyBareRepo, bare);
-            settings.Set(ProjectService.KeyWorktreeRoot, root);
-            settings.Set(ProjectService.KeyBaseBranch, "main");
+            BindLibrary(settings, root, Template);
             var projects = new ProjectService(settings, _ => true, root);
+            var created = await projects.CreateAsync(Project, Template, null);
+            True(created.Success, $"create sample project: {created.Message}");
+            Ensure(await GitRunner.RunAsync(worktree, ["lfs", "install", "--local"]), "sample lfs install");
             var service = new GitFileRuleService(projects);
             var headBefore = await GitRunner.RunAsync(worktree, ["rev-parse", "HEAD"]);
             Ensure(headBefore, "read initial HEAD");
 
             var outsideProject = await service.ListAsync("..");
             True(!outsideProject.Success, "unregistered project and boundary escape rejected");
-            var invalidPattern = await service.SetAsync("main", "../*.txt", true, false, true, apply: false);
+            var invalidPattern = await service.SetAsync(Project, "../*.txt", true, false, true, apply: false);
             True(!invalidPattern.Success, "path-bearing pattern rejected as a controlled failure");
 
             var batchA = Path.Combine(worktree, "first.batcha");
@@ -80,7 +77,7 @@ internal static class GitRulesSuite
                 new("*.batchb", false, false, false),
                 new("*.batchc", true, true, false),
             ];
-            var batchPreview = await service.BatchSetAsync("main", batchChanges, apply: false);
+            var batchPreview = await service.BatchSetAsync(Project, batchChanges, apply: false);
             True(batchPreview.Success && batchPreview.Preview is
             {
                 Changed: true,
@@ -89,7 +86,7 @@ internal static class GitRulesSuite
                 AddToIndex: 2,
                 RemoveFromIndex: 1,
             }, "three rule changes produce one complete batch preview");
-            var invalidBatch = await service.BatchSetAsync("main",
+            var invalidBatch = await service.BatchSetAsync(Project,
             [
                 new("*.never", true, false, false),
                 new("*.NEVER", false, false, false),
@@ -97,7 +94,7 @@ internal static class GitRulesSuite
             True(!invalidBatch.Success && invalidBatch.Message.Contains("重复"),
                 "duplicate batch pattern rejects the whole batch before writing");
 
-            var batchApplied = await service.BatchSetAsync("main", batchChanges, apply: true);
+            var batchApplied = await service.BatchSetAsync(Project, batchChanges, apply: true);
             True(batchApplied.Success && batchApplied.Preview is { Applied: true, Items.Count: 3 },
                 $"three rule changes apply together: {batchApplied.Message}");
             Ensure(await GitRunner.RunAsync(worktree, ["ls-files", "--error-unmatch", "--", "first.batcha"]),
@@ -108,18 +105,18 @@ internal static class GitRulesSuite
                     worktree, ["ls-files", "--error-unmatch", "--", "second.batchb"])).Success,
                 "batch ignored file removed from index");
             True(File.Exists(batchB), "batch ignore preserves working-tree file");
-            var batchRules = await service.ListAsync("main");
+            var batchRules = await service.ListAsync(Project);
             True(batchRules.Success
                  && batchRules.Rules.Any(rule => rule.Pattern == "*.batcha" && rule.Track && rule.Lf)
                  && batchRules.Rules.Any(rule => rule.Pattern == "*.batchb" && !rule.Track)
                  && batchRules.Rules.Any(rule => rule.Pattern == "*.batchc" && rule.Track && rule.Lfs && !rule.Lf),
                 "all three batch rules persist after one apply");
-            var unchangedBatch = await service.BatchSetAsync("main", batchChanges, apply: false);
+            var unchangedBatch = await service.BatchSetAsync(Project, batchChanges, apply: false);
             True(unchangedBatch.Success && unchangedBatch.Preview is
             { Changed: false, AddToIndex: 0, RemoveFromIndex: 0, Renormalize: 0 },
                 "repeating an already converged batch is a no-op");
 
-            var initialRules = await service.ListAsync("main");
+            var initialRules = await service.ListAsync(Project);
             True(initialRules.Success, $"initial list: {initialRules.Message}");
             True(initialRules.Rules.Any(rule =>
                     rule.Pattern == "*.bin" && rule.Track && rule.Lfs && rule.LfsPointerCount == 1),
@@ -134,12 +131,12 @@ internal static class GitRulesSuite
             var originalIgnoreBytes = await File.ReadAllBytesAsync(ignorePath);
             await File.WriteAllBytesAsync(Path.Combine(worktree, "workbook.xlsx"), [9, 8, 7, 6]);
 
-            var preview = await service.SetAsync("main", "*.xlsx", track: true, lfs: true, lf: false, apply: false);
+            var preview = await service.SetAsync(Project, "*.xlsx", track: true, lfs: true, lf: false, apply: false);
             True(preview.Success && preview.Preview is { Changed: true, Applied: false }, "LFS preview produced");
             BytesEqual(originalAttributeBytes, await File.ReadAllBytesAsync(attributePath), "preview preserves attributes");
             BytesEqual(originalIgnoreBytes, await File.ReadAllBytesAsync(ignorePath), "preview preserves ignore");
 
-            var lfsApplied = await service.SetAsync("main", "*.xlsx", true, true, false, apply: true);
+            var lfsApplied = await service.SetAsync(Project, "*.xlsx", true, true, false, apply: true);
             True(lfsApplied.Success && lfsApplied.Preview is { Applied: true }, "LFS rule applied");
             Contains(await File.ReadAllTextAsync(attributePath),
                 "*.xlsx filter=lfs diff=lfs merge=lfs -text", "canonical managed LFS line");
@@ -147,7 +144,7 @@ internal static class GitRulesSuite
             Ensure(xlsxPointer, "read staged xlsx");
             True(xlsxPointer.Output.StartsWith("version https://git-lfs.github.com/spec/v1", StringComparison.Ordinal),
                 "LFS clean filter created index pointer");
-            var afterLfs = await service.ListAsync("main");
+            var afterLfs = await service.ListAsync(Project);
             True(afterLfs.Success && afterLfs.Rules.Any(rule =>
                     rule.Pattern == "*.xlsx" && rule.LfsAttributeCount == 1 && rule.LfsPointerCount == 1),
                 "LFS list verifies both final attribute and staged pointer");
@@ -156,7 +153,7 @@ internal static class GitRulesSuite
             var specialRelative = "资料 目录/数据[1].lfcase";
             await File.WriteAllTextAsync(
                 Path.Combine(worktree, "资料 目录", "数据[1].lfcase"), "第一行\r\n第二行\r\n", new UTF8Encoding(false));
-            var lfApplied = await service.SetAsync("main", "*.lfcase", true, false, true, apply: true);
+            var lfApplied = await service.SetAsync(Project, "*.lfcase", true, false, true, apply: true);
             True(lfApplied.Success, $"LF rule applied: {lfApplied.Message}");
             var lfAttr = await GitRunner.RunAsync(
                 worktree, ["check-attr", "text", "eol", "--", specialRelative.Replace('/', '\\')]);
@@ -167,26 +164,26 @@ internal static class GitRulesSuite
             Ensure(indexText, "read staged LF file");
             True(!indexText.Output.Contains('\r'), "LF file normalized in index");
 
-            var conflict = await service.SetAsync("main", "*.bad", true, true, true, apply: false);
+            var conflict = await service.SetAsync(Project, "*.bad", true, true, true, apply: false);
             True(!conflict.Success && conflict.Message.Contains("互斥"), "LFS and LF rejected together");
-            var invalidIgnored = await service.SetAsync("main", "*.bad", false, true, false, apply: false);
+            var invalidIgnored = await service.SetAsync(Project, "*.bad", false, true, false, apply: false);
             True(!invalidIgnored.Success, "ignored format cannot enable LFS");
 
             var localTmp = Path.Combine(worktree, "保留 文件[1].tmp");
             await File.WriteAllTextAsync(localTmp, "keep locally", new UTF8Encoding(false));
             Ensure(await GitRunner.RunAsync(worktree, ["add", "--", "保留 文件[1].tmp"]), "track tmp before ignore");
-            var ignoredRule = await service.SetAsync("main", "*.tmp", false, false, false, apply: true);
+            var ignoredRule = await service.SetAsync(Project, "*.tmp", false, false, false, apply: true);
             True(ignoredRule.Success, $"ignore rule applied: {ignoredRule.Message}");
             True(File.Exists(localTmp), "track=false preserves working-tree file");
             Contains(await File.ReadAllTextAsync(ignorePath), "*.tmp", "ignore rule written");
             var tmpTracked = await GitRunner.RunAsync(worktree, ["ls-files", "--error-unmatch", "--", "保留 文件[1].tmp"]);
             True(!tmpTracked.Success, "track=false removes index entry");
 
-            var trackedAgain = await service.SetAsync("main", "*.tmp", true, false, false, apply: true);
+            var trackedAgain = await service.SetAsync(Project, "*.tmp", true, false, false, apply: true);
             True(trackedAgain.Success, $"track rule applied: {trackedAgain.Message}");
             Ensure(await GitRunner.RunAsync(worktree, ["ls-files", "--error-unmatch", "--", "保留 文件[1].tmp"]),
                 "track=true restores index entry");
-            var removed = await service.RemoveAsync("main", "*.tmp", apply: true);
+            var removed = await service.RemoveAsync(Project, "*.tmp", apply: true);
             True(removed.Success, $"remove rule: {removed.Message}");
             True(File.Exists(localTmp), "removing rule preserves local file");
 
@@ -230,7 +227,7 @@ internal static class GitRulesSuite
             var commandBus = new CommandBus(registry, commandLog);
             var executed = false;
             commandBus.Executed += (_, source, result) => executed = source == "UI" && result.Success;
-            var listCommand = await commandBus.ExecuteAsync("janus.gitrule.list name=main", "UI");
+            var listCommand = await commandBus.ExecuteAsync($"janus.gitrule.list name={Project}", "UI");
             True(listCommand.Success && executed,
                 $"automatic rule load completes through CommandBus lifecycle; success={listCommand.Success}, " +
                 $"executed={executed}, message={listCommand.Message}");
@@ -241,7 +238,7 @@ internal static class GitRulesSuite
                 new GitFileRuleChange("*.batchc", true, true, false),
             });
             var batchCommand = await commandBus.ExecuteAsync(
-                $"janus.gitrule.batchset name=main changes={CommandParser.QuoteArg(commandChanges)} apply=false", "UI");
+                $"janus.gitrule.batchset name={Project} changes={CommandParser.QuoteArg(commandChanges)} apply=false", "UI");
             True(batchCommand.Success && batchCommand.Data is GitFileRuleBatchPreview { Items.Count: 2 },
                 "batch JSON executes through CommandBus and returns typed preview");
 
@@ -252,13 +249,13 @@ internal static class GitRulesSuite
             for (var index = 0; index < 50; index++)
                 await File.WriteAllTextAsync(Path.Combine(directoryCandidate, $"item-{index:00}"), "generated\n");
 
-            var scanCommand = await commandBus.ExecuteAsync("janus.gitrule.scan name=main refresh=true", "UI");
+            var scanCommand = await commandBus.ExecuteAsync($"janus.gitrule.scan name={Project} refresh=true", "UI");
             True(scanCommand.Success && scanCommand.Data is InventoryReport
             {
                 ProjectCount: 1,
                 Formats.Count: > 0,
             }, "format inventory executes through CommandBus and returns structured data");
-            var reviewCommand = await commandBus.ExecuteAsync("janus.gitrule.review name=main", "UI");
+            var reviewCommand = await commandBus.ExecuteAsync($"janus.gitrule.review name={Project}", "UI");
             True(reviewCommand.Success && reviewCommand.Data is GitRuleReviewReport
             {
                 Gaps.Directories.Count: > 0,
@@ -274,21 +271,21 @@ internal static class GitRulesSuite
                     is { Gaps.Formats.Count: > 0 },
                 "the combined review contract survives JSON projection");
 
-            var cachedReview = await commandBus.ExecuteAsync("janus.gitrule.review name=main", "UI");
+            var cachedReview = await commandBus.ExecuteAsync($"janus.gitrule.review name={Project}", "UI");
             True(cachedReview.Data is GitRuleReviewReport { Gaps.CachedProjects: 1 },
                 "repeated review reuses the project inventory cache");
             var missingReview = await commandBus.ExecuteAsync("janus.gitrule.review name=missing-project", "UI");
             True(!missingReview.Success, "review reports a controlled failure when no scan target exists");
 
-            True((await service.SetAsync("main", "*.md", true, false, true, apply: true)).Success,
+            True((await service.SetAsync(Project, "*.md", true, false, true, apply: true)).Success,
                 "apply suggested text rule for zero-gap regression");
-            True((await service.SetAsync("main", "*.reviewunknown", false, false, false, apply: true)).Success,
+            True((await service.SetAsync(Project, "*.reviewunknown", false, false, false, apply: true)).Success,
                 "apply manual decision for unknown format");
-            True((await service.SetAsync("main", "*.tmp", false, false, false, apply: true)).Success,
+            True((await service.SetAsync(Project, "*.tmp", false, false, false, apply: true)).Success,
                 "apply suggested temporary-file decision");
-            True((await service.SetAsync("main", "generated-review/", false, false, false, apply: true)).Success,
+            True((await service.SetAsync(Project, "generated-review/", false, false, false, apply: true)).Success,
                 "apply directory decision for zero-gap regression");
-            var resolvedReview = await commandBus.ExecuteAsync("janus.gitrule.review name=main", "UI");
+            var resolvedReview = await commandBus.ExecuteAsync($"janus.gitrule.review name={Project}", "UI");
             True(resolvedReview.Success && resolvedReview.Data is GitRuleReviewReport resolved
                  && resolved.Gaps.UndecidedCount == 0
                  && resolved.Gaps.Formats.Count == 0
@@ -301,55 +298,20 @@ internal static class GitRulesSuite
 
             Ensure(await GitRunner.RunAsync(worktree, ["rm", "-f", "--", "asset.bin", "workbook.xlsx"]),
                 "remove all LFS pointers for empty JSON regression");
-            var emptyLfsList = await service.ListAsync("main");
+            var emptyLfsList = await service.ListAsync(Project);
             True(emptyLfsList.Success, $"null Git LFS files list is treated as empty: {emptyLfsList.Message}");
-
-            // 59 号文档回归:裸仓开 extensions.worktreeConfig 而 worktree 缺失 config.worktree 时,
-            // Git 把项目误判为裸仓库,列表必须报出可行动修复指引;补写 config.worktree 后恢复。
-            var brokenBare = Path.Combine(root, "broken.git");
-            var brokenTree = Path.Combine(root, "broken");
-            Ensure(await GitRunner.RunAsync(root, ["clone", "--bare", seed, brokenBare]),
-                "clone bare for bare-misidentification fixture");
-            Ensure(await GitRunner.RunAsync(brokenBare,
-                    ["config", "extensions.worktreeConfig", "true"]),
-                "enable per-worktree config on broken fixture");
-            Ensure(await GitRunner.RunAsync(brokenBare, ["worktree", "add", brokenTree, "main"]),
-                "add worktree to broken fixture");
-            var brokenConfig = Path.Combine(brokenBare, "worktrees", "broken", "config.worktree");
-            if (File.Exists(brokenConfig))
-                File.Delete(brokenConfig);
-            var misdetected = await GitRunner.RunAsync(
-                brokenTree, ["rev-parse", "--is-bare-repository"]);
-            True(misdetected.Success && misdetected.Output.Trim() == "true",
-                "fixture reproduces the bare-repository misidentification");
-            var brokenSettings = new MemorySettings();
-            brokenSettings.Set(ProjectService.KeyBareRepo, brokenBare);
-            brokenSettings.Set(ProjectService.KeyWorktreeRoot, root);
-            brokenSettings.Set(ProjectService.KeyBaseBranch, "main");
-            var brokenService = new GitFileRuleService(new ProjectService(brokenSettings, _ => true, root));
-            var brokenList = await brokenService.ListAsync("main");
-            True(!brokenList.Success
-                 && brokenList.Message.Contains("config.worktree", StringComparison.Ordinal)
-                 && brokenList.Message.Contains("bare = false", StringComparison.Ordinal),
-                $"bare misidentification reports actionable repair guidance: {brokenList.Message}");
-            await File.WriteAllTextAsync(brokenConfig, "[core]\n\tbare = false\n");
-            Ensure(await GitRunner.RunAsync(brokenTree, ["lfs", "install", "--local"]),
-                "repaired worktree lfs install");
-            var repairedList = await brokenService.ListAsync("main");
-            True(repairedList.Success,
-                $"writing config.worktree with core.bare=false repairs the worktree: {repairedList.Message}");
 
             // 基线同步必须把基线块留在原位:gitattributes 是最后匹配生效,
             // 块被前移会让块外兜底的 * text=auto 落到块后面,反过来盖掉块内的 -text。
             await File.WriteAllTextAsync(
-                Path.Combine(worktree, ".gitattributes"),
+                Path.Combine(template, ".gitattributes"),
                 "# HistoryJanus baseline begin\r\n" +
                 "*.png filter=lfs diff=lfs merge=lfs -text\r\n" +
                 "# HistoryJanus baseline end\r\n",
                 new UTF8Encoding(true));
-            var target = Path.Combine(root, "baseline-target");
-            Ensure(await GitRunner.RunAsync(bare, ["worktree", "add", "-b", "baseline-target", target, "main"]),
-                "add baseline sync target worktree");
+            var createdTarget = await projects.CreateAsync(Target, Template, null);
+            True(createdTarget.Success, $"create sync target: {createdTarget.Message}");
+            var target = Path.Combine(root, Target);
             await File.WriteAllTextAsync(
                 Path.Combine(target, ".gitattributes"),
                 "* text=auto\r\n" +
@@ -360,7 +322,7 @@ internal static class GitRulesSuite
                 "\r\n" +
                 "*.md text eol=lf\r\n",
                 new UTF8Encoding(true));
-            var synced = await service.SyncBaselineAsync("baseline-target", apply: true, null);
+            var synced = await service.SyncBaselineAsync(Target, apply: true, null);
             True(synced.Success, $"baseline sync applies to the target worktree: {synced.Message}");
             var syncedText = await File.ReadAllTextAsync(Path.Combine(target, ".gitattributes"));
             var fallbackAt = syncedText.IndexOf("* text=auto", StringComparison.Ordinal);
@@ -377,24 +339,21 @@ internal static class GitRulesSuite
             Ensure(headAfter, "read final HEAD");
             Equal(headBefore.Output, headAfter.Output, "rule operations do not commit or rewrite history");
 
-            const string realRoot = @"C:\OneHistory\HistoryVesta";
-            const string realBare = @"C:\OneHistory\HistoryVesta\HistoryVesta.git";
-            var template = Path.Combine(realRoot, "0000-000-Template");
+            const string realRoot = @"C:\OneHistory\HistoryClio";
+            var realTemplate = Path.Combine(realRoot, "0000-000-Template");
             if (args.Contains("--real-template", StringComparer.OrdinalIgnoreCase)
-                && Directory.Exists(template) && Directory.Exists(realBare))
+                && Directory.Exists(realTemplate))
             {
                 var realSettings = new MemorySettings();
-                realSettings.Set(ProjectService.KeyBareRepo, realBare);
-                realSettings.Set(ProjectService.KeyWorktreeRoot, realRoot);
-                realSettings.Set(ProjectService.KeyBaseBranch, "0000-000-Template");
+                BindLibrary(realSettings, realRoot, "0000-000-Template");
                 var realService = new GitFileRuleService(new ProjectService(realSettings, _ => false, root));
-                var realAttributes = SnapshotOptional(Path.Combine(template, ".gitattributes"));
-                var realIgnore = SnapshotOptional(Path.Combine(template, ".gitignore"));
+                var realAttributes = SnapshotOptional(Path.Combine(realTemplate, ".gitattributes"));
+                var realIgnore = SnapshotOptional(Path.Combine(realTemplate, ".gitignore"));
                 var templateRules = await realService.ListAsync("0000-000-Template");
                 True(templateRules.Success, $"template readonly list: {templateRules.Message}");
-                BytesEqual(realAttributes, SnapshotOptional(Path.Combine(template, ".gitattributes")),
+                BytesEqual(realAttributes, SnapshotOptional(Path.Combine(realTemplate, ".gitattributes")),
                     "template attributes unchanged by list");
-                BytesEqual(realIgnore, SnapshotOptional(Path.Combine(template, ".gitignore")),
+                BytesEqual(realIgnore, SnapshotOptional(Path.Combine(realTemplate, ".gitignore")),
                     "template ignore unchanged by list");
             }
 

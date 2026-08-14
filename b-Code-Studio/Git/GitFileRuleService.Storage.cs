@@ -168,19 +168,6 @@ public sealed partial class GitFileRuleService
             };
             var message = string.Join("\n", failures.Where(item => !item.Result.Success)
                 .Select(item => $"{item.Name}失败: {item.Result.Output}"));
-            if (failures.Any(item => !item.Result.Success && item.Result.Output.Contains(
-                    "must be run in a work tree", StringComparison.OrdinalIgnoreCase)))
-            {
-                // 裸仓开 extensions.worktreeConfig 而 worktree gitdir 缺失 config.worktree 时,
-                // git 继承公共 core.bare=true,--others/--ignored 报 "must be run in a work tree"。
-                var gitdirName = Path.GetFileName(
-                    root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
-                var configWorktree = Path.Combine(
-                    _projects.BareRepo, "worktrees", gitdirName, "config.worktree");
-                message = $"项目被 Git 误判为裸仓库(worktree 缺少裸标记覆盖): {root}\n" +
-                          $"修复: 在 {configWorktree} 写入 [core] 与 bare = false 两行后重试\n" +
-                          message;
-            }
             return RepositoryState.Failed(message);
         }
 

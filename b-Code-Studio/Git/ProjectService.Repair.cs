@@ -4,149 +4,71 @@ using System.Text;
 namespace HistoryJanus.Git;
 
 /// <summary>
-/// ProjectService 的仓库修复切面。
-/// worktree 修复切面；路径守卫（TryValidateManagedDirectChild / TryValidateWorktreeRoot）
-/// 留在主文件,本块只调用,不改其行为——先生成完整计划、任何越界都在零删除状态下拒绝,
-/// 该安全次序一行未动。
+/// 逐仓诊断：独立 .git、能 status。指向旧裸仓的 .git 文件只报告，不删盘。
 /// </summary>
 public sealed partial class ProjectService
 {
-    // ---------------------------------------------------------------- 修复
-
     public async Task<(bool Success, string Message)> RepairAsync(IProgress<string>? progress)
     {
-        if (!Directory.Exists(BareRepo))
-            return (false, $"裸仓库路径不存在: {BareRepo}");
         if (!TryValidateWorktreeRoot(out var rootError))
-            return (false, $"工作树根目录不安全: {rootError}");
+            return (false, $"库根不安全: {rootError}");
 
-        // 先生成并验证完整计划。任何路径越界时必须在零删除状态下拒绝。
-        var listResult = await GitRunner.RunAsync(BareRepo, ["worktree", "list", "--porcelain"]);
-        if (!listResult.Success)
-            return (false, $"获取工作树列表失败:\n{listResult.Output}");
-
-        var branchesResult = await GitRunner.RunAsync(BareRepo,
-            ["for-each-ref", "--format=%(refname:short)", "refs/heads/"]);
-        if (!branchesResult.Success)
-            return (false, $"获取分支列表失败:\n{branchesResult.Output}");
-
-        var paths = listResult.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries)
-            .Where(line => line.StartsWith("worktree ", StringComparison.Ordinal))
-            .Select(line => line["worktree ".Length..].Trim())
-            .Where(path => !PathsEqual(path, BareRepo))
-            .ToList();
-
-        var branches = branchesResult.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries)
-            .Select(branch => branch.Trim())
-            .Where(branch => branch.Length > 0)
-            .ToList();
-
-        var invalidPaths = new List<string>();
-        foreach (var path in paths)
+        var issues = new List<string>();
+        var ok = 0;
+        foreach (var dir in Directory.EnumerateDirectories(LibraryRoot))
         {
-            if (!TryValidateManagedDirectChild(path, rejectReparsePoint: true, out var error))
-                invalidPaths.Add($"现有 worktree {path}: {error}");
-        }
-
-        foreach (var branch in branches)
-        {
-            var target = Path.Combine(WorktreeRoot, branch);
-            if (!TryValidateManagedDirectChild(target, rejectReparsePoint: true, out var error))
-                invalidPaths.Add($"分支 {branch} 的重建目标 {target}: {error}");
-        }
-
-        if (invalidPaths.Count > 0)
-        {
-            return (false,
-                "修复计划包含越界或高风险路径，已在删除任何目录前拒绝执行:\n  - " +
-                string.Join("\n  - ", invalidPaths));
-        }
-
-        // 1. 删除已通过边界验证的 worktree 目录(代码数据都在裸仓库,删的只是视图)
-        var removed = 0;
-        foreach (var path in paths)
-        {
-            progress?.Report($"删除工作树目录: {path}");
-            try
+            var name = Path.GetFileName(dir);
+            if (!ProjectRepoLayout.IsRegisteredProjectName(name))
+                continue;
+            if ((File.GetAttributes(dir) & FileAttributes.ReparsePoint) != 0)
             {
-                if (Directory.Exists(path))
-                    await Task.Run(() => Directory.Delete(path, recursive: true));
-                removed++;
+                issues.Add($"{name}: 是符号链接或目录联接");
+                continue;
             }
-            catch (Exception ex)
-            {
-                progress?.Report($"   删除失败(跳过): {ex.Message}");
-            }
-        }
 
-        // 2. 清理 Git 残留 worktree 记录
-        progress?.Report("git worktree prune ...");
-        var prune = await GitRunner.RunAsync(BareRepo, ["worktree", "prune"]);
-        if (!prune.Success)
-            return (false, $"worktree prune 失败:\n{prune.Output}");
+            progress?.Report($"检查 {name} ...");
+            if (ProjectRepoLayout.IsGitPointerFile(dir))
+            {
+                var pointer = ProjectRepoLayout.ReadGitPointer(dir);
+                issues.Add($"{name}: .git 是文件（可能仍指向旧裸仓）: {pointer}");
+                continue;
+            }
 
-        // 3. 按已验证的分支清单重建(目录名 = 分支名)
-        var rebuilt = 0;
-        var failedList = new List<string>();
-        for (var i = 0; i < branches.Count; i++)
-        {
-            var branch = branches[i];
-            var targetDir = Path.Combine(WorktreeRoot, branch);
-            progress?.Report($"[{i + 1}/{branches.Count}] 重建 worktree: {branch}");
-            var add = await GitRunner.RunAsync(BareRepo, ["worktree", "add", targetDir, branch]);
-            if (add.Success)
+            if (!ProjectRepoLayout.IsIndependentGitRepo(dir))
             {
-                rebuilt++;
+                issues.Add($"{name}: 缺少独立 .git 目录");
+                continue;
             }
-            else
-            {
-                failedList.Add(branch);
-                progress?.Report($"   重建失败: {add.Output}");
-            }
-        }
 
-        // 4. 补齐裸标记覆盖。裸仓开着 extensions.worktreeConfig，重建出来的工作树若缺
-        //    config.worktree 就会被当成裸仓，下一步的 status 复测必然失败。
-        var markerWritten = 0;
-        var markerFailed = new List<string>();
-        var (markerListResult, markerList) = await ListWorktreesAsync();
-        if (markerListResult.Success)
-        {
-            foreach (var wt in markerList)
+            if (!TryValidateManagedDirectChild(dir, rejectReparsePoint: true, out var pathError))
             {
-                var marker = WorktreeBareMarker.Ensure(wt.WorktreePath);
-                if (!marker.Success)
-                    markerFailed.Add($"{wt.BranchName}: {marker.Message}");
-                else if (marker.Written)
-                    markerWritten++;
+                issues.Add($"{name}: {pathError}");
+                continue;
             }
-        }
 
-        // 5. 全量复测 git status
-        var broken = new List<string>();
-        var (verifyResult, verifyList) = await ListWorktreesAsync();
-        if (verifyResult.Success)
-        {
-            foreach (var wt in verifyList)
+            var status = await GitRunner.RunAsync(dir, ["status", "--porcelain"]);
+            if (!status.Success)
             {
-                var status = await GitRunner.RunAsync(wt.WorktreePath, ["status", "--porcelain"]);
-                if (!status.Success)
-                    broken.Add(wt.BranchName);
+                issues.Add($"{name}: git status 失败: {status.Output.Trim()}");
+                continue;
             }
+
+            ok++;
         }
 
         var sb = new StringBuilder();
-        sb.Append($"修复完成: 移除 {removed} 个旧目录,重建 {rebuilt}/{branches.Count} 个 worktree");
-        if (markerWritten > 0)
-            sb.Append($"\n✓ 补写裸标记覆盖 {markerWritten} 个");
-        if (markerFailed.Count > 0)
-            sb.Append($"\n✗ 裸标记覆盖失败: {string.Join(", ", markerFailed)}");
-        if (failedList.Count > 0)
-            sb.Append($"\n✗ 重建失败: {string.Join(", ", failedList)}");
-        sb.Append(broken.Count == 0
-            ? "\n✓ 全量 git status 复测通过"
-            : $"\n✗ 复测仍异常: {string.Join(", ", broken)}");
+        sb.Append($"逐仓诊断完成: {ok} 个独立仓可 status");
+        if (issues.Count > 0)
+        {
+            sb.Append($"\n✗ {issues.Count} 个问题（未删除任何目录）:");
+            foreach (var issue in issues)
+                sb.Append($"\n  - {issue}");
+        }
+        else
+        {
+            sb.Append("\n✓ 未发现指向旧裸仓的 .git 文件");
+        }
 
-        return (failedList.Count == 0 && broken.Count == 0 && markerFailed.Count == 0, sb.ToString());
+        return (issues.Count == 0, sb.ToString());
     }
 }

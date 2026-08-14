@@ -72,7 +72,6 @@ internal static class TestArchitectureSuite
         [
             "VersionProjection", "TestArchitecture", "GitRules", "BranchHistory",
             "BranchGraph", "SubmoduleSafety", "RepositoryTargets", "ProjectOperations", "GitHub",
-            "WorktreeBareMarker",
         ];
         True(registered.SequenceEqual(expected),
             "test runner registers the reviewed functional suite order");
@@ -218,7 +217,7 @@ internal static class TestArchitectureSuite
             True(File.Exists(Path.Combine(RepoRoot, relativePath.Replace('/', separator))),
                 $"merged github: source is present: {relativePath}");
 
-        // 独立模块时代的外壳与旧路径解析不得复活；设置统一走 proj.barerepo
+        // 独立模块时代的外壳与旧路径解析不得复活；GitHub 指向选中项目仓
         string[] removedIdentifiers =
         [
             "RepositoryPathResolver",
@@ -252,8 +251,8 @@ internal static class TestArchitectureSuite
         var composition = File.ReadAllText(Path.Combine(RepoRoot, "StudioBusinessComposition.cs"));
         Contains(composition, "GitHubCommands.RegisterAll",
             "merged github: commands register through the module composition");
-        Contains(composition, "projects.BareRepo",
-            "merged github: repository path shares the proj.barerepo setting");
+        Contains(composition, "ResolveGitHubRepository",
+            "merged github: repository path is the selected project under proj.libraryroot");
         Contains(composition, "GraphCommands.RegisterAll",
             "graph commands register through the module composition");
     }

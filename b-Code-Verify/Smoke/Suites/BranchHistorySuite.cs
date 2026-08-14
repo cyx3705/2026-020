@@ -18,8 +18,6 @@ internal static class BranchHistorySuite
     {
         VerifyHistoryLayout();
         var root = TemporaryDirectory("branch-history");
-        var seed = Path.Combine(root, "seed");
-        var bare = Path.Combine(root, "projects.git");
         var remote = Path.Combine(root, "remote.git");
         var template = Path.Combine(root, baseBranch);
         var parent = Path.Combine(root, parentBranch);
@@ -28,40 +26,38 @@ internal static class BranchHistorySuite
 
         try
         {
-            Ensure(await GitRunner.RunAsync(root, ["init", "-b", baseBranch, seed]), "init seed");
-            await ConfigureIdentity(seed);
-            await File.WriteAllTextAsync(Path.Combine(seed, "README.md"), "template\n");
-            Ensure(await GitRunner.RunAsync(seed, ["add", "."]), "add template");
-            Ensure(await GitRunner.RunAsync(seed, ["commit", "-m", "template root"]), "commit template");
-            Ensure(await GitRunner.RunAsync(root, ["clone", "--bare", seed, bare]), "clone project bare");
-            Ensure(await GitRunner.RunAsync(root, ["clone", "--bare", seed, remote]), "clone remote bare");
-            Ensure(await GitRunner.RunAsync(bare, ["remote", "set-url", "origin", remote]), "set origin");
+            await InitStandaloneRepo(template, "Branch History Smoke", "branch-history@example.invalid");
+            await WriteProjectManifest(template, "", isTemplate: true);
+            await File.WriteAllTextAsync(Path.Combine(template, "README.md"), "template\n");
+            Ensure(await GitRunner.RunAsync(template, ["add", "."]), "add template");
+            Ensure(await GitRunner.RunAsync(template, ["commit", "-m", "template root"]), "commit template");
 
-            Ensure(await GitRunner.RunAsync(bare, ["worktree", "add", template, baseBranch]), "worktree template");
-            await ConfigureIdentity(template);
-            Ensure(await GitRunner.RunAsync(bare,
-                ["worktree", "add", "-b", parentBranch, parent, baseBranch]), "worktree parent");
-            await ConfigureIdentity(parent);
-            await CommitFile(parent, "parent.txt", "parent one\n", "parent one");
+            await InitStandaloneRepo(parent, "Branch History Smoke", "branch-history@example.invalid");
+            await WriteProjectManifest(parent, baseBranch);
+            await File.WriteAllTextAsync(Path.Combine(parent, "README.md"), "parent\n");
+            Ensure(await GitRunner.RunAsync(parent, ["add", "."]), "add parent");
+            Ensure(await GitRunner.RunAsync(parent, ["commit", "-m", "parent one"]), "commit parent one");
             await CommitFile(parent, "parent.txt", "parent two\n", "parent two");
-            var forkSha = Sha(await GitRunner.RunAsync(parent, ["rev-parse", "HEAD"]));
 
-            Ensure(await GitRunner.RunAsync(bare,
-                ["worktree", "add", "-b", childBranch, child, parentBranch]), "worktree child");
-            await ConfigureIdentity(child);
+            await InitStandaloneRepo(child, "Branch History Smoke", "branch-history@example.invalid");
+            await WriteProjectManifest(child, parentBranch);
+            await File.WriteAllTextAsync(Path.Combine(child, "README.md"), "child\n");
+            Ensure(await GitRunner.RunAsync(child, ["add", "."]), "add child seed");
+            Ensure(await GitRunner.RunAsync(child, ["commit", "-m", "child seed"]), "commit child seed");
+            var forkSha = Sha(await GitRunner.RunAsync(child, ["rev-parse", "HEAD"]));
             await CommitFile(child, "child.txt", "child one\n", "child one");
             var childOneSha = Sha(await GitRunner.RunAsync(child, ["rev-parse", "HEAD"]));
             await CommitFile(child, "child.txt", "child two\n", "child two");
             var childTwoSha = Sha(await GitRunner.RunAsync(child, ["rev-parse", "HEAD"]));
 
-            Ensure(await GitRunner.RunAsync(bare, ["push", "--all", "origin"]), "initial push all");
+            Ensure(await GitRunner.RunAsync(root, ["clone", "--bare", child, remote]), "clone child remote");
+            Ensure(await GitRunner.RunAsync(child, ["remote", "add", "origin", remote]), "set origin");
+            Ensure(await GitRunner.RunAsync(child, ["push", "-u", "origin", "HEAD"]), "initial push");
             await CommitFile(child, "child.txt", "child local three\n", "child local three");
             var childThreeSha = Sha(await GitRunner.RunAsync(child, ["rev-parse", "HEAD"]));
 
             var settings = new MemorySettings();
-            settings.Set(ProjectService.KeyBareRepo, bare);
-            settings.Set(ProjectService.KeyWorktreeRoot, root);
-            settings.Set(ProjectService.KeyBaseBranch, baseBranch);
+            BindLibrary(settings, root, baseBranch);
             settings.Set(ProjectService.KeyProtected, baseBranch);
             var projects = new ProjectService(settings, _ => true, root);
             var service = new BranchHistoryService(projects);
@@ -129,7 +125,7 @@ internal static class BranchHistorySuite
             True(reset.Success && reset.Changed, $"local hard reset: {reset.Message}");
             Equal(childThreeSha, Sha(await GitRunner.RunAsync(child, ["rev-parse", "HEAD"])),
                 "hard reset moved local head");
-            Equal(childTwoSha, Sha(await GitRunner.RunAsync(remote, ["rev-parse", $"refs/heads/{childBranch}"])),
+            Equal(childTwoSha, Sha(await GitRunner.RunAsync(remote, ["rev-parse", "refs/heads/main"])),
                 "hard reset did not touch remote");
 
             var staleLocalConfirmation = await service.ForcePushAsync(
@@ -138,7 +134,7 @@ internal static class BranchHistorySuite
                 "force push rejects local head changed after confirmation");
             var forcePush = await service.ForcePushAsync(childBranch);
             True(forcePush.Success, $"lease force push succeeded: {forcePush.Message}");
-            Equal(childThreeSha, Sha(await GitRunner.RunAsync(remote, ["rev-parse", $"refs/heads/{childBranch}"])),
+            Equal(childThreeSha, Sha(await GitRunner.RunAsync(remote, ["rev-parse", "refs/heads/main"])),
                 "force-with-lease updated remote");
             var protectedForcePush = await service.ForcePushAsync(baseBranch);
             True(!protectedForcePush.Success && protectedForcePush.Message.Contains("受保护"),
@@ -146,10 +142,10 @@ internal static class BranchHistorySuite
 
             var intruder = Path.Combine(root, "intruder");
             Ensure(await GitRunner.RunAsync(root, ["clone", remote, intruder]), "clone intruder");
-            await ConfigureIdentity(intruder);
-            Ensure(await GitRunner.RunAsync(intruder, ["checkout", childBranch]), "checkout intruder branch");
+            await ConfigureIdentity(intruder, "Branch History Smoke", "branch-history@example.invalid");
+            Ensure(await GitRunner.RunAsync(intruder, ["checkout", "main"]), "checkout intruder branch");
             await CommitFile(intruder, "intruder.txt", "remote changed\n", "remote competitor");
-            Ensure(await GitRunner.RunAsync(intruder, ["push", "origin", childBranch]), "push remote competitor");
+            Ensure(await GitRunner.RunAsync(intruder, ["push", "origin", "main"]), "push remote competitor");
             var staleLease = await service.ForcePushAsync(childBranch);
             True(!staleLease.Success && staleLease.Message.Contains("force-with-lease"),
                 "stale lease rejects remote overwrite");
@@ -204,7 +200,4 @@ internal static class BranchHistorySuite
         Ensure(result, "resolve sha");
         return result.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries)[0].Trim();
     }
-
-    private static Task ConfigureIdentity(string repository)
-        => SmokeKit.ConfigureIdentity(repository, "Branch History Smoke", "branch-history@example.invalid");
 }

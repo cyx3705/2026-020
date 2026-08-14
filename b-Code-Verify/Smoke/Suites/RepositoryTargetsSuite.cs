@@ -17,9 +17,8 @@ internal static class RepositoryTargetsSuite
     public static async Task RunAsync(string[] args)
     {
         var root = TemporaryDirectory("repository-targets");
-        var seed = Path.Combine(root, "seed");
-        var bare = Path.Combine(root, "projects.git");
         var parentRemote = Path.Combine(root, "parent-remote.git");
+        var noChildRemote = Path.Combine(root, "nochild-remote.git");
         var parent = Path.Combine(root, parentBranch);
         var noChild = Path.Combine(root, noChildBranch);
         var child = Path.Combine(parent, childRelative);
@@ -28,34 +27,34 @@ internal static class RepositoryTargetsSuite
 
         try
         {
-            Ensure(await GitRunner.RunAsync(root, ["init", "-b", parentBranch, seed]), "init seed");
-            await ConfigureIdentity(seed);
-            await File.WriteAllTextAsync(Path.Combine(seed, "README.md"), "seed\n");
-            Ensure(await GitRunner.RunAsync(seed, ["add", "."]), "add seed");
-            Ensure(await GitRunner.RunAsync(seed, ["commit", "-m", "seed"]), "commit seed");
-            Ensure(await GitRunner.RunAsync(root, ["clone", "--bare", seed, bare]), "clone bare");
-            Ensure(await GitRunner.RunAsync(root, ["clone", "--bare", seed, parentRemote]), "clone parent remote");
-            Ensure(await GitRunner.RunAsync(bare, ["remote", "set-url", "origin", parentRemote]), "set parent origin");
-            Ensure(await GitRunner.RunAsync(bare, ["worktree", "add", parent, parentBranch]), "add parent worktree");
-            Ensure(await GitRunner.RunAsync(bare,
-                ["worktree", "add", "-b", noChildBranch, noChild, parentBranch]), "add no-child worktree");
-            await ConfigureIdentity(parent);
-            await ConfigureIdentity(noChild);
+            await InitStandaloneRepo(parent, "Repository Targets Smoke", "repository-targets@example.invalid");
+            await File.WriteAllTextAsync(Path.Combine(parent, "README.md"), "seed\n");
+            Ensure(await GitRunner.RunAsync(parent, ["add", "."]), "add parent seed");
+            Ensure(await GitRunner.RunAsync(parent, ["commit", "-m", "seed"]), "commit parent seed");
+            Ensure(await GitRunner.RunAsync(root, ["clone", "--bare", parent, parentRemote]), "clone parent remote");
+            Ensure(await GitRunner.RunAsync(parent, ["remote", "add", "origin", parentRemote]), "set parent origin");
+            Ensure(await GitRunner.RunAsync(parent, ["push", "-u", "origin", "HEAD"]), "push parent baseline");
+
+            await InitStandaloneRepo(noChild, "Repository Targets Smoke", "repository-targets@example.invalid");
+            await File.WriteAllTextAsync(Path.Combine(noChild, "README.md"), "seed\n");
+            Ensure(await GitRunner.RunAsync(noChild, ["add", "."]), "add no-child seed");
+            Ensure(await GitRunner.RunAsync(noChild, ["commit", "-m", "seed"]), "commit no-child seed");
+            Ensure(await GitRunner.RunAsync(root, ["clone", "--bare", noChild, noChildRemote]), "clone no-child remote");
+            Ensure(await GitRunner.RunAsync(noChild, ["remote", "add", "origin", noChildRemote]), "set no-child origin");
+            Ensure(await GitRunner.RunAsync(noChild, ["push", "-u", "origin", "HEAD"]), "push no-child baseline");
 
             await CreateChild(child, childBranch, childRemote);
             Ensure(await GitRunner.RunAsync(parent, ["add", "--", childRelative]), "stage gitlink");
             Ensure(await GitRunner.RunAsync(parent, ["commit", "-m", "register child"]), "commit gitlink");
-            Ensure(await GitRunner.RunAsync(bare, ["push", "--all", "origin"]), "push parent baseline");
+            Ensure(await GitRunner.RunAsync(parent, ["push", "origin", "HEAD"]), "push parent with gitlink");
 
             var settings = new MemorySettings();
-            settings.Set(ProjectService.KeyBareRepo, bare);
-            settings.Set(ProjectService.KeyWorktreeRoot, root);
-            settings.Set(ProjectService.KeyBaseBranch, parentBranch);
+            BindLibrary(settings, root, parentBranch);
             var service = new ProjectService(settings, _ => true, root);
 
             await File.AppendAllTextAsync(Path.Combine(child, "tracked.txt"), "child-only change\n");
             var parentBeforeChildOnly = Sha(parent);
-            var parentRemoteBeforeChildOnly = RefSha(parentRemote, parentBranch);
+            var parentRemoteBeforeChildOnly = RefSha(parentRemote, "main");
             var childOnly = await service.CommitAsync(parentBranch, "统一描述", null,
                 RepositoryTarget.Submodules);
             True(childOnly.Outcome == CommitOutcome.Success && !childOnly.ParentExecuted
@@ -68,7 +67,7 @@ internal static class RepositoryTargetsSuite
             True(childOnlyPush.Success && !childOnlyPush.ParentPushed && childOnlyPush.ParentPointerPending,
                 $"child-only push succeeds with pending pointer: {childOnlyPush.Message}");
             Equal(Sha(child), RefSha(childRemote, childBranch), "child-only push updates child remote");
-            Equal(parentRemoteBeforeChildOnly, RefSha(parentRemote, parentBranch),
+            Equal(parentRemoteBeforeChildOnly, RefSha(parentRemote, "main"),
                 "child-only push leaves parent remote unchanged");
 
             var closePointer = await service.CommitAsync(parentBranch, "收口父指针", null, RepositoryTarget.Both);
@@ -77,12 +76,12 @@ internal static class RepositoryTargetsSuite
             Equal(Sha(child), GitlinkSha(parent, childRelative), "both commit records child HEAD");
             var bothPush = await service.PushAsync(parentBranch, RepositoryTarget.Both);
             True(bothPush.Success && bothPush.ParentPushed, "both push updates parent after child");
-            Equal(Sha(parent), RefSha(parentRemote, parentBranch), "both push updates parent remote");
+            Equal(Sha(parent), RefSha(parentRemote, "main"), "both push updates parent remote");
 
             await File.AppendAllTextAsync(Path.Combine(child, "tracked.txt"), "batch child-only\n");
             var parentBeforeBatchChildren = Sha(parent);
             var noChildBeforeBatch = Sha(noChild);
-            var parentRemoteBeforeBatch = RefSha(parentRemote, parentBranch);
+            var parentRemoteBeforeBatch = RefSha(parentRemote, "main");
             var allChildren = await service.CommitAllAsync(
                 "全部子模块描述", null, null, RepositoryTarget.Submodules);
             True(allChildren.Success && allChildren.ParentPointerPendingCount == 1,
@@ -93,7 +92,7 @@ internal static class RepositoryTargetsSuite
             True(allChildrenPush.Success && !allChildrenPush.ParentPushed
                  && allChildrenPush.ParentPointerPendingCount == 1,
                 $"all submodules push: {allChildrenPush.Message}");
-            Equal(parentRemoteBeforeBatch, RefSha(parentRemote, parentBranch),
+            Equal(parentRemoteBeforeBatch, RefSha(parentRemote, "main"),
                 "all submodules push leaves all parent refs unchanged");
 
             var allBoth = await service.CommitAllAsync("全部完整收口", null, null, RepositoryTarget.Both);
@@ -101,7 +100,7 @@ internal static class RepositoryTargetsSuite
                 $"all both commit closes all pointers: {allBoth.Message}");
             var allBothPush = await service.PushAllAsync(RepositoryTarget.Both);
             True(allBothPush.Success && allBothPush.ParentPushed, "all both pushes bare parent repo");
-            Equal(Sha(parent), RefSha(parentRemote, parentBranch), "all both updates parent remote");
+            Equal(Sha(parent), RefSha(parentRemote, "main"), "all both updates parent remote");
 
             var noChildren = await service.CommitAsync(
                 noChildBranch, "no child", null, RepositoryTarget.Submodules);

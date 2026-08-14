@@ -43,7 +43,7 @@ public static class OverviewMetaMerge
                meta.MetaName.Contains(keyword, StringComparison.OrdinalIgnoreCase) ||
                meta.FullPath.Contains(keyword, StringComparison.OrdinalIgnoreCase));
 
-    /// <summary>点击 Meta 名用登记路径打开，避免分支名≠目录名时误拼 WorktreeRoot。</summary>
+    /// <summary>点击 Meta 名用登记路径打开，避免误拼库根+项目名。</summary>
     public static string BuildOpenCommand(MetaFolderInfo meta)
         => $"janus.proj.metaopen path={CommandParser.QuoteArg(meta.FullPath)}";
 }

@@ -205,7 +205,7 @@ public static class GitRuleCommands
     private static ParameterSpec ProjectName() => new()
     {
         Name = "name",
-        Description = "已登记 Project 名/分支名",
+        Description = "已登记项目名（目录名）",
         Required = true,
         Position = 0,
     };

@@ -365,10 +365,10 @@ public sealed partial class ProjectService
             }
         }
 
-        var result = await GitRunner.RunAsync(worktreePath, ["push", "origin", name],
+        var result = await GitRunner.RunAsync(worktreePath, ["push", "origin", "HEAD"],
             cancellation: cancellation);
         return result.Success
-            ? new PushReport(true, $"已推送到 GitHub(origin/{name})\n{result.Output}".Trim(),
+            ? new PushReport(true, $"已推送到 origin (HEAD)\n{result.Output}".Trim(),
                 true, entries, Target: target)
             : new PushReport(false, $"父仓库推送失败(退出码 {result.ExitCode}):\n{result.Output}",
                 Submodules: entries, PartialCompletion: entries.Any(item => item.Pushed),
@@ -383,14 +383,15 @@ public sealed partial class ProjectService
     public async Task<BatchPushReport> PushAllAsync(
         RepositoryTarget target, CancellationToken cancellation = default)
     {
+        var (listResult, worktrees) = await ListWorktreesAsync();
+        if (!listResult.Success)
+            return new BatchPushReport(false, $"获取项目列表失败:\n{listResult.Output}",
+                false, [], Target: target);
+
         var entries = new List<SubmoduleOperationEntry>();
         var pendingParentCount = 0;
         if (target != RepositoryTarget.Parent)
         {
-            var (listResult, worktrees) = await ListWorktreesAsync();
-            if (!listResult.Success)
-                return new BatchPushReport(false, $"获取工作树列表失败:\n{listResult.Output}",
-                    false, [], Target: target);
             var parents = worktrees.Where(item => Directory.Exists(item.WorktreePath))
                 .Select(item => (item.WorktreePath, item.WorktreePath));
             var prepared = await PrepareSubmodulePushesAsync(
@@ -399,10 +400,10 @@ public sealed partial class ProjectService
             if (!prepared.Success)
                 return new BatchPushReport(false, prepared.Message, false, prepared.Entries,
                     Target: target, ParentPointerPendingCount: pendingParentCount);
-            var pushed = await PushSubmodulesAsync(prepared.Items, cancellation);
-            entries = pushed.Entries;
-            if (!pushed.Success)
-                return new BatchPushReport(false, pushed.Message, false, entries,
+            var submodulePush = await PushSubmodulesAsync(prepared.Items, cancellation);
+            entries = submodulePush.Entries;
+            if (!submodulePush.Success)
+                return new BatchPushReport(false, submodulePush.Message, false, entries,
                     entries.Any(item => item.Pushed), target, pendingParentCount);
 
             if (target == RepositoryTarget.Submodules)
@@ -416,13 +417,27 @@ public sealed partial class ProjectService
             }
         }
 
-        var result = await GitRunner.RunAsync(BareRepo, ["push", "--all", "origin"],
-            cancellation: cancellation);
-        return result.Success
-            ? new BatchPushReport(true, $"已推送全部分支到 GitHub\n{result.Output}".Trim(),
-                true, entries, Target: target)
-            : new BatchPushReport(false, $"一键全推失败(退出码 {result.ExitCode}):\n{result.Output}",
-                false, entries, entries.Any(item => item.Pushed), target, pendingParentCount);
+        var pushed = 0;
+        var failed = new List<string>();
+        foreach (var item in worktrees.Where(item => Directory.Exists(item.WorktreePath)))
+        {
+            var result = await GitRunner.RunAsync(item.WorktreePath, ["push", "origin", "HEAD"],
+                cancellation: cancellation);
+            if (result.Success)
+                pushed++;
+            else
+                failed.Add($"{item.BranchName}: {result.Output.Trim()}");
+        }
+
+        if (failed.Count == 0)
+        {
+            return new BatchPushReport(true, $"已推送 {pushed} 个项目仓的 HEAD 到 origin",
+                true, entries, Target: target, ParentPointerPendingCount: pendingParentCount);
+        }
+
+        return new BatchPushReport(false,
+            $"推送完成 {pushed} 个，失败 {failed.Count}:\n  - " + string.Join("\n  - ", failed),
+            pushed > 0, entries, pushed > 0 || entries.Any(item => item.Pushed), target, pendingParentCount);
     }
 
     private async Task<(bool Success, string Message,

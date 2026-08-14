@@ -22,75 +22,73 @@ internal static class BranchGraphSuite
     {
         VerifyGraphLayout();
         var root = TemporaryDirectory("branch-graph");
-        var seed = Path.Combine(root, "seed");
-        var bare = Path.Combine(root, "projects.git");
         var template = Path.Combine(root, baseBranch);
         var parent = Path.Combine(root, parentBranch);
         var child = Path.Combine(root, childBranch);
+        var other = Path.Combine(root, "2026-003-Other");
         Directory.CreateDirectory(root);
 
         try
         {
-            Ensure(await GitRunner.RunAsync(root, ["init", "-b", baseBranch, seed]), "init seed");
-            await ConfigureIdentity(seed);
-            await File.WriteAllTextAsync(Path.Combine(seed, "README.md"), "template\n");
-            Ensure(await GitRunner.RunAsync(seed, ["add", "."]), "add template");
-            Ensure(await GitRunner.RunAsync(seed, ["commit", "-m", "template root"]), "commit template");
-            var templateSha = Sha(await GitRunner.RunAsync(seed, ["rev-parse", "HEAD"]));
-            Ensure(await GitRunner.RunAsync(root, ["clone", "--bare", seed, bare]), "clone project bare");
+            await InitStandaloneRepo(template, "Branch Graph Smoke", "branch-graph@example.invalid");
+            await WriteProjectManifest(template, "", isTemplate: true);
+            await File.WriteAllTextAsync(Path.Combine(template, "README.md"), "template\n");
+            Ensure(await GitRunner.RunAsync(template, ["add", "."]), "add template");
+            Ensure(await GitRunner.RunAsync(template, ["commit", "-m", "template root"]), "commit template");
+            var templateSha = Sha(await GitRunner.RunAsync(template, ["rev-parse", "HEAD"]));
 
-            Ensure(await GitRunner.RunAsync(bare, ["worktree", "add", template, baseBranch]), "worktree template");
-            await ConfigureIdentity(template);
-            Ensure(await GitRunner.RunAsync(bare,
-                ["worktree", "add", "-b", parentBranch, parent, baseBranch]), "worktree parent");
-            await ConfigureIdentity(parent);
-            await CommitFile(parent, "parent.txt", "parent one\n", "parent one");
+            await InitStandaloneRepo(parent, "Branch Graph Smoke", "branch-graph@example.invalid");
+            await WriteProjectManifest(parent, baseBranch);
+            await File.WriteAllTextAsync(Path.Combine(parent, "README.md"), "template\n");
+            await File.WriteAllTextAsync(Path.Combine(parent, "parent.txt"), "parent one\n");
+            Ensure(await GitRunner.RunAsync(parent, ["add", "."]), "add parent");
+            Ensure(await GitRunner.RunAsync(parent, ["commit", "-m", "parent one"]), "commit parent");
             var parentSha = Sha(await GitRunner.RunAsync(parent, ["rev-parse", "HEAD"]));
 
-            Ensure(await GitRunner.RunAsync(bare,
-                ["worktree", "add", "-b", childBranch, child, parentBranch]), "worktree child");
-            await ConfigureIdentity(child);
+            await InitStandaloneRepo(child, "Branch Graph Smoke", "branch-graph@example.invalid");
+            await WriteProjectManifest(child, parentBranch);
+            await File.WriteAllTextAsync(Path.Combine(child, "README.md"), "child\n");
+            Ensure(await GitRunner.RunAsync(child, ["add", "."]), "add child seed");
+            Ensure(await GitRunner.RunAsync(child, ["commit", "-m", "child seed"]), "commit child seed");
             await CommitFile(child, "child.txt", "child one\n", "child one");
             var childOneSha = Sha(await GitRunner.RunAsync(child, ["rev-parse", "HEAD"]));
 
-            var side = Path.Combine(root, "side");
-            Ensure(await GitRunner.RunAsync(bare,
-                ["worktree", "add", "-b", "side-merge", side, parentBranch]), "worktree side");
-            await ConfigureIdentity(side);
-            await CommitFile(side, "side.txt", "side change\n", "side change");
-            var sideSha = Sha(await GitRunner.RunAsync(side, ["rev-parse", "HEAD"]));
-
+            Ensure(await GitRunner.RunAsync(child, ["checkout", "-b", "side-merge"]), "branch side");
+            await CommitFile(child, "side.txt", "side change\n", "side change");
+            var sideSha = Sha(await GitRunner.RunAsync(child, ["rev-parse", "HEAD"]));
+            Ensure(await GitRunner.RunAsync(child, ["checkout", "main"]), "back to main");
             Ensure(await GitRunner.RunAsync(child, ["merge", "--no-ff", "side-merge", "-m", "merge side"]),
                 "merge side into child");
             var mergeSha = Sha(await GitRunner.RunAsync(child, ["rev-parse", "HEAD"]));
 
-            Ensure(await GitRunner.RunAsync(bare,
+            Ensure(await GitRunner.RunAsync(child,
                 ["update-ref", $"refs/heads/{aliasAiName}", childOneSha]), "create mainline-alias ai ref");
-            Ensure(await GitRunner.RunAsync(bare,
+            Ensure(await GitRunner.RunAsync(child,
                 ["update-ref", $"refs/heads/{mergedAiName}", sideSha]), "create merged ai ref");
 
-            var openWork = Path.Combine(root, "open-ai");
-            Ensure(await GitRunner.RunAsync(bare,
-                ["worktree", "add", "-b", openAiName, openWork, childBranch]), "worktree open ai");
-            await ConfigureIdentity(openWork);
-            await CommitFile(openWork, "open.txt", "still open\n", "open work");
-            var openSha = Sha(await GitRunner.RunAsync(openWork, ["rev-parse", "HEAD"]));
+            Ensure(await GitRunner.RunAsync(child, ["checkout", "-b", openAiName]), "branch open ai");
+            await CommitFile(child, "open.txt", "still open\n", "open work");
+            var openSha = Sha(await GitRunner.RunAsync(child, ["rev-parse", "HEAD"]));
+            Ensure(await GitRunner.RunAsync(child, ["checkout", "main"]), "return main");
+
+            await InitStandaloneRepo(other, "Branch Graph Smoke", "branch-graph@example.invalid");
+            await File.WriteAllTextAsync(Path.Combine(other, "README.md"), "other\n");
+            Ensure(await GitRunner.RunAsync(other, ["add", "."]), "add other");
+            Ensure(await GitRunner.RunAsync(other, ["commit", "-m", "other root"]), "commit other");
 
             var settings = new MemorySettings();
-            settings.Set(ProjectService.KeyBareRepo, bare);
-            settings.Set(ProjectService.KeyWorktreeRoot, root);
-            settings.Set(ProjectService.KeyBaseBranch, baseBranch);
+            BindLibrary(settings, root, baseBranch);
             var projects = new ProjectService(settings, _ => true, root);
             var graph = new GraphService(projects);
 
             var missing = await graph.GetSummaryAsync("2026-999-Missing");
-            True(!missing.Success && missing.Message.Contains("不存在", StringComparison.Ordinal),
+            True(!missing.Success && missing.Message.Contains("未找到", StringComparison.Ordinal),
                 $"missing project fails clearly: {missing.Message}");
 
             var branches = await graph.GetBranchesAsync(childBranch);
             True(branches.Success && branches.Report != null, $"branches loaded: {branches.Message}");
             var branchReport = branches.Report!;
-            Equal(childBranch, branchReport.Mainline?.Name, "child is mainline");
+            Equal(ProjectService.MainlineBranch, branchReport.Mainline?.Name, "child mainline is main");
             True(branchReport.Inheritance.Count == 0, "inheritance parent chain is not a graph lane");
             True(branchReport.Parallels.Any(item => item.Name == mergedAiName && !item.IsOpen),
                 "merged ai/ ref keeps a closed parallel lane");
@@ -115,8 +113,8 @@ internal static class BranchGraphSuite
                 "merged parallel keeps pre-merge unique commits");
             True(report.Nodes.Any(node => node.Sha == openSha),
                 "unmerged parallel tip is on the graph");
-            True(report.Lanes.Count >= 3 && report.Lanes[0].Name == childBranch,
-                "lanes start with numbered mainline then parallels");
+            True(report.Lanes.Count >= 3 && report.Lanes[0].Name == ProjectService.MainlineBranch,
+                "lanes start with main then parallels");
             True(report.Lanes.Any(item => item.Name == mergedAiName && !item.IsOpen),
                 "commit lanes mark merged parallel closed");
             True(report.Lanes.Any(item => item.Name == openAiName && item.IsOpen),
@@ -144,14 +142,20 @@ internal static class BranchGraphSuite
                 "node detail lists merge parent");
 
             var outside = await graph.GetNodeAsync(childBranch, templateSha);
-            True(!outside.Success && outside.Message.Contains("范围", StringComparison.Ordinal),
-                $"template commit is out of numbered-project scope: {outside.Message}");
+            True(!outside.Success, $"template commit is not in this project's object store: {outside.Message}");
 
-            Ensure(await GitRunner.RunAsync(bare, ["worktree", "remove", "--force", side]),
-                "remove merged side worktree");
-            Ensure(await GitRunner.RunAsync(bare, ["update-ref", "-d", "refs/heads/side-merge"]),
+            var isolated = await GitRunner.RunAsync(other, ["cat-file", "-e", childOneSha]);
+            True(!isolated.Success, "sibling repo cannot see a commit that only exists in the child object store");
+
+            var created = await projects.CreateAsync("2026-004-Fresh", baseBranch, null);
+            True(created.Success, $"create independent repo: {created.Message}");
+            var imported = await GitRunner.RunAsync(
+                Path.Combine(root, "2026-004-Fresh"), ["cat-file", "-e", templateSha]);
+            True(!imported.Success, "create copies files then init; template objects stay out of the new store");
+
+            Ensure(await GitRunner.RunAsync(child, ["update-ref", "-d", "refs/heads/side-merge"]),
                 "delete merged side branch");
-            Ensure(await GitRunner.RunAsync(bare, ["update-ref", "-d", $"refs/heads/{mergedAiName}"]),
+            Ensure(await GitRunner.RunAsync(child, ["update-ref", "-d", $"refs/heads/{mergedAiName}"]),
                 "delete merged ai ref");
 
             var recovered = await graph.GetCommitsAsync(childBranch, limit: 50);
@@ -247,7 +251,4 @@ internal static class BranchGraphSuite
         Ensure(result, "resolve sha");
         return result.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries)[0].Trim();
     }
-
-    private static Task ConfigureIdentity(string repository)
-        => SmokeKit.ConfigureIdentity(repository, "Branch Graph Smoke", "branch-graph@example.invalid");
 }

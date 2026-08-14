@@ -282,7 +282,7 @@ public sealed partial class GitHubConnectionService
         var repository = _repositoryPath();
         return !Directory.Exists(repository)
             ? Task.FromResult(new ToolProcessResult(
-                -1, "", $"裸仓库路径不存在: {repository}"))
+                -1, "", $"仓库路径不存在: {repository}"))
             : RunAsync("git", ["-C", repository, .. arguments], timeoutSeconds, cancellation);
     }
 

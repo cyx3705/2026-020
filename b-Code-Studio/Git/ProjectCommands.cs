@@ -106,7 +106,7 @@ public static class ProjectCommands
     {
         Name = "janus.proj.list",
         CommandClass = "proj",
-        Summary = "列出全部项目工作树(编号/分支/路径/状态)",
+        Summary = "列出全部已登记项目(编号/路径/状态)",
         Readonly = true,
         Example = "janus.proj.list filter=2026",
         Parameters =
@@ -114,13 +114,13 @@ public static class ProjectCommands
             new ParameterSpec
             {
                 Name = "filter",
-                Description = "分支名关键字过滤(包含匹配,忽略大小写)",
+                Description = "项目名关键字过滤(包含匹配,忽略大小写)",
                 Position = 0,
             },
             new ParameterSpec
             {
                 Name = "status",
-                Description = "true 时并行读取各工作树的干净状态",
+                Description = "true 时并行读取各项目仓的干净状态",
                 Type = ParamType.Bool,
                 Default = "false",
             },
@@ -129,7 +129,7 @@ public static class ProjectCommands
         {
             var (git, worktrees) = await projects.ListWorktreesAsync();
             if (!git.Success)
-                return CommandResult.Fail($"获取工作树列表失败:\n{git.Output}");
+                return CommandResult.Fail($"获取项目列表失败:\n{git.Output}");
 
             var filter = ctx.GetString("filter");
             if (!string.IsNullOrWhiteSpace(filter))
@@ -144,18 +144,18 @@ public static class ProjectCommands
                 worktrees = await projects.ReadWorktreeStatusesAsync(worktrees, ctx.Cancellation);
 
             if (worktrees.Count == 0)
-                return CommandResult.Ok("没有匹配的工作树", worktrees);
+                return CommandResult.Ok("没有匹配的项目", worktrees);
 
             var sb = new StringBuilder();
-            sb.Append($"共 {worktrees.Count} 个工作树:");
+            sb.Append($"共 {worktrees.Count} 个项目:");
             for (var i = 0; i < worktrees.Count; i++)
             {
                 var w = worktrees[i];
                 var time = w.LastCommitTime.Length > 0 ? $"  [{w.LastCommitTime}]" : "";
                 var mismatch = w.HasNameMismatch
-                    ? $"  ⚠目录名={w.FolderName}≠分支名(不合规则)"
+                    ? $"  ⚠HEAD={w.HeadBranch}≠main"
                     : "";
-                var state = Directory.Exists(w.WorktreePath) ? "" : "  ⚠目录缺失(疑似断链,可 janus.proj.repair)";
+                var state = Directory.Exists(w.WorktreePath) ? "" : "  ⚠目录缺失(可 janus.proj.repair)";
                 var tip = w.LastCommitMessage.Length > 0 ? $"  | {w.LastCommitMessage}" : "";
                 var clean = !includeStatus ? "" : w.IsClean switch
                 {
@@ -176,21 +176,21 @@ public static class ProjectCommands
     {
         Name = "janus.proj.create",
         CommandClass = "proj",
-        Summary = "创建新项目:新建分支 + 同名工作树(分支名 = 文件夹名)",
+        Summary = "创建新项目:从模板仓复制工作树并 git init 为独立仓",
         Example = "janus.proj.create name=2026-025-新项目",
         Parameters =
         [
             new ParameterSpec
             {
                 Name = "name",
-                Description = "项目名称(合法文件夹字符)",
+                Description = "已登记项目名（目录名）",
                 Required = true,
                 Position = 0,
             },
             new ParameterSpec
             {
                 Name = "base",
-                Description = "基础分支(缺省取 proj.basebranch 配置)",
+                Description = "模板项目名(缺省取 proj.basebranch 配置)",
             },
         ],
         Handler = async ctx =>
@@ -208,14 +208,14 @@ public static class ProjectCommands
     {
         Name = "janus.proj.delete",
         CommandClass = "proj",
-        Summary = "删除项目:移除工作树 + 强制删除分支(不可撤销;受保护分支拒绝)",
+        Summary = "删除项目目录(不可撤销;受保护项目拒绝)",
         Example = "janus.proj.delete name=9999-901-测试",
         Parameters =
         [
             new ParameterSpec
             {
                 Name = "name",
-                Description = "要删除的分支名(= 工作树文件夹名)",
+                Description = "要删除的已登记项目名（目录名）",
                 Required = true,
                 Position = 0,
             },
@@ -227,9 +227,8 @@ public static class ProjectCommands
             if (projects.IsProtected(name))
                 return null;
             return $"你即将执行以下【不可撤销】的操作:\n\n" +
-                   $"• 删除 Git 分支: {name}\n" +
-                   $"• 删除工作树目录: {Path.Combine(projects.WorktreeRoot, name)}\n\n" +
-                   $"工作树内所有未提交的修改、未跟踪文件都将被永久删除!\n确定要继续吗?";
+                   $"• 删除项目目录: {Path.Combine(projects.LibraryRoot, name)}\n\n" +
+                   $"目录内所有未提交的修改、未跟踪文件都将被永久删除!\n确定要继续吗?";
         },
         Handler = async ctx =>
         {
@@ -254,7 +253,7 @@ public static class ProjectCommands
             new ParameterSpec
             {
                 Name = "refresh",
-                Description = "true 时忽略缓存重新扫描裸仓库",
+                Description = "true 时忽略缓存重新扫描库根",
                 Type = ParamType.Bool,
                 Default = "false",
                 Position = 0,
@@ -290,7 +289,7 @@ public static class ProjectCommands
             new ParameterSpec
             {
                 Name = "name",
-                Description = "分支名(= 工作树文件夹名)",
+                Description = "已登记项目名（目录名）",
                 Required = true,
                 Position = 0,
             },
@@ -348,7 +347,7 @@ public static class ProjectCommands
             new ParameterSpec
             {
                 Name = "name",
-                Description = "分支名(= 工作树文件夹名)",
+                Description = "已登记项目名（目录名）",
                 Required = true,
                 Position = 0,
             },
@@ -452,7 +451,7 @@ public static class ProjectCommands
             },
         ],
         ConfirmPrompt = ctx =>
-            "确定要执行 git push --all origin 吗?\n\n此操作会推送裸仓库中的所有本地分支到 GitHub。" +
+            "确定要向各项目仓的 origin 推送当前 HEAD 吗?\n\n失败的仓会隔离报告，不会中止其余仓。" +
             (ResolveTarget(ctx) switch
             {
                 RepositoryTarget.Submodules => "\n本次只推送全部直属子模块，父分支不会推送。",
@@ -484,7 +483,7 @@ public static class ProjectCommands
             new ParameterSpec
             {
                 Name = "name",
-                Description = "分支名(= 工作树文件夹名);省略打开根目录",
+                Description = "已登记项目名（目录名）;省略打开根目录",
                 Position = 0,
             },
         ],
@@ -509,7 +508,7 @@ public static class ProjectCommands
             new ParameterSpec
             {
                 Name = "name",
-                Description = "分支名(= 工作树文件夹名)",
+                Description = "已登记项目名（目录名）",
                 Required = true,
                 Position = 0,
             },
@@ -527,15 +526,11 @@ public static class ProjectCommands
     {
         Name = "janus.proj.repair",
         CommandClass = "proj",
-        Summary = "worktree 断链批量修复:删除全部工作树目录→prune→按分支清单重建",
+        Summary = "逐仓诊断独立 .git 与 status；指向旧裸仓的指针只报告，不删盘",
         Example = "janus.proj.repair",
         ConfirmPrompt = _ =>
-            "【高危】worktree 断链批量修复将:\n\n" +
-            "1. 删除工作树根目录下全部现有工作树文件夹\n" +
-            "  (所有未提交修改、未跟踪文件将永久丢失!)\n" +
-            "2. git worktree prune 清理残留记录\n" +
-            "3. 按裸仓库分支清单重建全部 worktree(目录名 = 分支名)\n\n" +
-            "已提交到裸仓库的数据不受影响。确定要继续吗?",
+            "将逐仓检查库根下各编号项目：独立 .git、能否 git status。" +
+            "若仍是指向旧裸仓的 .git 文件则只报告，不会删除任何目录。确定要继续吗?",
         Handler = async ctx =>
         {
             var (success, message) = await projects.RepairAsync(ctx.Progress);
@@ -557,7 +552,7 @@ public static class ProjectCommands
             new ParameterSpec
             {
                 Name = "name",
-                Description = "分支名",
+                Description = "已登记项目名（目录名）",
                 Required = true,
                 Position = 0,
             },
@@ -612,7 +607,7 @@ public static class ProjectCommands
         {
             var (git, metas, warnings) = await projects.ListMetaFoldersAsync();
             if (!git.Success)
-                return CommandResult.Fail($"获取工作树列表失败:\n{git.Output}");
+                return CommandResult.Fail($"获取项目列表失败:\n{git.Output}");
 
             var filter = ctx.GetString("filter");
             if (!string.IsNullOrWhiteSpace(filter))
@@ -670,7 +665,7 @@ public static class ProjectCommands
             new ParameterSpec
             {
                 Name = "name",
-                Description = "所属项目分支名(= 工作树文件夹名)",
+                Description = "所属已登记项目名（目录名）",
                 Position = 0,
             },
             new ParameterSpec

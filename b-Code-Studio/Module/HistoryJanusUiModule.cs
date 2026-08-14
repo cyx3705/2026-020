@@ -36,7 +36,8 @@ public sealed class HistoryJanusUiModule : IUiModule, IShellUiAware, IModuleCont
                 context.Settings,
                 context.Log,
                 Path.Combine(context.DataDirectory, "HistoryJanus"),
-                "module:HistoryJanus");
+                "module:HistoryJanus",
+                () => _selection.CurrentProjectName);
         });
     }
 

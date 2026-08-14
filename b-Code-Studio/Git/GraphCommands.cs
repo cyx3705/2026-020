@@ -25,7 +25,7 @@ public static class GraphCommands
         Example = "janus.graph.summary name=2026-020-HistoryJanus limit=200",
         Parameters =
         [
-            Text("name", "编号项目名（主线分支名）", required: true, position: 0),
+            Text("name", "已登记项目名（目录名）", required: true, position: 0),
             Int("limit", "本次计入摘要的提交上限（1~2000）", "200"),
         ],
         Handler = async ctx =>
@@ -47,7 +47,7 @@ public static class GraphCommands
         Example = "janus.graph.branches name=2026-020-HistoryJanus",
         Parameters =
         [
-            Text("name", "编号项目名（主线分支名）", required: true, position: 0),
+            Text("name", "已登记项目名（目录名）", required: true, position: 0),
         ],
         Handler = async ctx =>
         {
@@ -67,7 +67,7 @@ public static class GraphCommands
         Example = "janus.graph.commits name=2026-020-HistoryJanus limit=200 skip=0",
         Parameters =
         [
-            Text("name", "编号项目名（主线分支名）", required: true, position: 0),
+            Text("name", "已登记项目名（目录名）", required: true, position: 0),
             Int("limit", "本次最多返回的提交数（1~2000）", "200"),
             Int("skip", "从最新提交向前跳过的数量", "0"),
         ],
@@ -91,7 +91,7 @@ public static class GraphCommands
         Example = "janus.graph.node name=2026-020-HistoryJanus sha=abc1234",
         Parameters =
         [
-            Text("name", "编号项目名（主线分支名）", required: true, position: 0),
+            Text("name", "已登记项目名（目录名）", required: true, position: 0),
             Text("sha", "提交 SHA（完整或缩写）", required: true, position: 1),
         ],
         Handler = async ctx =>

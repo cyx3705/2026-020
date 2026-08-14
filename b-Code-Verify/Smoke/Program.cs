@@ -23,7 +23,6 @@ var suites = new (string Name, Func<string[], Task> Run)[]
     ("RepositoryTargets", RepositoryTargetsSuite.RunAsync),
     ("ProjectOperations", ProjectOperationsSuite.RunAsync),
     ("GitHub", GitHubSuite.RunAsync),
-    ("WorktreeBareMarker", WorktreeBareMarkerSuite.RunAsync),
 };
 
 var selected = ReadSuiteName(args);

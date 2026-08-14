@@ -3,10 +3,10 @@ using System.Globalization;
 namespace HistoryJanus.Git;
 
 /// <summary>
-/// 当前编号项目窗口内的只读提交 DAG。
-/// 主线是编号分支本身；提交从相对父分支/模板的分叉点截断。
+/// 当前编号项目仓内的只读提交 DAG。
+/// 主线是仓内 main；范围天然是本仓。
 /// 平行分支（主要是 ai/P/）含未合并与已合并历史；已合并行不在右侧画 tip。
-/// git log --parents --date-order，不用 --first-parent，也不加载整个裸仓。
+/// git log --parents --date-order，不用 --first-parent。
 /// </summary>
 public sealed partial class GraphService
 {
@@ -123,7 +123,7 @@ public sealed partial class GraphService
             return (false, "提交 SHA 不能为空", null);
 
         var graph = scope.Scope;
-        var resolved = await ResolveCommitAsync(sha.Trim(), cancellation);
+        var resolved = await ResolveCommitAsync(graph.RepoPath, sha.Trim(), cancellation);
         if (resolved == null)
             return (false, $"无法解析提交对象: {sha}", null);
 
@@ -134,7 +134,7 @@ public sealed partial class GraphService
             return (false, $"提交不在项目 {graph.ProjectName} 的图谱范围内: {sha}", null);
 
         const string format = "%H%x1f%h%x1f%an%x1f%aI%x1f%s%x1f%P";
-        var meta = await GitRunner.RunAsync(_projects.BareRepo,
+        var meta = await GitRunner.RunAsync(graph.RepoPath,
             ["show", "-s", $"--format={format}", resolved], cancellation: cancellation);
         if (!meta.Success)
             return (false, $"读取提交详情失败:\n{meta.Output}", null);
@@ -142,10 +142,10 @@ public sealed partial class GraphService
         if (node == null)
             return (false, "Git 返回的提交详情格式无效", null);
 
-        var files = await GitRunner.RunAsync(_projects.BareRepo,
+        var files = await GitRunner.RunAsync(graph.RepoPath,
             ["diff-tree", "--root", "--no-commit-id", "--name-status", "-r", resolved],
             cancellation: cancellation);
-        var stat = await GitRunner.RunAsync(_projects.BareRepo,
+        var stat = await GitRunner.RunAsync(graph.RepoPath,
             ["diff-tree", "--root", "--shortstat", resolved], cancellation: cancellation);
 
         var nameStatus = files.Success ? files.Output.Trim() : "";
@@ -191,7 +191,7 @@ public sealed partial class GraphService
             args.Add(scope.CutoffSha);
         }
 
-        var result = await GitRunner.RunAsync(_projects.BareRepo, args, cancellation: cancellation);
+        var result = await GitRunner.RunAsync(scope.RepoPath, args, cancellation: cancellation);
         if (!result.Success)
             return (false, $"读取图谱提交失败:\n{result.Output}", [], [],
                 new GraphPage { Skip = skip, Limit = limit });
@@ -245,7 +245,7 @@ public sealed partial class GraphService
                      .Distinct(StringComparer.Ordinal))
         {
             // 只看退出码：0 表示 sha 是 tip 的祖先（含自身）；1 表示不是。
-            var result = await GitRunner.RunAsync(_projects.BareRepo,
+            var result = await GitRunner.RunAsync(scope.RepoPath,
                 ["merge-base", "--is-ancestor", sha, tip], cancellation: cancellation);
             if (result.ExitCode == 0)
             {
@@ -267,7 +267,7 @@ public sealed partial class GraphService
         if (string.IsNullOrWhiteSpace(scope.CutoffSha))
             return (true, "", true);
 
-        var cutoff = await GitRunner.RunAsync(_projects.BareRepo,
+        var cutoff = await GitRunner.RunAsync(scope.RepoPath,
             ["merge-base", "--is-ancestor", sha, scope.CutoffSha], cancellation: cancellation);
         if (cutoff.ExitCode == 0)
             return (true, "", false);
@@ -277,9 +277,9 @@ public sealed partial class GraphService
     }
 
     private async Task<(bool Success, string Message, List<RawRef> Refs)> ListRefsAsync(
-        CancellationToken cancellation)
+        string repo, CancellationToken cancellation)
     {
-        var result = await GitRunner.RunAsync(_projects.BareRepo,
+        var result = await GitRunner.RunAsync(repo,
             ["for-each-ref", "--format=%(objectname)%09%(refname)%09%(refname:short)",
                 "refs/heads", "refs/remotes"],
             cancellation: cancellation);
@@ -303,9 +303,9 @@ public sealed partial class GraphService
         return (true, "", refs);
     }
 
-    private async Task<string> MergeBaseOrEmptyAsync(string a, string b, CancellationToken cancellation)
+    private async Task<string> MergeBaseOrEmptyAsync(string repo, string a, string b, CancellationToken cancellation)
     {
-        var result = await GitRunner.RunAsync(_projects.BareRepo, ["merge-base", a, b],
+        var result = await GitRunner.RunAsync(repo, ["merge-base", a, b],
             cancellation: cancellation);
         if (!result.Success)
             return "";
@@ -313,9 +313,9 @@ public sealed partial class GraphService
             .FirstOrDefault()?.Trim() ?? "";
     }
 
-    private async Task<string?> ResolveCommitAsync(string value, CancellationToken cancellation)
+    private async Task<string?> ResolveCommitAsync(string repo, string value, CancellationToken cancellation)
     {
-        var result = await GitRunner.RunAsync(_projects.BareRepo,
+        var result = await GitRunner.RunAsync(repo,
             ["rev-parse", "--verify", $"{value}^{{commit}}"], cancellation: cancellation);
         return result.Success
             ? result.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault()?.Trim()
@@ -409,7 +409,8 @@ public sealed partial class GraphService
         List<GraphRef> Parallels,
         List<GraphRef> AllRefs,
         List<GraphBranchRelation> Relations,
-        string CutoffSha)
+        string CutoffSha,
+        string RepoPath)
     {
         public List<GraphRef> Lanes()
         {

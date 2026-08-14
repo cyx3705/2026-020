@@ -152,17 +152,17 @@ public sealed class BranchHistoryService
         string? remoteWarning = null;
         if (refreshRemote)
         {
-            progress?.Report($"刷新 origin/{name}...");
-            var fetch = await GitRunner.RunAsync(_projects.BareRepo,
+            progress?.Report($"刷新 origin/{ProjectService.MainlineBranch}...");
+            var fetch = await GitRunner.RunAsync(boundary.RepoPath,
                 ["fetch", "--no-tags", "origin",
-                    $"+refs/heads/{name}:refs/remotes/origin/{name}"],
+                    $"+refs/heads/{ProjectService.MainlineBranch}:refs/remotes/origin/{ProjectService.MainlineBranch}"],
                 cancellation: cancellation);
             if (!fetch.Success)
                 remoteWarning = fetch.Output;
         }
 
-        var remote = await ReadRemoteAsync(name, boundary.HeadSha, cancellation);
-        var ownResult = await GitRunner.RunAsync(_projects.BareRepo,
+        var remote = await ReadRemoteAsync(boundary.RepoPath, boundary.HeadSha, cancellation);
+        var ownResult = await GitRunner.RunAsync(boundary.RepoPath,
             ["log", "--first-parent", "--reverse", $"--format={LogFormat}",
                 $"{boundary.ForkSha}..{boundary.HeadSha}"],
             cancellation: cancellation);
@@ -175,7 +175,7 @@ public sealed class BranchHistoryService
         var pageStart = Math.Max(0, pageEnd - limit);
         var page = ownEntries.Skip(pageStart).Take(pageEnd - pageStart).ToList();
 
-        var forkEntryResult = await ReadCommitEntryAsync(boundary.ForkSha, cancellation);
+        var forkEntryResult = await ReadCommitEntryAsync(boundary.RepoPath, boundary.ForkSha, cancellation);
         if (!forkEntryResult.Success || forkEntryResult.Entry == null)
             return (false, forkEntryResult.Message, null);
 
@@ -220,7 +220,7 @@ public sealed class BranchHistoryService
         var target = targetResult.Target;
 
         const string format = "%H%x1f%h%x1f%an%x1f%ae%x1f%aI%x1f%s%x1f%b%x1f%P";
-        var meta = await GitRunner.RunAsync(_projects.BareRepo,
+        var meta = await GitRunner.RunAsync(target.RepoPath,
             ["show", "-s", $"--format={format}", target.TargetSha], cancellation: cancellation);
         if (!meta.Success)
             return (false, $"读取提交详情失败:\n{meta.Output}", null);
@@ -229,7 +229,7 @@ public sealed class BranchHistoryService
                 DateTimeStyles.RoundtripKind, out var committedAt))
             return (false, "Git 返回的提交详情格式无效", null);
 
-        var filesResult = await GitRunner.RunAsync(_projects.BareRepo,
+        var filesResult = await GitRunner.RunAsync(target.RepoPath,
             ["diff-tree", "--root", "--no-commit-id", "--name-status", "-r", target.TargetSha],
             cancellation: cancellation);
         var files = filesResult.Success ? ParseNameStatus(filesResult.Output) : [];
@@ -255,14 +255,14 @@ public sealed class BranchHistoryService
             return (false, targetResult.Message, null);
         var target = targetResult.Target;
 
-        var countResult = await GitRunner.RunAsync(_projects.BareRepo,
+        var countResult = await GitRunner.RunAsync(target.RepoPath,
             ["rev-list", "--first-parent", "--count", $"{target.TargetSha}..{target.HeadSha}"],
             cancellation: cancellation);
-        var fileResult = await GitRunner.RunAsync(_projects.BareRepo,
+        var fileResult = await GitRunner.RunAsync(target.RepoPath,
             ["diff", "--name-status", target.TargetSha, target.HeadSha], cancellation: cancellation);
-        var statResult = await GitRunner.RunAsync(_projects.BareRepo,
+        var statResult = await GitRunner.RunAsync(target.RepoPath,
             ["diff", "--shortstat", target.TargetSha, target.HeadSha], cancellation: cancellation);
-        var diffResult = await GitRunner.RunAsync(_projects.BareRepo,
+        var diffResult = await GitRunner.RunAsync(target.RepoPath,
             ["diff", "--no-ext-diff", "--no-color", "--unified=3", target.TargetSha, target.HeadSha],
             cancellation: cancellation);
         if (!countResult.Success || !fileResult.Success || !diffResult.Success)
@@ -305,8 +305,12 @@ public sealed class BranchHistoryService
     {
         if (_projects.IsProtected(name))
             return null;
-        var local = ResolveRefAsync($"refs/heads/{name}").ConfigureAwait(false).GetAwaiter().GetResult();
-        var remote = ResolveRefAsync($"refs/remotes/origin/{name}").ConfigureAwait(false).GetAwaiter().GetResult();
+        var worktree = _projects.ResolveWorktreeAsync(name).ConfigureAwait(false).GetAwaiter().GetResult();
+        if (!worktree.Success || worktree.Worktree == null)
+            return null;
+        var repo = worktree.Worktree.WorktreePath;
+        var local = ResolveRefAsync(repo, $"refs/heads/{ProjectService.MainlineBranch}").ConfigureAwait(false).GetAwaiter().GetResult();
+        var remote = ResolveRefAsync(repo, $"refs/remotes/origin/{ProjectService.MainlineBranch}").ConfigureAwait(false).GetAwaiter().GetResult();
         if (local == null || remote == null)
             return null;
         lock (_approvalGate)
@@ -358,7 +362,7 @@ public sealed class BranchHistoryService
                 $"创建恢复提交失败，已恢复到操作前 HEAD:\n{commit.Output}", ctx.BeforeSha);
         }
 
-        var after = await ResolveRefAsync($"refs/heads/{name}", cancellation) ?? ctx.BeforeSha;
+        var after = await ResolveRefAsync(ctx.WorktreePath, "HEAD", cancellation) ?? ctx.BeforeSha;
         return new BranchMutationReport(true, true, name, ctx.TargetSha, ctx.BeforeSha, after,
             $"已生成恢复提交 {Short(after)}，目标内容 {Short(ctx.TargetSha)}；原历史仍保留");
     }
@@ -403,12 +407,14 @@ public sealed class BranchHistoryService
         var worktree = await _projects.ResolveWorktreeAsync(name);
         if (!worktree.Success || worktree.Worktree == null)
             return FailMutation(name, null, worktree.Message);
-        var local = await ResolveRefAsync($"refs/heads/{name}", cancellation);
-        var remote = await ResolveRefAsync($"refs/remotes/origin/{name}", cancellation);
+        var local = await ResolveRefAsync(worktree.Worktree.WorktreePath,
+            $"refs/heads/{ProjectService.MainlineBranch}", cancellation);
+        var remote = await ResolveRefAsync(worktree.Worktree.WorktreePath,
+            $"refs/remotes/origin/{ProjectService.MainlineBranch}", cancellation);
         if (local == null)
-            return FailMutation(name, null, $"本地分支不存在: {name}");
+            return FailMutation(name, null, $"本地分支不存在: {ProjectService.MainlineBranch}");
         if (remote == null)
-            return FailMutation(name, null, $"不存在 origin/{name} 跟踪引用，拒绝无 lease 强推");
+            return FailMutation(name, null, $"不存在 origin/{ProjectService.MainlineBranch} 跟踪引用，拒绝无 lease 强推");
         if (expectedLocal != null && !local.Equals(expectedLocal, StringComparison.Ordinal))
             return FailMutation(name, local,
                 $"确认后本地 HEAD 已变化：{Short(expectedLocal)} -> {Short(local)}，请重新确认", remote);
@@ -417,13 +423,13 @@ public sealed class BranchHistoryService
                 $"确认后 origin 跟踪引用已变化：{Short(expectedRemote)} -> {Short(remote)}，请重新确认", remote);
 
         var push = await GitRunner.RunAsync(worktree.Worktree.WorktreePath,
-            ["push", $"--force-with-lease=refs/heads/{name}:{remote}", "origin",
-                $"refs/heads/{name}:refs/heads/{name}"],
+            ["push", $"--force-with-lease=refs/heads/{ProjectService.MainlineBranch}:{remote}", "origin",
+                $"refs/heads/{ProjectService.MainlineBranch}:refs/heads/{ProjectService.MainlineBranch}"],
             cancellation: cancellation);
         if (!push.Success)
             return FailMutation(name, local, $"--force-with-lease 推送失败:\n{push.Output}", remote);
         return new BranchMutationReport(true, true, name, local, remote, local,
-            $"已使用 --force-with-lease 更新 origin/{name}: {Short(remote)} -> {Short(local)}");
+            $"已使用 --force-with-lease 更新 origin/{ProjectService.MainlineBranch}: {Short(remote)} -> {Short(local)}");
     }
 
     private async Task<(bool Success, string Message, MutationContext? Context)> PrepareMutationAsync(
@@ -457,11 +463,11 @@ public sealed class BranchHistoryService
         if (!boundaryResult.Success || boundaryResult.Boundary == null)
             return (false, boundaryResult.Message, null);
         var boundary = boundaryResult.Boundary;
-        var target = await ResolveRefAsync(sha.Trim(), cancellation);
+        var target = await ResolveRefAsync(boundary.RepoPath, sha.Trim(), cancellation);
         if (target == null)
             return (false, $"无法解析提交对象: {sha}", null);
 
-        var allowedResult = await GitRunner.RunAsync(_projects.BareRepo,
+        var allowedResult = await GitRunner.RunAsync(boundary.RepoPath,
             ["rev-list", "--first-parent", $"{boundary.ForkSha}..{boundary.HeadSha}"],
             cancellation: cancellation);
         if (!allowedResult.Success)
@@ -473,7 +479,7 @@ public sealed class BranchHistoryService
         };
         if (!allowed.Contains(target))
             return (false, "目标提交不在该分支的分叉点至当前 HEAD 第一父链范围内", null);
-        return (true, "目标有效", new AllowedTarget(target, boundary.HeadSha, boundary.ForkSha));
+        return (true, "目标有效", new AllowedTarget(target, boundary.HeadSha, boundary.ForkSha, boundary.RepoPath));
     }
 
     private async Task<(bool Success, string Message, BranchBoundary? Boundary)> ResolveBoundaryAsync(
@@ -484,56 +490,37 @@ public sealed class BranchHistoryService
     {
         if (name.Length == 0)
             return (false, "项目名称不能为空", null);
-        var head = await ResolveRefAsync($"refs/heads/{name}", cancellation);
+        var worktree = await _projects.ResolveWorktreeAsync(name);
+        if (!worktree.Success || worktree.Worktree == null)
+            return (false, worktree.Message, null);
+        var repo = worktree.Worktree.WorktreePath;
+        var head = await ResolveRefAsync(repo, $"refs/heads/{ProjectService.MainlineBranch}", cancellation)
+                   ?? await ResolveRefAsync(repo, "HEAD", cancellation);
         if (head == null)
-            return (false, $"分支不存在: {name}", null);
+            return (false, $"无法读取项目 {name} 的 HEAD", null);
 
-        ProjectService.BranchNode? parent = null;
-        var treeResult = await _projects.BuildTreeAsync(progress,
-            refresh: refreshTree, cachedOnly: !refreshTree);
-        var parentFound = treeResult.Root != null && TryFindParent(treeResult.Root, name, null, out parent);
-        if (!parentFound && !refreshTree)
-        {
-            treeResult = await _projects.BuildTreeAsync(progress, refresh: true, cachedOnly: false);
-            parentFound = treeResult.Root != null && TryFindParent(treeResult.Root, name, null, out parent);
-        }
-        if (!treeResult.Success)
-            return (false, treeResult.Message, null);
-        if (!parentFound)
-            return (false, $"继承树中未找到分支 {name}", null);
-
-        string? parentBranch = parent?.BranchName;
-        string? fork;
-        if (parentBranch == null)
-        {
-            var roots = await GitRunner.RunAsync(_projects.BareRepo,
-                ["rev-list", "--max-parents=0", "--reverse", head], cancellation: cancellation);
-            fork = roots.Success
-                ? roots.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault()?.Trim()
-                : null;
-        }
-        else
-        {
-            var mergeBase = await GitRunner.RunAsync(_projects.BareRepo,
-                ["merge-base", parentBranch, name], cancellation: cancellation);
-            fork = mergeBase.Success
-                ? mergeBase.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault()?.Trim()
-                : null;
-        }
+        _ = refreshTree;
+        _ = progress;
+        var parentBranch = ProjectRepoLayout.ReadTemplateSource(repo);
+        var roots = await GitRunner.RunAsync(repo,
+            ["rev-list", "--max-parents=0", "--reverse", "HEAD"], cancellation: cancellation);
+        var fork = roots.Success
+            ? roots.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault()?.Trim()
+            : null;
         if (string.IsNullOrWhiteSpace(fork))
-            return (false, $"无法确定分支 {name} 的分叉点", null);
-        return (true, "边界已解析", new BranchBoundary(name, parentBranch, fork, head));
+            return (false, $"无法确定项目 {name} 的根提交", null);
+        return (true, "边界已解析", new BranchBoundary(name, parentBranch, fork, head, repo));
     }
 
     private async Task<RemoteSnapshot> ReadRemoteAsync(
-        string name, string localHead, CancellationToken cancellation)
+        string repo, string localHead, CancellationToken cancellation)
     {
-        var remoteHead = await ResolveRefAsync($"refs/remotes/origin/{name}", cancellation);
+        var remoteHead = await ResolveRefAsync(repo, $"refs/remotes/origin/{ProjectService.MainlineBranch}", cancellation);
         if (remoteHead == null)
             return new RemoteSnapshot(null, BranchRemoteState.Unknown, 0, 0,
                 new HashSet<string>(StringComparer.Ordinal), "不存在本地 origin 跟踪引用");
 
-        var counts = await GitRunner.RunAsync(_projects.BareRepo,
+        var counts = await GitRunner.RunAsync(repo,
             ["rev-list", "--left-right", "--count", $"{localHead}...{remoteHead}"],
             cancellation: cancellation);
         var ahead = 0;
@@ -548,7 +535,7 @@ public sealed class BranchHistoryService
             }
         }
 
-        var remoteHistory = await GitRunner.RunAsync(_projects.BareRepo,
+        var remoteHistory = await GitRunner.RunAsync(repo,
             ["rev-list", remoteHead], cancellation: cancellation);
         var commits = remoteHistory.Success
             ? new HashSet<string>(remoteHistory.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries)
@@ -562,9 +549,9 @@ public sealed class BranchHistoryService
     }
 
     private async Task<(bool Success, string Message, BranchHistoryEntry? Entry)> ReadCommitEntryAsync(
-        string sha, CancellationToken cancellation)
+        string repo, string sha, CancellationToken cancellation)
     {
-        var result = await GitRunner.RunAsync(_projects.BareRepo,
+        var result = await GitRunner.RunAsync(repo,
             ["show", "-s", $"--format={LogFormat}", sha], cancellation: cancellation);
         if (!result.Success)
             return (false, $"读取分叉提交失败:\n{result.Output}", null);
@@ -574,9 +561,10 @@ public sealed class BranchHistoryService
             : (true, "提交已读取", entry);
     }
 
-    private async Task<string?> ResolveRefAsync(string value, CancellationToken cancellation = default)
+    private static async Task<string?> ResolveRefAsync(
+        string repo, string value, CancellationToken cancellation = default)
     {
-        var result = await GitRunner.RunAsync(_projects.BareRepo,
+        var result = await GitRunner.RunAsync(repo,
             ["rev-parse", "--verify", $"{value}^{{commit}}"], cancellation: cancellation);
         return result.Success
             ? result.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault()?.Trim()
@@ -623,26 +611,6 @@ public sealed class BranchHistoryService
     private static BranchHistoryEntry WithState(BranchHistoryEntry entry, HashSet<string> remoteCommits)
         => entry with { RemoteState = StateOf(entry.Sha, remoteCommits) };
 
-    private static bool TryFindParent(
-        ProjectService.BranchNode node,
-        string name,
-        ProjectService.BranchNode? parent,
-        out ProjectService.BranchNode? foundParent)
-    {
-        if (node.BranchName.Equals(name, StringComparison.OrdinalIgnoreCase))
-        {
-            foundParent = parent;
-            return true;
-        }
-        foreach (var child in node.Children)
-        {
-            if (TryFindParent(child, name, node, out foundParent))
-                return true;
-        }
-        foundParent = null;
-        return false;
-    }
-
     private static string Short(string? sha)
         => string.IsNullOrWhiteSpace(sha) ? "(无)" : sha.Length <= 10 ? sha : sha[..10];
 
@@ -674,8 +642,9 @@ public sealed class BranchHistoryService
     private static string RollbackApprovalKey(string name, string sha, bool hardReset)
         => $"{(hardReset ? "reset" : "rollback")}|{name.Trim()}|{sha.Trim()}";
 
-    private sealed record BranchBoundary(string Branch, string? ParentBranch, string ForkSha, string HeadSha);
-    private sealed record AllowedTarget(string TargetSha, string HeadSha, string ForkSha);
+    private sealed record BranchBoundary(
+        string Branch, string? ParentBranch, string ForkSha, string HeadSha, string RepoPath);
+    private sealed record AllowedTarget(string TargetSha, string HeadSha, string ForkSha, string RepoPath);
     private sealed record MutationContext(string WorktreePath, string TargetSha, string BeforeSha);
     private sealed record RemoteSnapshot(
         string? HeadSha,

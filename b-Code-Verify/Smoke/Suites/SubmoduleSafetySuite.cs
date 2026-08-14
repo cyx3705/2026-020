@@ -16,8 +16,6 @@ internal static class SubmoduleSafetySuite
     public static async Task RunAsync(string[] args)
     {
         var root = TemporaryDirectory("submodule-safety");
-        var seed = Path.Combine(root, "seed");
-        var bare = Path.Combine(root, "projects.git");
         var parentRemote = Path.Combine(root, "parent-remote.git");
         var parent = Path.Combine(root, parentBranch);
         var standard = Path.Combine(parent, standardRelative);
@@ -28,16 +26,13 @@ internal static class SubmoduleSafetySuite
 
         try
         {
-            Ensure(await GitRunner.RunAsync(root, ["init", "-b", parentBranch, seed]), "init parent seed");
-            await ConfigureIdentity(seed);
-            await File.WriteAllTextAsync(Path.Combine(seed, "README.md"), "parent seed\n");
-            Ensure(await GitRunner.RunAsync(seed, ["add", "."]), "add parent seed");
-            Ensure(await GitRunner.RunAsync(seed, ["commit", "-m", "parent seed"]), "commit parent seed");
-            Ensure(await GitRunner.RunAsync(root, ["clone", "--bare", seed, bare]), "clone projects bare");
-            Ensure(await GitRunner.RunAsync(root, ["clone", "--bare", seed, parentRemote]), "clone parent remote");
-            Ensure(await GitRunner.RunAsync(bare, ["remote", "set-url", "origin", parentRemote]), "set parent origin");
-            Ensure(await GitRunner.RunAsync(bare, ["worktree", "add", parent, parentBranch]), "add parent worktree");
-            await ConfigureIdentity(parent);
+            await InitStandaloneRepo(parent, "Submodule Safety Smoke", "submodule-safety@example.invalid");
+            await File.WriteAllTextAsync(Path.Combine(parent, "README.md"), "parent seed\n");
+            Ensure(await GitRunner.RunAsync(parent, ["add", "."]), "add parent seed");
+            Ensure(await GitRunner.RunAsync(parent, ["commit", "-m", "parent seed"]), "commit parent seed");
+            Ensure(await GitRunner.RunAsync(root, ["clone", "--bare", parent, parentRemote]), "clone parent remote");
+            Ensure(await GitRunner.RunAsync(parent, ["remote", "add", "origin", parentRemote]), "set parent origin");
+            Ensure(await GitRunner.RunAsync(parent, ["push", "-u", "origin", "HEAD"]), "push parent seed");
 
             await CreateChild(standard, standardBranch, standardRemote);
             await CreateChild(legacy, legacyBranch, legacyRemote);
@@ -47,12 +42,10 @@ internal static class SubmoduleSafetySuite
                 "stage initial gitlinks");
             Ensure(await GitRunner.RunAsync(parent, ["commit", "-m", "register gitlinks"]),
                 "commit initial gitlinks");
-            Ensure(await GitRunner.RunAsync(parent, ["push", "origin", parentBranch]), "push parent baseline");
+            Ensure(await GitRunner.RunAsync(parent, ["push", "origin", "HEAD"]), "push parent baseline");
 
             var settings = new MemorySettings();
-            settings.Set(ProjectService.KeyBareRepo, bare);
-            settings.Set(ProjectService.KeyWorktreeRoot, root);
-            settings.Set(ProjectService.KeyBaseBranch, parentBranch);
+            BindLibrary(settings, root, parentBranch);
             var prompts = new List<string>();
             var service = new ProjectService(settings, prompt =>
             {
@@ -110,20 +103,20 @@ internal static class SubmoduleSafetySuite
                 "dirty child blocks all pushes");
             File.Delete(Path.Combine(standard, "dirty.tmp"));
 
-            var parentRemoteBefore = RefSha(parentRemote, parentBranch);
+            var parentRemoteBefore = RefSha(parentRemote, "main");
             Ensure(await GitRunner.RunAsync(legacy, ["remote", "set-url", "origin", Path.Combine(root, "missing-remote.git")]),
                 "break legacy remote");
             var partialPush = await service.PushAsync(parentBranch, includeSubmodules: true);
             True(!partialPush.Success && !partialPush.ParentPushed && partialPush.PartialCompletion,
                 "child failure blocks parent and reports partial push");
-            Equal(parentRemoteBefore, RefSha(parentRemote, parentBranch), "parent remote unchanged after child failure");
+            Equal(parentRemoteBefore, RefSha(parentRemote, "main"), "parent remote unchanged after child failure");
             Ensure(await GitRunner.RunAsync(legacy, ["remote", "set-url", "origin", legacyRemote]),
                 "restore legacy remote");
             var push = await service.PushAsync(parentBranch, includeSubmodules: true);
             True(push.Success && push.ParentPushed, $"children then parent push succeeds: {push.Message}");
             Equal(Sha(standard), RefSha(standardRemote, standardBranch), "standard remote updated");
             Equal(Sha(legacy), RefSha(legacyRemote, legacyBranch), "legacy remote updated");
-            Equal(Sha(parent), RefSha(parentRemote, parentBranch), "parent remote updated last");
+            Equal(Sha(parent), RefSha(parentRemote, "main"), "parent remote updated last");
 
             var parentBeforePartialCommit = Sha(parent);
             await File.AppendAllTextAsync(Path.Combine(standard, "tracked.txt"), "partial standard\n");
@@ -148,7 +141,7 @@ internal static class SubmoduleSafetySuite
             Equal("批量子描述", Subject(legacy), "commitall child message");
             var batchPush = await service.PushAllAsync(includeSubmodules: true);
             True(batchPush.Success && batchPush.ParentPushed, $"pushall children then bare parent: {batchPush.Message}");
-            Equal(Sha(parent), RefSha(parentRemote, parentBranch), "pushall updates parent remote");
+            Equal(Sha(parent), RefSha(parentRemote, "main"), "pushall updates parent remote");
 
             Ensure(await GitRunner.RunAsync(legacy, ["remote", "remove", "origin"]), "remove legacy origin");
             var missingOrigin = await service.PushAsync(parentBranch, includeSubmodules: true);

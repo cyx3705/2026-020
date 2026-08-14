@@ -1,12 +1,7 @@
-using System.Text.RegularExpressions;
-
 namespace HistoryJanus.Git;
 
 public sealed partial class GraphService
 {
-    private static readonly Regex NumberedProjectName =
-        new(@"^\d{4}-\d{3}-", RegexOptions.CultureInvariant | RegexOptions.Compiled);
-
     private async Task<(bool Success, string Message, GraphScope? Scope)> ResolveScopeAsync(
         string name, CancellationToken cancellation)
     {
@@ -14,32 +9,36 @@ public sealed partial class GraphService
         if (name.Length == 0)
             return (false, "项目名称不能为空", null);
 
-        var head = await ResolveCommitAsync($"refs/heads/{name}", cancellation);
-        if (head == null)
-            return (false, $"项目主线分支不存在: {name}", null);
+        var resolved = await _projects.ResolveWorktreeAsync(name);
+        if (!resolved.Success || resolved.Worktree == null)
+            return (false, resolved.Message, null);
+        var repo = resolved.Worktree.WorktreePath;
 
-        var listed = await ListRefsAsync(cancellation);
+        var head = await ResolveCommitAsync(repo, $"refs/heads/{ProjectService.MainlineBranch}", cancellation)
+                   ?? await ResolveCommitAsync(repo, "HEAD", cancellation);
+        if (head == null)
+            return (false, $"项目主线分支不存在: {ProjectService.MainlineBranch}", null);
+
+        var listed = await ListRefsAsync(repo, cancellation);
         if (!listed.Success)
             return (false, listed.Message, null);
 
         var mainline = new GraphRef
         {
-            Name = name,
-            FullName = $"refs/heads/{name}",
+            Name = ProjectService.MainlineBranch,
+            FullName = $"refs/heads/{ProjectService.MainlineBranch}",
             IsRemote = false,
             TargetSha = head,
             Kind = BranchKind.Mainline,
             IsOpen = true,
         };
 
-        var parentName = await FindParentBranchNameAsync(name) ?? _projects.BaseBranch;
+        var parentName = ProjectRepoLayout.ReadTemplateSource(repo) ?? _projects.BaseBranch;
         if (parentName.Equals(name, StringComparison.OrdinalIgnoreCase))
             parentName = _projects.BaseBranch;
-        var cutoffSha = parentName.Length == 0 || parentName.Equals(name, StringComparison.OrdinalIgnoreCase)
-            ? ""
-            : await MergeBaseOrEmptyAsync($"refs/heads/{parentName}", mainline.FullName, cancellation);
+        const string cutoffSha = "";
 
-        var firstParent = await ReadFirstParentShasAsync(mainline.FullName, cutoffSha, cancellation);
+        var firstParent = await ReadFirstParentShasAsync(repo, mainline.FullName, cutoffSha, cancellation);
         var parallels = new List<GraphRef>();
         foreach (var candidate in SelectParallelCandidates(name, listed.Refs))
         {
@@ -48,7 +47,7 @@ public sealed partial class GraphService
                 firstParent.Contains(candidate.TargetSha))
                 continue;
 
-            var ahead = await CountAheadAsync(mainline.FullName, candidate.FullName, cancellation);
+            var ahead = await CountAheadAsync(repo, mainline.FullName, candidate.FullName, cancellation);
             parallels.Add(candidate with
             {
                 Kind = IsAiWork(name, candidate.Name, candidate.FullName)
@@ -63,7 +62,7 @@ public sealed partial class GraphService
             .Where(sha => sha.Length > 0)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         foreach (var recovered in await DiscoverMergedHistoriesAsync(
-                     mainline.FullName, cutoffSha, firstParent, covered, cancellation))
+                     repo, mainline.FullName, cutoffSha, firstParent, covered, cancellation))
             parallels.Add(recovered);
 
         parallels = parallels
@@ -73,25 +72,12 @@ public sealed partial class GraphService
 
         var allRefs = new List<GraphRef> { mainline };
         allRefs.AddRange(parallels.Where(item => item.FullName.Length > 0));
-        var relations = await BuildRelationsAsync(name, mainline, parentName, cutoffSha, parallels, cancellation);
-        return (true, "范围已解析", new GraphScope(name, mainline, parallels, allRefs, relations, cutoffSha));
-    }
-
-    private async Task<string?> FindParentBranchNameAsync(string name)
-    {
-        var tree = await _projects.BuildTreeAsync(null, refresh: false, cachedOnly: true);
-        if (!HasProject(tree.Root, name))
-            tree = await _projects.BuildTreeAsync(null, refresh: true, cachedOnly: false);
-        if (tree.Root == null)
-            return null;
-
-        var path = new List<ProjectService.BranchNode>();
-        if (!TryFindPath(tree.Root, name, path) || path.Count < 2)
-            return null;
-        return path[^2].BranchName;
+        var relations = await BuildRelationsAsync(repo, name, mainline, parentName, cutoffSha, parallels, cancellation);
+        return (true, "范围已解析", new GraphScope(name, mainline, parallels, allRefs, relations, cutoffSha, repo));
     }
 
     private async Task<List<GraphBranchRelation>> BuildRelationsAsync(
+        string repo,
         string project,
         GraphRef mainline,
         string parentName,
@@ -119,7 +105,7 @@ public sealed partial class GraphService
                 ParentBranch = project,
                 BaselineSha = other.Length == 0
                     ? ""
-                    : await MergeBaseOrEmptyAsync(mainline.FullName, other, cancellation),
+                    : await MergeBaseOrEmptyAsync(repo, mainline.FullName, other, cancellation),
             });
         }
 
@@ -158,6 +144,7 @@ public sealed partial class GraphService
     /// squash / fast-forward 没有第二父，无法还原平行行。
     /// </summary>
     private async Task<List<GraphRef>> DiscoverMergedHistoriesAsync(
+        string repo,
         string mainlineRef,
         string cutoffSha,
         HashSet<string> firstParent,
@@ -171,7 +158,7 @@ public sealed partial class GraphService
             args.Add(cutoffSha);
         }
 
-        var result = await GitRunner.RunAsync(_projects.BareRepo, args, cancellation: cancellation);
+        var result = await GitRunner.RunAsync(repo, args, cancellation: cancellation);
         if (!result.Success)
             return [];
 
@@ -203,7 +190,7 @@ public sealed partial class GraphService
     }
 
     private async Task<HashSet<string>> ReadFirstParentShasAsync(
-        string rev, string cutoffSha, CancellationToken cancellation)
+        string repo, string rev, string cutoffSha, CancellationToken cancellation)
     {
         var args = new List<string> { "rev-list", "--first-parent", rev };
         if (!string.IsNullOrWhiteSpace(cutoffSha))
@@ -212,7 +199,7 @@ public sealed partial class GraphService
             args.Add(cutoffSha);
         }
 
-        var result = await GitRunner.RunAsync(_projects.BareRepo, args, cancellation: cancellation);
+        var result = await GitRunner.RunAsync(repo, args, cancellation: cancellation);
         var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         if (!result.Success)
             return set;
@@ -226,9 +213,10 @@ public sealed partial class GraphService
         return set;
     }
 
-    private async Task<int> CountAheadAsync(string mainlineRef, string otherRef, CancellationToken cancellation)
+    private async Task<int> CountAheadAsync(
+        string repo, string mainlineRef, string otherRef, CancellationToken cancellation)
     {
-        var result = await GitRunner.RunAsync(_projects.BareRepo,
+        var result = await GitRunner.RunAsync(repo,
             ["rev-list", "--count", $"{mainlineRef}..{otherRef}"], cancellation: cancellation);
         if (!result.Success)
             return 0;
@@ -266,28 +254,6 @@ public sealed partial class GraphService
     }
 
     private static bool IsExcludedProjectRef(string project, string logicalName)
-    {
-        if (logicalName.Equals(project, StringComparison.OrdinalIgnoreCase))
-            return true;
-        return NumberedProjectName.IsMatch(logicalName);
-    }
-
-    private static bool HasProject(ProjectService.BranchNode? root, string name)
-        => root != null && TryFindPath(root, name, []);
-
-    private static bool TryFindPath(
-        ProjectService.BranchNode node, string name, List<ProjectService.BranchNode> path)
-    {
-        path.Add(node);
-        if (node.BranchName.Equals(name, StringComparison.OrdinalIgnoreCase))
-            return true;
-        foreach (var child in node.Children)
-        {
-            if (TryFindPath(child, name, path))
-                return true;
-        }
-
-        path.RemoveAt(path.Count - 1);
-        return false;
-    }
+        => logicalName.Equals(project, StringComparison.OrdinalIgnoreCase)
+           || logicalName.Equals(ProjectService.MainlineBranch, StringComparison.OrdinalIgnoreCase);
 }

@@ -108,6 +108,30 @@ internal static class SmokeKit
     public static string GitlinkSha(string repository, string relativePath)
         => FirstLine(Run(repository, ["rev-parse", $"HEAD:{relativePath}"]));
 
+    public static async Task InitStandaloneRepo(string path, string user, string email)
+    {
+        Directory.CreateDirectory(path);
+        Ensure(await GitRunner.RunAsync(path, ["init", "-b", "main"]), $"init {Path.GetFileName(path)}");
+        await ConfigureIdentity(path, user, email);
+    }
+
+    public static void BindLibrary(
+        MemorySettings settings, string libraryRoot, string templateName = "0000-000-Template")
+    {
+        settings.Set(ProjectService.KeyLibraryRoot, libraryRoot);
+        settings.Set(ProjectService.KeyBaseBranch, templateName);
+    }
+
+    public static async Task WriteProjectManifest(string path, string source, bool isTemplate = false)
+    {
+        var json =
+            "{\n  \"schemaVersion\": 1,\n  \"template\": { \"isTemplate\": " +
+            (isTemplate ? "true" : "false") +
+            ", \"source\": \"" + source +
+            "\" },\n  \"project\": { \"id\": \"x\", \"name\": \"x\", \"title\": \"x\", \"status\": \"active\", \"version\": \"1.0.0\" }\n}\n";
+        await File.WriteAllTextAsync(Path.Combine(path, "project.manifest.json"), json);
+    }
+
     public static async Task ConfigureIdentity(string repository, string user, string email)
     {
         Ensure(await GitRunner.RunAsync(repository, ["config", "user.name", user]), "git user name");
