@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
@@ -463,17 +464,7 @@ public sealed class FormatInventoryService
                 .ConfigureAwait(false);
             var headSha = head.Success ? head.Output.Trim() : "nohead";
 
-            var indexStamp = "noindex";
-            var gitPath = Path.Combine(root, ".git");
-            if (File.Exists(gitPath))
-            {
-                // worktree 的 .git 是文件,内含真实 gitdir 路径
-                var line = await File.ReadAllTextAsync(gitPath, cancellation).ConfigureAwait(false);
-                var dir = line.Replace("gitdir:", "").Trim();
-                var index = Path.Combine(dir, "index");
-                if (File.Exists(index))
-                    indexStamp = File.GetLastWriteTimeUtc(index).Ticks.ToString();
-            }
+            var indexStamp = await ReadIndexStampAsync(root, cancellation).ConfigureAwait(false);
 
             return $"{depth}|{headSha}|{indexStamp}|" +
                    $"{HashFile(Path.Combine(root, ".gitignore"))}|{HashFile(Path.Combine(root, ".gitattributes"))}";
@@ -482,6 +473,45 @@ public sealed class FormatInventoryService
         {
             return null; // 键构建失败 → 视为无缓存,照常重扫
         }
+    }
+
+    /// <summary>
+    /// 读取索引文件的时间戳，作为「HEAD 没动但暂存区动了」的缓存失效信号。
+    /// </summary>
+    /// <remarks>
+    /// 两种仓形态都要支持：独立仓的 <c>.git</c> 是目录，索引就在其中；
+    /// git worktree 的 <c>.git</c> 是文件，内含真实 gitdir 路径。
+    /// 一项目一仓（DEC-015）之后绝大多数项目是前者，而这里原本只处理后者，
+    /// 于是 indexStamp 恒为 noindex——键再也感知不到暂存区变化，暂存但未提交时会命中过期缓存。
+    /// </remarks>
+    internal static async Task<string> ReadIndexStampAsync(string root, CancellationToken cancellation)
+    {
+        const string missing = "noindex";
+        var gitPath = Path.Combine(root, ".git");
+
+        string gitDir;
+        if (Directory.Exists(gitPath))
+        {
+            gitDir = gitPath;
+        }
+        else if (File.Exists(gitPath))
+        {
+            var line = await File.ReadAllTextAsync(gitPath, cancellation).ConfigureAwait(false);
+            gitDir = line.Replace("gitdir:", "").Trim();
+            if (gitDir.Length == 0)
+                return missing;
+            if (!Path.IsPathRooted(gitDir))
+                gitDir = Path.GetFullPath(Path.Combine(root, gitDir));
+        }
+        else
+        {
+            return missing;
+        }
+
+        var index = Path.Combine(gitDir, "index");
+        return File.Exists(index)
+            ? File.GetLastWriteTimeUtc(index).Ticks.ToString(CultureInfo.InvariantCulture)
+            : missing;
     }
 
     private static string HashFile(string path)
