@@ -16,8 +16,11 @@ namespace HistoryJanus.Smoke;
 /// </remarks>
 internal static class SmokeRunner
 {
-    /// <summary>单个套件的墙钟上限。最慢的真实套件约 10 秒，20 秒足以覆盖冷启动抖动。</summary>
-    private static readonly TimeSpan SuiteTimeout = TimeSpan.FromSeconds(20);
+    /// <summary>
+    /// 单个套件的墙钟上限。套件并行时会争用本机 git；SubmoduleSafety 单独约 13 秒，
+    /// 与 GitRules / RepositoryTargets 同时跑会超过 20 秒，40 秒覆盖这层抖动。
+    /// </summary>
+    private static readonly TimeSpan SuiteTimeout = TimeSpan.FromSeconds(40);
 
     internal readonly record struct SuiteOutcome(
         string Name,
