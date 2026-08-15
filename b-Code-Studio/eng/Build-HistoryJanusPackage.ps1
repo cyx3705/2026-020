@@ -2,7 +2,10 @@
 param(
     [ValidateSet('Release')]
     [string]$Configuration = 'Release',
-    [string]$OutputRoot
+    [string]$OutputRoot,
+    # 宿主快照根。缺省按"本仓与 2026-023-HistoryVulcan 同库根"的相对路径推导；
+    # 从 AI 工作树构建时工作树在库根之外，该相对路径必然指空，由调用方显式传入。
+    [string]$HistoryVulcanPackageRoot = $env:HISTORYVULCAN_PACKAGE_ROOT
 )
 
 $ErrorActionPreference = 'Stop'
@@ -28,7 +31,12 @@ if ($apiDocuments.Count -ne 1) {
 }
 $apiDocumentSource = $apiDocuments[0].FullName
 $apiDocumentName = $apiDocuments[0].Name
-$historyVulcanRoot = [IO.Path]::GetFullPath((Join-Path $repoRoot '..\2026-023-HistoryVulcan\z-HistoryVulcan'))
+$historyVulcanRoot = if ([string]::IsNullOrWhiteSpace($HistoryVulcanPackageRoot)) {
+    [IO.Path]::GetFullPath((Join-Path $repoRoot '..\2026-023-HistoryVulcan\z-HistoryVulcan'))
+}
+else {
+    [IO.Path]::GetFullPath($HistoryVulcanPackageRoot)
+}
 $workRoot = Join-Path $publishRoot 'work'
 $transactionId = [Guid]::NewGuid().ToString('N')
 $stage = Join-Path $workRoot "HistoryJanus-candidate-$transactionId"
