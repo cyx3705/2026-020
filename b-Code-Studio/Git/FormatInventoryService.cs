@@ -481,7 +481,7 @@ public sealed class FormatInventoryService
     /// <remarks>
     /// 两种仓形态都要支持：独立仓的 <c>.git</c> 是目录，索引就在其中；
     /// git worktree 的 <c>.git</c> 是文件，内含真实 gitdir 路径。
-    /// 一项目一仓（DEC-015）之后绝大多数项目是前者，而这里原本只处理后者，
+    /// 一项目一仓之后绝大多数项目是前者，而这里原本只处理后者，
     /// 于是 indexStamp 恒为 noindex——键再也感知不到暂存区变化，暂存但未提交时会命中过期缓存。
     /// </remarks>
     internal static async Task<string> ReadIndexStampAsync(string root, CancellationToken cancellation)
