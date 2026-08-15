@@ -1,6 +1,6 @@
 # HistoryJanus AI 开发工作流与分支图谱计划
 
-更新日期：2026-08-12
+更新日期：2026-08-16
 
 ## 计划定位
 
@@ -16,9 +16,10 @@ HistoryDiana 继续作为跨项目发布引擎，不把发布实现复制到 Jan
 ### 目标
 
 1. 在项目集合中打开任一编号项目，显示从左到右展开的 Git 有向无环图（DAG）。
-2. 把编号分支作为主线，把普通继承分支和 `ai/...` 工作分支显示为不同层级的支线。
+2. 把项目仓内的 `main` 作为主线，把本仓普通分支和 `ai/...` 工作分支显示为平行支线；项目继承关系保留在继承树，不混入提交泳道。
 3. 把提交、分叉、合并、远端引用移动和 Diana 验证证据绑定到具体提交 SHA。
-4. 以 Janus 作为入口完成 AI 工作树创建、状态查看、候选验证、人工审批、合并和清理。
+4. 以 Janus 作为可视入口查看 AI 工作区和验证状态，并通过 Diana 的公开命令请求创建、候选验证、
+   人工审批后的合并编排和清理；工作区与发布状态的写入真值仍由 Diana 拥有。
 5. 保持 Janus、Diana、Vulcan、Mercury、Minerva 的模块边界和独立发布节奏。
 
 ### 非目标
@@ -34,19 +35,20 @@ HistoryDiana 继续作为跨项目发布引擎，不把发布实现复制到 Jan
 
 | 现有组件 | 复用方式 |
 | --- | --- |
-| `ProjectService` | 复用库根、受管路径校验、独立仓列举和工作树状态读取 |
+| `ProjectService` | 复用库根、受管路径校验、独立仓列举和项目主工作树状态读取；不据此复制 Diana 的 AI 工作区写路径 |
 | `ProjectCommands` | 复用项目列表、创建、删除、提交、推送、修复和统一确认策略 |
-| `BranchTreeService` | 复用基线分支、继承树和分支节点构建；图谱只补充提交级父子边 |
+| `BranchTreeService` | 只复用项目继承关系；提交图谱由 `GraphService` 从当前项目仓的 refs 与父边构建 |
 | `BranchHistoryService` / `HistoryRecorder` | 复用分支提交历史、操作留痕和说明覆盖，不另建审计格式 |
 | 宿主 `CommandBus` | 所有页面动作和跨模块调用均通过稳定命令名执行 |
-| HistoryDiana 发布管线 | Janus 只创建/查询发布任务并展示证据；构建和正式提升仍由 Diana 执行 |
+| HistoryDiana 开发管线 | Diana 拥有 AI 工作区、候选、试用、正式提升和证据；Janus 只请求公开命令并展示结果 |
 | HistoryVulcan MCP/确认层 | MCP 投影、危险操作确认、模块生命周期和 Web/HTTP 边界继续由宿主拥有 |
 
 Janus 页面不得直接加载 Diana DLL、读取 Diana 私有类型或拼接任意 PowerShell；跨模块只调用公开命令。
 
 ## 工作树与分支命名
 
-AI 工作树根目录默认配置为 `F:\ai工作区`，实际值必须由 Janus 设置项提供，不写死在代码中。
+AI 工作树根目录及分支命名由 Diana 的正式开发合同提供，Janus 不维护第二个根目录设置或序号分配器。
+界面只展示 Diana 返回的绝对路径、基线 SHA 和分支名。当前约定的展示格式为：
 AI 分支格式为：
 
 ```text
@@ -55,16 +57,16 @@ ai/<编号项目>/<基线短SHA>-<序号>-<目标简称>
 
 例如：`ai/2026-021-HistoryMercury/a1b2c3d-1-fix-dock-layout`。
 
-- 完整基线 SHA 保存在注册记录，短 SHA 只用于展示和分支名。
+- 完整基线 SHA 保存在 Diana 的工作区记录，短 SHA 只用于展示和分支名。
 - `<目标简称>` 只允许 ASCII 小写字母、数字和连字符。
-- 序号由 Janus 按“项目 + 基线”自动分配，AI 不自行猜测。
+- 序号由 Diana 按其正式合同分配，Janus 和 AI 都不自行猜测。
 - AI worktree 必须是**本项目仓**的额外 linked worktree，不能是普通复制目录，也不能再挂到共享裸仓上。
 
 ## AI 工作任务状态
 
-Janus 在宿主数据根的 `HistoryJanus` 子目录保存工作任务注册表，例如 `ai-worktrees.json`。
-每条记录至少包含：任务 ID、项目名、基线 SHA、分支名、绝对 worktree 路径、目标简称、当前 HEAD、
-状态、Diana `releaseId`、验证证据、审批人、审批时间、创建时间和关闭时间。
+Diana 的工作区和发布记录是任务状态真值。Janus 不再写一份 `ai-worktrees.json` 与 Diana 竞争；只按公开
+命令读取任务 ID、项目名、基线 SHA、分支名、绝对 worktree 路径、当前 HEAD、状态、验证证据和时间戳，
+页面缓存只用于展示，不能反向证明任务已验证、已批准或已清理。
 
 状态只能按以下方向推进：
 
@@ -79,10 +81,10 @@ active -> ready -> verified -> approved -> merged -> cleaned
 ## 用户工作流
 
 1. 在 Janus 项目总览选择编号项目和基线节点。
-2. Janus 创建 AI 分支及 `F:\ai工作区` linked worktree，返回任务 ID、路径和分支名。
+2. Janus 请求 Diana 创建 AI 分支及隔离工作树，并展示 Diana 返回的任务 ID、路径和分支名。
 3. AI 在该工作树中开发并通过现有提交命令保存提交。
 4. Janus 展示提交图、dirty 状态、差异摘要和基线关系；AI 点击“准备验证”锁定当前 HEAD。
-5. Janus 请求 Diana 对该 HEAD 执行候选构建与验证，保存不可变 `releaseId` 和证据。
+5. Janus 请求 Diana 对该 HEAD 执行候选构建与验证；`releaseId` 和证据由 Diana 保存，Janus 只读取展示。
 6. 人工查看差异和证据后批准**指定 HEAD**。
 7. Janus 在合并前重新确认工作树干净、HEAD 未变化、目标分支未漂移且无冲突，再执行合并。
 8. 合并后的主线必须重新调用 Diana 正式候选验证；只有主线 HEAD 对应证据通过后才允许正式发布。
@@ -93,7 +95,7 @@ active -> ready -> verified -> approved -> merged -> cleaned
 Git 真值是 DAG，不是线性日志。界面可以按时间从左到右布局，但数据必须保留：
 
 - commit SHA、父提交 SHA 列表、作者、时间、标题、变更文件摘要；
-- 本地/远端 ref、编号主线、普通继承分支和 AI 分支类型；
+- 本地/远端 ref、`main` 主线、普通本仓分支和 AI 分支类型；项目继承关系不进入提交泳道；
 - merge commit 与 merge parent；
 - fetch/push/ref 移动事件（不创建伪提交节点）；
 - Diana 验证、人工审批和正式发布附着的 commit SHA。
@@ -105,32 +107,30 @@ Git 真值是 DAG，不是线性日志。界面可以按时间从左到右布局
 ### Janus 图谱读取（首版）
 
 - `janus.graph.summary`：项目、分支、HEAD、节点数和 dirty 状态摘要。
-- `janus.graph.branches`：主线、继承分支、AI 分支及其基线关系。
+- `janus.graph.branches`：本仓 `main`、普通分支、AI 分支及其分叉/合并关系；项目继承树另行读取。
 - `janus.graph.commits`：按项目、分支、时间和游标分页读取提交节点。
 - `janus.graph.node`：读取单个提交、父边、差异摘要和关联证据。
 
 ### Janus AI 工作树生命周期
 
-- `janus.aiworktree.create`：创建任务、分支和 linked worktree。
+- `janus.aiworktree.create`：请求 Diana 创建任务、分支和隔离工作树。
 - `janus.aiworktree.list`：列出任务状态和路径。
 - `janus.aiworktree.status`：读取 dirty、HEAD、差异和验证匹配情况。
 - `janus.aiworktree.ready`：锁定待验证 HEAD。
 - `janus.aiworktree.approve`：人工批准指定验证证据对应的 HEAD。
 - `janus.aiworktree.merge`：经宿主确认合并到目标编号分支。
-- `janus.aiworktree.cleanup`：仅在合并或明确放弃后清理 worktree 和分支。
+- `janus.aiworktree.cleanup`：仅在合并或明确放弃后请求 Diana 清理 worktree；分支保留/删除规则以 Diana 合同为准。
 
-读取命令优先开放为只读 MCP；创建、ready、approve、merge、cleanup 必须保留宿主确认或 MCP 隐藏策略。
+以上命令仍是后续 Janus 可视编排面的计划，不属于 4.0.0 运行时命令。读取命令优先开放为只读 MCP；
+创建、ready、approve、merge、cleanup 必须保留宿主确认或 MCP 隐藏策略，并且不得绕开 Diana 直接执行
+工作区或发布写操作。
 
-### Diana 协作面
+### Diana 协作面（等待新管线合同冻结）
 
-Diana 后续增加稳定的发布任务接口，而不是把脚本搬到 Janus：
-
-- `diana.release.prepare`：绑定项目、源 HEAD 和发布登记，创建候选任务；
-- `diana.release.status`：查询构建、合同、Smoke、质量门禁和候选 SHA；
-- `diana.release.evidence`：读取不可变证据；
-- `diana.release.publish`：只接受与通过审批的主线 HEAD 完全匹配的 releaseId，并执行正式提升。
-
-Janus 只消费这些命令的结构化结果。第一阶段也可以先由现有发布脚本提供内部适配器，待合同稳定后再投影 MCP。
+Diana 继续拥有 AI 工作树、候选构建、测试、试用、正式提升、文档镜像和回滚。Janus 只消费 Diana
+正式发布的命令及其结构化结果，不在本计划中替 Diana 预先命名尚未冻结的命令，也不拼接发布脚本。
+具体入口和证据字段必须在 Diana 新测试管线的 `moduleDevelopment` 合同发布后，通过
+`diana.docs.catalog` 和对应正式文档通道读取，再同步到 Janus 技术合同与验证合同。
 
 ## 分阶段实施
 
@@ -142,15 +142,17 @@ Janus 只消费这些命令的结构化结果。第一阶段也可以先由现�
 
 ### Phase 1：只读分支图谱
 
-- 在现有 `overview` 中增加中央图谱视图和项目聚焦。
+- 状态：已完成。图谱使用独立 `graph` 窗口并入宿主控制台标签组；`overview` 保持项目列表，二者共享当前项目选择。
 - 复用 `ProjectService`、`BranchTreeService`、`janus.history.*` 数据；先完成分页、虚拟化、节点详情和过滤。
-- 验收：真实仓库与临时多分支仓库的父边、merge parent、主线/AI 分支分类一致；无写操作。
+- 验收：真实仓库与临时多分支仓库的父边、merge parent、主线/AI 分支分类一致；开放分支贴近分叉点，
+  已合并历史分支贴近 merge；无写操作。
 
 ### Phase 2：AI worktree 生命周期
 
-- 复用 `ProjectService` 的 worktree 创建/删除/路径守卫和 `ProjectCommands` 的确认通道。
-- 新增注册表与 `create/list/status/ready`，不复制 GitRunner。
-- 验收：创建、脏状态、提交、ready、取消和清理失败均有可复验记录；越界路径和受保护分支被拒绝。
+- 通过 Diana 正式命令读取和驱动工作区生命周期，不在 Janus 新增第二份注册表、路径根或 Git 写实现。
+- 新增 `create/list/status/ready` 可视编排面时，只保存页面态和 Diana 任务 ID，不复制 GitRunner。
+- 验收：创建、脏状态、提交、ready、取消和清理失败均能从 Diana 记录复验；Janus 缓存丢失不影响真值，
+  越界路径和受保护分支由 Diana 拒绝并原样展示。
 
 ### Phase 3：Diana 候选验证协作
 

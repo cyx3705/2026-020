@@ -3,7 +3,7 @@ using HistoryJanus.Git;
 namespace HistoryJanus.Views;
 
 /// <summary>
-/// 提交图谱时间轴泳道布局。X 为提交时间（左旧右新），Y 按主线与平行分支动态分行。
+/// 提交图谱泳道布局。X 由 Git 父边决定（左祖右孙），Y 优先贴主线并按水平占用复用空行。
 /// 已合并平行行保留合并前节点，右侧不画 tip。纯计算：不引用 WPF，不发指令。
 /// </summary>
 internal static class GraphLayout
@@ -70,42 +70,25 @@ internal static class GraphLayout
         }
 
         var assignment = AssignLanes(source, bySha, laneRefs, projectName);
-        var used = CompactLanes(assignment.IndexBySha, assignment.Meta);
-        var min = source.Min(node => node.CommittedAt);
-        var max = source.Max(node => node.CommittedAt);
-        var span = Math.Max(1d, (max - min).TotalSeconds);
-        var usable = Math.Max(source.Count * (NodeWidth + MinGap), 480d);
+        var columns = AssignColumns(source, bySha, assignment.IndexBySha);
+        var used = PackTowardMainline(assignment.IndexBySha, assignment.Meta, columns);
+        var logicalMeta = assignment.Meta.ToDictionary(item => item.Index);
 
         var placed = new Dictionary<string, PlacedNode>(StringComparer.OrdinalIgnoreCase);
         foreach (var node in source)
         {
-            var laneIndex = used.IndexBySha.TryGetValue(node.Sha, out var index) ? index : 0;
-            var meta = used.Meta[laneIndex];
-            var x = PaddingX + (node.CommittedAt - min).TotalSeconds / span * usable;
+            var logicalIndex = assignment.IndexBySha.TryGetValue(node.Sha, out var assigned)
+                ? assigned
+                : 0;
+            var laneIndex = used.IndexBySha.TryGetValue(node.Sha, out var packed) ? packed : 0;
+            var meta = logicalMeta.TryGetValue(logicalIndex, out var found) ? found : logicalMeta[0];
+            var x = columns.TryGetValue(node.Sha, out var column) ? column : PaddingX;
             var y = LaneTop(laneIndex) + (LaneHeight - NodeHeight) / 2;
             placed[node.Sha] = new PlacedNode(
                 node, laneIndex, meta.Title, meta.IsOpen, IsOpenTip: false, x, y);
         }
 
-        foreach (var laneIndex in used.Meta.Keys.OrderBy(index => index))
-        {
-            var row = placed.Values
-                .Where(item => item.LaneIndex == laneIndex)
-                .OrderBy(item => item.X)
-                .ThenBy(item => item.Node.Sha, StringComparer.Ordinal)
-                .ToList();
-            for (var i = 1; i < row.Count; i++)
-            {
-                var minX = row[i - 1].X + NodeWidth + MinGap;
-                if (row[i].X < minX)
-                    row[i] = row[i] with { X = minX };
-            }
-
-            foreach (var item in row)
-                placed[item.Node.Sha] = item;
-        }
-
-        foreach (var lane in used.Meta.Values.Where(item => item.Index > 0 && item.IsOpen))
+        foreach (var lane in assignment.Meta.Where(item => item.Index > 0 && item.IsOpen))
         {
             if (string.IsNullOrWhiteSpace(lane.TipSha) ||
                 !placed.TryGetValue(lane.TipSha, out var tip))
@@ -131,8 +114,22 @@ internal static class GraphLayout
                 to.Y + NodeHeight / 2));
         }
 
-        var lanes = used.Meta.Values.OrderBy(item => item.Index).Select(ToPublicLane).ToList();
-        var height = PaddingY * 2 + LaneHeight * Math.Max(1, lanes.Count);
+        var lanes = new List<LaneInfo>(assignment.Meta.Count);
+        foreach (var meta in assignment.Meta)
+        {
+            var physical = 0;
+            foreach (var pair in assignment.IndexBySha)
+            {
+                if (pair.Value != meta.Index || !used.IndexBySha.TryGetValue(pair.Key, out physical))
+                    continue;
+                break;
+            }
+
+            lanes.Add(new LaneInfo(physical, meta.Title, meta.IsOpen));
+        }
+
+        var rowCount = used.Meta.Count == 0 ? 1 : used.Meta.Keys.Max() + 1;
+        var height = PaddingY * 2 + LaneHeight * Math.Max(1, rowCount);
         return new Result([.. placed.Values], drawn, lanes, width, height);
     }
 
@@ -250,24 +247,177 @@ internal static class GraphLayout
         return (indexBySha, meta);
     }
 
-    private static (Dictionary<string, int> IndexBySha, Dictionary<int, LaneMeta> Meta) CompactLanes(
-        Dictionary<string, int> indexBySha,
-        List<LaneMeta> meta)
+    /// <summary>
+    /// Reuse rows nearest the mainline. A later branch only moves down when its
+    /// X span collides with a branch already sitting on that row.
+    /// </summary>
+    private static (Dictionary<string, int> IndexBySha, Dictionary<int, LaneMeta> Meta) PackTowardMainline(
+        Dictionary<string, int> logicalBySha,
+        List<LaneMeta> logicalMeta,
+        IReadOnlyDictionary<string, double> columns)
     {
-        var remap = new Dictionary<int, int>();
-        var compacted = new Dictionary<int, LaneMeta>();
-        var next = 0;
-        foreach (var lane in meta)
+        var byLogical = new Dictionary<int, List<string>>();
+        foreach (var pair in logicalBySha)
         {
-            remap[lane.Index] = next;
-            compacted[next] = lane with { Index = next };
-            next++;
+            if (!byLogical.TryGetValue(pair.Value, out var shas))
+            {
+                shas = [];
+                byLogical[pair.Value] = shas;
+            }
+
+            shas.Add(pair.Key);
         }
 
-        var mapped = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-        foreach (var pair in indexBySha)
-            mapped[pair.Key] = remap.TryGetValue(pair.Value, out var index) ? index : 0;
-        return (mapped, compacted);
+        var physical = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var sha in byLogical.GetValueOrDefault(0) ?? [])
+            physical[sha] = 0;
+
+        var packedMeta = new Dictionary<int, LaneMeta>
+        {
+            [0] = logicalMeta[0] with { Index = 0 },
+        };
+        var taken = new Dictionary<int, List<(double Start, double End)>>();
+        var branches = new List<(LaneMeta Meta, List<string> Shas, double MinX, double MaxX)>();
+        foreach (var meta in logicalMeta)
+        {
+            if (meta.Index == 0)
+                continue;
+            var shas = byLogical.GetValueOrDefault(meta.Index) ?? [];
+            var minX = PaddingX;
+            var maxX = PaddingX;
+            var first = true;
+            foreach (var sha in shas)
+            {
+                var x = columns.TryGetValue(sha, out var column) ? column : PaddingX;
+                if (first)
+                {
+                    minX = x;
+                    maxX = x + NodeWidth;
+                    first = false;
+                }
+                else
+                {
+                    minX = Math.Min(minX, x);
+                    maxX = Math.Max(maxX, x + NodeWidth);
+                }
+            }
+
+            branches.Add((meta, shas, minX, maxX));
+        }
+
+        branches.Sort((left, right) =>
+        {
+            var byStart = left.MinX.CompareTo(right.MinX);
+            return byStart != 0 ? byStart : left.Meta.Index.CompareTo(right.Meta.Index);
+        });
+
+        foreach (var branch in branches)
+        {
+            var row = 1;
+            while (taken.TryGetValue(row, out var spans) &&
+                   spans.Any(span => span.Start < branch.MaxX && branch.MinX < span.End))
+                row++;
+
+            if (!taken.TryGetValue(row, out var bucket))
+            {
+                bucket = [];
+                taken[row] = bucket;
+            }
+
+            bucket.Add((branch.MinX, branch.MaxX));
+            foreach (var sha in branch.Shas)
+                physical[sha] = row;
+            packedMeta.TryAdd(row, branch.Meta with { Index = row });
+        }
+
+        foreach (var pair in logicalBySha)
+            physical.TryAdd(pair.Key, 0);
+        return (physical, packedMeta);
+    }
+
+    /// <summary>
+    /// Each commit sits immediately to the right of its rightmost parent and of
+    /// the previous commit on the same lane. Wall-clock timestamps never set X:
+    /// translating a whole lane to pin one end makes a longer historical row
+    /// overshoot the fork or stretch across the global time axis.
+    /// </summary>
+    private static Dictionary<string, double> AssignColumns(
+        IReadOnlyList<GraphCommitNode> nodes,
+        IReadOnlyDictionary<string, GraphCommitNode> bySha,
+        IReadOnlyDictionary<string, int> laneBySha)
+    {
+        var step = NodeWidth + MinGap;
+        var children = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+        var remaining = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var node in nodes)
+        {
+            children[node.Sha] = [];
+            remaining[node.Sha] = 0;
+        }
+
+        foreach (var node in nodes)
+        {
+            foreach (var parent in node.Parents ?? [])
+            {
+                if (!bySha.ContainsKey(parent))
+                    continue;
+                remaining[node.Sha]++;
+                children[parent].Add(node.Sha);
+            }
+        }
+
+        var ready = new List<GraphCommitNode>();
+        foreach (var node in nodes)
+        {
+            if (remaining[node.Sha] == 0)
+                ready.Add(node);
+        }
+
+        ready.Sort(CompareCommitOrder);
+        var x = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+        var lastOnLane = new Dictionary<int, double>();
+        while (ready.Count > 0)
+        {
+            var node = ready[0];
+            ready.RemoveAt(0);
+            var lane = laneBySha.TryGetValue(node.Sha, out var index) ? index : 0;
+            var nodeX = PaddingX;
+            if (lastOnLane.TryGetValue(lane, out var previous))
+                nodeX = Math.Max(nodeX, previous + step);
+            foreach (var parent in node.Parents ?? [])
+            {
+                if (x.TryGetValue(parent, out var parentX))
+                    nodeX = Math.Max(nodeX, parentX + step);
+            }
+
+            x[node.Sha] = nodeX;
+            lastOnLane[lane] = nodeX;
+
+            var added = false;
+            foreach (var childSha in children[node.Sha])
+            {
+                remaining[childSha]--;
+                if (remaining[childSha] != 0)
+                    continue;
+                ready.Add(bySha[childSha]);
+                added = true;
+            }
+
+            if (added)
+                ready.Sort(CompareCommitOrder);
+        }
+
+        foreach (var node in nodes)
+            x.TryAdd(node.Sha, PaddingX);
+        return x;
+    }
+
+    private static int CompareCommitOrder(GraphCommitNode left, GraphCommitNode right)
+    {
+        var byTime = left.CommittedAt.CompareTo(right.CommittedAt);
+        return byTime != 0
+            ? byTime
+            : StringComparer.OrdinalIgnoreCase.Compare(left.Sha, right.Sha);
     }
 
     private static GraphCommitNode? ResolveTip(
@@ -330,9 +480,6 @@ internal static class GraphLayout
 
     private static LaneInfo ToLaneInfo(int index, GraphRef lane, string projectName)
         => new(index, LaneTitle(lane, projectName, index == 0), index == 0 || lane.IsOpen);
-
-    private static LaneInfo ToPublicLane(LaneMeta meta)
-        => new(meta.Index, meta.Title, meta.IsOpen);
 
     private sealed record LaneMeta(int Index, string Title, bool IsOpen, string TipSha);
 }

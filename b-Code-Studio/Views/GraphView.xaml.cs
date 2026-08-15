@@ -10,7 +10,7 @@ using HistoryJanus.Git;
 
 namespace HistoryJanus.Views;
 
-/// <summary>独立窗口提交图谱：时间轴泳道 + 可视窗口裁剪。</summary>
+/// <summary>独立窗口提交图谱：父边拓扑泳道 + 可视窗口裁剪。</summary>
 public partial class GraphView : UserControl
 {
     private const int PageLimit = 200;
