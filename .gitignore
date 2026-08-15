@@ -44,3 +44,6 @@ z-Package-AppShell/staging/
 b-Publish/
 
 # b-Publish is generated staging; z-Package is the tracked formal release snapshot.
+
+# 本机覆盖点：AI 工作树里指回来源仓的宿主快照，不入库
+Directory.Build.user.props
