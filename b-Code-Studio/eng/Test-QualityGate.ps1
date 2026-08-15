@@ -1,5 +1,9 @@
 ﻿[CmdletBinding()]
-param()
+param(
+    # 宿主快照根。缺省按"本仓与 2026-023-HistoryVulcan 同库根"的相对路径推导；
+    # 从 AI 工作树运行时工作树在库根之外，该相对路径必然指空，由调用方显式传入。
+    [string]$HistoryVulcanPackageRoot = $env:HISTORYVULCAN_PACKAGE_ROOT
+)
 
 $ErrorActionPreference = 'Stop'
 
@@ -221,7 +225,12 @@ if (Test-Path -LiteralPath $packageRoot) {
 }
 
 # --- 7. 宿主合同预检：发布脚本同源检查日常化 --------------------------------------------
-$vulcanRoot = [IO.Path]::GetFullPath((Join-Path $root '..\2026-023-HistoryVulcan\z-HistoryVulcan'))
+$vulcanRoot = if ([string]::IsNullOrWhiteSpace($HistoryVulcanPackageRoot)) {
+    [IO.Path]::GetFullPath((Join-Path $root '..\2026-023-HistoryVulcan\z-HistoryVulcan'))
+}
+else {
+    [IO.Path]::GetFullPath($HistoryVulcanPackageRoot)
+}
 $vulcanManifestPath = Join-Path $vulcanRoot 'manifest.json'
 $vulcanCorePath = Join-Path $vulcanRoot 'host\HistoryVulcan.Core.dll'
 if (-not (Test-Path -LiteralPath $vulcanManifestPath -PathType Leaf) -or

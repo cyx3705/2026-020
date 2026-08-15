@@ -5,7 +5,7 @@ param(
     [string]$OutputRoot,
     # 宿主快照根。缺省按"本仓与 2026-023-HistoryVulcan 同库根"的相对路径推导；
     # 从 AI 工作树构建时工作树在库根之外，该相对路径必然指空，由调用方显式传入。
-    [string]$HistoryVulcanPackageRoot
+    [string]$HistoryVulcanPackageRoot = $env:HISTORYVULCAN_PACKAGE_ROOT
 )
 
 $ErrorActionPreference = 'Stop'
