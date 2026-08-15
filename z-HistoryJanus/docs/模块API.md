@@ -1,4 +1,4 @@
-# HistoryJanus 3.9.4 模块 API
+# HistoryJanus 4.0.0 模块 API
 
 本文件是其他模块和项目消费 HistoryJanus 的唯一人工合同。运行时命令目录是参数、确认策略和可用性的最终真值；历史文档和 Janus 内部类型不构成公开 API。
 
@@ -6,7 +6,7 @@
 
 - 正式快照：`z-HistoryJanus`。
 - 模块名：`HistoryJanus`。
-- 版本：`3.9.4`。
+- 版本：`4.0.0`。
 - 入口：`HistoryJanus.dll`。
 - 宿主基线：HistoryVulcan `3.9.0` current-host 快照，从 `2026-023-HistoryVulcan/z-HistoryVulcan` 消费；该快照的 `sourceDirty` 仍由 HistoryVulcan manifest 如实标记。
 - 主题：页面使用 HistoryVulcan `Shell.Brush.*` 动态资源，跟随宿主深色/浅色切换，不在模块内维护第二套主题。
@@ -15,7 +15,7 @@
 - UI：启用。
 - MCP：只读投影。
 
-本文件描述活动源的 `3.9.4` 候选合同；只有用户另行授权正式发布后，同版本 manifest 和二进制才会提升到
+本文件描述活动源的 `4.0.0` 候选合同；只有用户另行授权正式发布后，同版本 manifest 和二进制才会提升到
 `z-HistoryJanus`。发布前，z 快照自身的 manifest 与 checksum 仍是正式运行版本的真值。
 其他项目从 `z-HistoryJanus/docs/` 或 `diana.docs.janus` 读取已发布 API，从 z 快照读取 `module.manifest.json`、二进制和
 `SHA256SUMS`；不要从 `b-Publish`、Janus 的 `bin/obj`、HistoryVulcan 工作树或 Janus 历史文档建立依赖。
@@ -37,10 +37,10 @@ if (!result.Success)
 | ID | 标题 | 默认位置 | 用途 |
 | --- | --- | --- | --- |
 | `overview` | 项目总览 | 中央工作区 | 项目列表、工作树干净状态、z/Z 级元文件夹、最近提交与共享项目选择 |
-| `graph` | 分支图谱 | 并入控制台标签组 | 当前编号项目的提交 DAG；与宿主 `console` 同组，不占中央主窗口 |
+| `graph` | 分支图谱 | 并入控制台标签组 | 当前编号项目的提交 DAG；与宿主 `console` 同组，不占中央主窗口；开放分支贴近分叉点右侧，已合并历史分支贴近 merge 左侧 |
 | `projops` | 项目操作 | 左侧（宽度占比 `0.38`） | 创建、提交、推送；底部同一行分段切换 Git 文件规则、分支历史与 GitHub 连接治理 |
 
-三个 ID 是布局兼容合同。**默认落位**：`overview` 占中央工作区且不声明 `DefaultTabTarget`；`graph` 以 `Tab` 并入宿主 `console`（控制台由 HistoryVulcan 注册，不依赖 Mercury）；`projops` 停靠左侧、默认宽度占比 0.38。已保存的用户布局优先于默认落位。其他模块不能重复注册这些 ID；需要联动项目选择时应通过 Janus 命令读取事实，不访问页面私有状态。3.2.0 起撤销 `tree`、`meta`；3.3.0 起撤销 `history`；3.4.0 引入的 `github` 窗口在 3.7.0 退役，其内容并入 `projops` 底部分段。3.9.1 新增 `graph`，3.9.2 改为并入控制台（DEC-013）。GitHub 写操作（登录、注销、提交身份、origin 修改）维持仅限页面内经确认执行，不进入命令总线。
+三个 ID 是布局兼容合同。**默认落位**：`overview` 占中央工作区且不声明 `DefaultTabTarget`；`graph` 以 `Tab` 并入宿主 `console`（控制台由 HistoryVulcan 注册，不依赖 Mercury）；`projops` 停靠左侧、默认宽度占比 0.38。已保存的用户布局优先于默认落位。其他模块不能重复注册这些 ID；需要联动项目选择时应通过 Janus 命令读取事实，不访问页面私有状态。3.2.0 起撤销 `tree`、`meta`；3.3.0 起撤销 `history`；3.4.0 引入的 `github` 窗口在 3.7.0 退役，其内容并入 `projops` 底部分段。3.9.1 新增 `graph`，3.9.2 改为并入控制台（DEC-013）。GitHub 写操作（登录、注销、提交身份、origin 修改）由页面通过 `janus.github.*` 命令总线执行并服从宿主确认策略；只读刷新和连接诊断可使用模块内连接服务。
 
 ## 命令目录
 
@@ -48,14 +48,14 @@ if (!result.Success)
 
 3.7.0 再次收敛指令类：`debug` 类整体退役（`janus.debug.logflood` 与宿主 `vulcan.log.flood` 重复，`janus.debug.sleep` 无调用点），`meta` 类并入 `proj`（`janus.meta.list` → `janus.proj.metas`，`janus.meta.open` → `janus.proj.metaopen`）。3.8.0 业务命令为 35 条、类为 `proj` / `gitrule` / `history` / `github` 四类；加上模块宿主投影的 `janus.status`，运行时命令总数为 36 条。
 
-3.9.0（DEC-012）新增 `graph` 类四条只读 DAG 命令；3.9.1（DEC-013）改为独立图谱窗口与编号主线/平行泳道。业务命令 39 条、指令类五类（`proj` / `gitrule` / `history` / `github` / `graph`）；加上 `janus.status`，运行时命令总数为 **40** 条。
+3.9.0（DEC-012）新增 `graph` 类四条只读 DAG 命令；3.9.1（DEC-013）改为独立图谱窗口与编号主线/平行泳道。4.0.0（DEC-015）存储引擎改为独立仓：`name=` 是已登记项目目录名，仓内主线为 `main`。业务命令 39 条、指令类五类（`proj` / `gitrule` / `history` / `github` / `graph`）；加上 `janus.status`，运行时命令总数为 **40** 条。
 
 ### 模块与读取
 
 | 命令 | 模式 | 用途 |
 | --- | --- | --- |
 | `janus.status` | 只读 | 返回模块身份和注册状态 |
-| `janus.proj.list` | 只读 | 列出项目工作树；`status=true` 时结果含 `IsClean`（`true/false/null`）和 `WorktreeStatusMessage`，默认不扫描状态 |
+| `janus.proj.list` | 只读 | 列出已登记项目仓；`status=true` 时结果含 `IsClean`（`true/false/null`）和 `WorktreeStatusMessage`，默认不扫描状态 |
 | `janus.proj.tree` | 只读 | 读取或刷新继承树 |
 | `janus.proj.scan` | 只读 | 扫描项目大文件 |
 | `janus.proj.config` | 只读 | 返回项目命令配置 |
@@ -70,8 +70,8 @@ if (!result.Success)
 | `janus.github.accounts` | 只读 | 列出 GCM 中已知的 GitHub HTTPS 凭据账号 |
 | `janus.github.test` | 只读 | 检测 GitHub SSH/HTTPS 连接（`transport=auto\|ssh\|https`，`timeout=1..120`），不执行 push |
 | `janus.graph.summary` | 只读 | 查看编号项目图谱摘要：HEAD、节点数、分支与工作树 dirty 状态 |
-| `janus.graph.branches` | 只读 | 列出编号项目的主线与平行分支（含已合并历史）及基线关系 |
-| `janus.graph.commits` | 只读 | 按时间序分页读取项目窗口内的提交节点与父边（含 merge parent） |
+| `janus.graph.branches` | 只读 | 列出该项目仓的主线 `main` 与平行分支（含已合并历史）及基线关系 |
+| `janus.graph.commits` | 只读 | 按时间序分页读取本仓提交节点与父边（含 merge parent） |
 | `janus.graph.node` | 只读 | 读取单个提交的父边、文件差异摘要；证据槽本阶段为空 |
 | `janus.github.login` | 确认写入 | 启动服务器本机 Git Credential Manager 登录流程 |
 | `janus.github.logout` | 确认写入 | 注销指定 GitHub HTTPS 凭据账号 |
@@ -82,14 +82,14 @@ if (!result.Success)
 
 | 命令 | 用途 |
 | --- | --- |
-| `janus.proj.create` | 创建编号项目工作树 |
-| `janus.proj.delete` | 删除项目工作树 |
+| `janus.proj.create` | 从模板仓复制工作树并 `git init` 为独立仓 |
+| `janus.proj.delete` | 删除项目目录 |
 | `janus.proj.commit` | 提交指定项目 |
 | `janus.proj.push` | 推送指定项目 |
-| `janus.proj.commitall` | 批量提交项目 |
-| `janus.proj.pushall` | 批量推送项目 |
+| `janus.proj.commitall` | 批量提交各项目仓 |
+| `janus.proj.pushall` | 批量推送各项目仓 |
 | `janus.proj.open` | 请求打开项目位置 |
-| `janus.proj.repair` | 修复项目工作树 |
+| `janus.proj.repair` | 逐仓诊断独立仓与 status；不自动删盘 |
 | `janus.proj.note` | 写入项目历史说明 |
 | `janus.proj.metaopen` | 打开项目 Meta 目录 |
 | `janus.history.rollback` | 回滚到指定历史节点 |
@@ -123,3 +123,4 @@ if (!result.Success)
 - V3.9.2：图谱并入控制台标签组；从合并第二父还原已删除平行分支的历史行；去掉左侧泳道图例。
 - V3.9.3：新建/修复工作树时补齐裸标记覆盖（DEC-014）；图谱改为拖动背景平移，不再用滚轮。
 - V3.9.4：总览切换项目时图谱与分支历史消抖加载，不再取消进行中的宿主请求，避免控制台刷「请求处理失败」。
+- V4.0.0：存储引擎改为独立仓（DEC-015）；`name=` 为已登记项目目录名；仓内默认分支 `main`；DEC-014 作废；图谱 X 按 Git 父边逐点赋值（DEC-016）；平行泳道优先贴主线并复用空行（DEC-018）。

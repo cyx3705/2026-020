@@ -133,6 +133,17 @@
         <member name="M:HistoryJanus.Git.FormatInventoryService.BuildCacheKeyAsync(HistoryJanus.Git.WorktreeInfo,System.String,System.Threading.CancellationToken)">
             <summary>失效键 = HEAD sha + 索引 mtime + 两规则文件哈希;任一变化即重扫该项目。</summary>
         </member>
+        <member name="M:HistoryJanus.Git.FormatInventoryService.ReadIndexStampAsync(System.String,System.Threading.CancellationToken)">
+            <summary>
+            读取索引文件的时间戳，作为「HEAD 没动但暂存区动了」的缓存失效信号。
+            </summary>
+            <remarks>
+            两种仓形态都要支持：独立仓的 <c>.git</c> 是目录，索引就在其中；
+            git worktree 的 <c>.git</c> 是文件，内含真实 gitdir 路径。
+            一项目一仓之后绝大多数项目是前者，而这里原本只处理后者，
+            于是 indexStamp 恒为 noindex——键再也感知不到暂存区变化，暂存但未提交时会命中过期缓存。
+            </remarks>
+        </member>
         <member name="M:HistoryJanus.Git.FormatInventoryService.FormatOf(System.String)">
             <summary>路径 → 台账格式键;复合扩展(如 .tar.gz)取末段,无扩展名归入专用桶。</summary>
         </member>
@@ -636,12 +647,26 @@
         </member>
         <member name="T:HistoryJanus.Views.GraphLayout">
             <summary>
-            提交图谱时间轴泳道布局。X 为提交时间（左旧右新），Y 按主线与平行分支动态分行。
+            提交图谱泳道布局。X 由 Git 父边决定（左祖右孙），Y 优先贴主线并按水平占用复用空行。
             已合并平行行保留合并前节点，右侧不画 tip。纯计算：不引用 WPF，不发指令。
             </summary>
         </member>
+        <member name="M:HistoryJanus.Views.GraphLayout.PackTowardMainline(System.Collections.Generic.Dictionary{System.String,System.Int32},System.Collections.Generic.List{HistoryJanus.Views.GraphLayout.LaneMeta},System.Collections.Generic.IReadOnlyDictionary{System.String,System.Double})">
+            <summary>
+            Reuse rows nearest the mainline. A later branch only moves down when its
+            X span collides with a branch already sitting on that row.
+            </summary>
+        </member>
+        <member name="M:HistoryJanus.Views.GraphLayout.AssignColumns(System.Collections.Generic.IReadOnlyList{HistoryJanus.Git.GraphCommitNode},System.Collections.Generic.IReadOnlyDictionary{System.String,HistoryJanus.Git.GraphCommitNode},System.Collections.Generic.IReadOnlyDictionary{System.String,System.Int32})">
+            <summary>
+            Each commit sits immediately to the right of its rightmost parent and of
+            the previous commit on the same lane. Wall-clock timestamps never set X:
+            translating a whole lane to pin one end makes a longer historical row
+            overshoot the fork or stretch across the global time axis.
+            </summary>
+        </member>
         <member name="T:HistoryJanus.Views.GraphView">
-            <summary>独立窗口提交图谱：时间轴泳道 + 可视窗口裁剪。</summary>
+            <summary>独立窗口提交图谱：父边拓扑泳道 + 可视窗口裁剪。</summary>
             <summary>
             GraphView
             </summary>
