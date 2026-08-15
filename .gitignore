@@ -1,0 +1,49 @@
+# HistoryJanus baseline begin
+*.bak
+*.buildwithskipanalyzers
+*.cache
+*.dwl
+*.dwl2
+*.elk
+*.eod
+*.eox
+*.flk
+*.idb
+*.ilk
+*.lck
+*.log
+*.lref
+*.obj
+*.pdb
+*.slk
+*.suo
+*.tlog
+*.tmp
+*.up2date
+*.user
+*.vsidx
+*.xlk
+# HistoryJanus baseline end
+
+# IDE state
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# .NET build and test outputs
+**/bin/
+**/obj/
+TestResults/
+
+# Local package and deployment scratch
+*.tmp
+*.log
+z-Package-AppShell/staging/
+b-Publish/
+
+# b-Publish is generated staging; z-Package is the tracked formal release snapshot.
+
+# 本机覆盖点：AI 工作树里指回来源仓的宿主快照，不入库
+Directory.Build.user.props
