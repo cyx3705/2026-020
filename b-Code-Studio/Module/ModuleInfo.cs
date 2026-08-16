@@ -6,6 +6,7 @@ public sealed class ModuleInfo : ModuleInfoBase
 {
     public override string ModuleName => "HistoryJanus";
     // 指令域短拼：宿主按 CommandPrefix 投影 [ModuleCommand]，产出 janus.status
+    // Diana hello-tools 管线探针：不改变行为，只验证 worktree/cycle/merge。
     public string CommandPrefix => "janus";
     public override string Description => "项目、Git 与 GitHub 治理";
     public override string Author => "OneHistory";
