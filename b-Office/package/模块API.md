@@ -1,4 +1,4 @@
-# HistoryJanus 4.0.0 模块 API
+# HistoryJanus 4.1.0 模块 API
 
 本文件是其他模块和项目消费 HistoryJanus 的唯一人工合同。运行时命令目录是参数、确认策略和可用性的最终真值；历史文档和 Janus 内部类型不构成公开 API。
 
@@ -6,7 +6,7 @@
 
 - 正式快照：`z-HistoryJanus`。
 - 模块名：`HistoryJanus`。
-- 版本：`4.0.0`。
+- 版本：`4.1.0`。
 - 入口：`HistoryJanus.dll`。
 - 宿主基线：HistoryVulcan `3.9.0` current-host 快照，从 `2026-023-HistoryVulcan/z-HistoryVulcan` 消费；该快照的 `sourceDirty` 仍由 HistoryVulcan manifest 如实标记。
 - 主题：页面使用 HistoryVulcan `Shell.Brush.*` 动态资源，跟随宿主深色/浅色切换，不在模块内维护第二套主题。
@@ -15,7 +15,7 @@
 - UI：启用。
 - MCP：只读投影。
 
-本文件描述活动源的 `4.0.0` 候选合同；只有用户另行授权正式发布后，同版本 manifest 和二进制才会提升到
+本文件描述活动源的 `4.1.0` 候选合同；只有用户另行授权正式发布后，同版本 manifest 和二进制才会提升到
 `z-HistoryJanus`。发布前，z 快照自身的 manifest 与 checksum 仍是正式运行版本的真值。
 其他项目从 `z-HistoryJanus/docs/` 或 `diana.docs.janus` 读取已发布 API，从 z 快照读取 `module.manifest.json`、二进制和
 `SHA256SUMS`；不要从 `b-Publish`、Janus 的 `bin/obj`、HistoryVulcan 工作树或 Janus 历史文档建立依赖。
@@ -85,9 +85,9 @@ if (!result.Success)
 | `janus.proj.create` | 从模板仓复制工作树并 `git init` 为独立仓 |
 | `janus.proj.delete` | 删除项目目录 |
 | `janus.proj.commit` | 提交指定项目 |
-| `janus.proj.push` | 推送指定项目 |
+| `janus.proj.push` | 推送指定项目；仓库没有 origin 时先在 GitHub 上建同名仓库再推送（`visibility=public\|private`，默认 `public`） |
 | `janus.proj.commitall` | 批量提交各项目仓 |
-| `janus.proj.pushall` | 批量推送各项目仓 |
+| `janus.proj.pushall` | 批量推送各项目仓；同样对缺 origin 的项目按需建远端（`visibility` 同上） |
 | `janus.proj.open` | 请求打开项目位置 |
 | `janus.proj.repair` | 逐仓诊断独立仓与 status；不自动删盘 |
 | `janus.proj.note` | 写入项目历史说明 |
@@ -124,3 +124,4 @@ if (!result.Success)
 - V3.9.3：新建/修复工作树时补齐裸标记覆盖（DEC-014）；图谱改为拖动背景平移，不再用滚轮。
 - V3.9.4：总览切换项目时图谱与分支历史消抖加载，不再取消进行中的宿主请求，避免控制台刷「请求处理失败」。
 - V4.0.0：存储引擎改为独立仓（DEC-015）；`name=` 为已登记项目目录名；仓内默认分支 `main`；DEC-014 作废；图谱 X 按 Git 父边逐点赋值（DEC-016）；平行泳道优先贴主线并复用空行（DEC-018）。
+- V4.1.0：`push` / `pushall` 在仓库缺 `origin` 时按需创建 GitHub 同名仓库后再推送（DEC-019）。新增可选参数 `visibility`（`public` / `private`，默认 `public`）；命令数与窗口不变。令牌取自 GCM 已存的 HTTPS 凭据，模块不新增任何凭据配置项。`PushReport` 增加 `RemoteCreated` / `RemoteUrl` / `RemoteVisibility`，`BatchPushReport` 增加 `CreatedRemotes`；消费者按需投影，旧字段语义不变。

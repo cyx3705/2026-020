@@ -49,6 +49,14 @@ public sealed record SubmoduleOperationEntry(
     GitlinkKind Kind,
     bool Pushed = false);
 
+/// <summary>本次推送为某个项目新建（或复用）的远端仓库。</summary>
+public sealed record CreatedRemoteEntry(
+    string Project,
+    string FullName,
+    string Url,
+    string Visibility,
+    bool Created);
+
 public sealed record PushReport(
     bool Success,
     string Message,
@@ -56,7 +64,10 @@ public sealed record PushReport(
     IReadOnlyList<SubmoduleOperationEntry>? Submodules = null,
     bool PartialCompletion = false,
     RepositoryTarget Target = RepositoryTarget.Parent,
-    bool ParentPointerPending = false);
+    bool ParentPointerPending = false,
+    bool RemoteCreated = false,
+    string RemoteUrl = "",
+    string RemoteVisibility = "");
 
 public sealed record ProjectCommitResult(string Project, CommitReport Report);
 
@@ -75,7 +86,8 @@ public sealed record BatchPushReport(
     IReadOnlyList<SubmoduleOperationEntry> Submodules,
     bool PartialCompletion = false,
     RepositoryTarget Target = RepositoryTarget.Parent,
-    int ParentPointerPendingCount = 0);
+    int ParentPointerPendingCount = 0,
+    IReadOnlyList<CreatedRemoteEntry>? CreatedRemotes = null);
 
 /// <summary>直属 160000 gitlink 的结构化发现与只读状态校验。</summary>
 public sealed class GitlinkService
