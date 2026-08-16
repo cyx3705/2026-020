@@ -69,22 +69,26 @@ public sealed partial class ProjectService
         var result = await GitRunner.RunAsync(worktreePath,
             created == null ? ["push", "origin", "HEAD"] : ["push", "-u", "origin", "HEAD"],
             cancellation: cancellation);
-        if (!result.Success)
-            return new PushReport(false, $"父仓库推送失败(退出码 {result.ExitCode}):\n{result.Output}",
-                Submodules: entries, PartialCompletion: entries.Any(item => item.Pushed),
-                Target: target, ParentPointerPending: pendingParentCount > 0,
-                RemoteCreated: created?.Created ?? false,
-                RemoteUrl: created?.CloneUrl ?? string.Empty,
-                RemoteVisibility: created?.Visibility ?? string.Empty);
 
+        // 建仓的结果必须同时出现在成功和失败两条消息里：推送失败时用户只看到 git 的报错，
+        // 不说清楚就不知道 GitHub 上已经多了一个仓库。
         var prefix = created == null
             ? string.Empty
             : (created.Created ? $"已新建远端仓库 {created.FullName}（{created.Visibility}）；"
                 : $"已复用既有远端仓库 {created.FullName}（{created.Visibility}）；");
+        if (!result.Success)
+            return new PushReport(false,
+                $"{prefix}父仓库推送失败(退出码 {result.ExitCode}):\n{result.Output}",
+                Submodules: entries, PartialCompletion: entries.Any(item => item.Pushed),
+                Target: target, ParentPointerPending: pendingParentCount > 0,
+                RemoteCreated: created?.Created ?? false,
+                RemoteUrl: created?.OriginUrl ?? string.Empty,
+                RemoteVisibility: created?.Visibility ?? string.Empty);
+
         return new PushReport(true, $"{prefix}已推送到 origin (HEAD)\n{result.Output}".Trim(),
             true, entries, Target: target,
             RemoteCreated: created?.Created ?? false,
-            RemoteUrl: created?.CloneUrl ?? string.Empty,
+            RemoteUrl: created?.OriginUrl ?? string.Empty,
             RemoteVisibility: created?.Visibility ?? string.Empty);
     }
 
@@ -124,7 +128,7 @@ public sealed partial class ProjectService
         }
 
         var added = await GitRunner.RunAsync(worktreePath,
-            ["remote", "add", "origin", creation.CloneUrl], cancellation: cancellation);
+            ["remote", "add", "origin", creation.OriginUrl], cancellation: cancellation);
         return added.Success
             ? (true, string.Empty, creation)
             : (false, $"远端仓库已就绪 {creation.FullName}，但配置 origin 失败:\n{added.Output}", null);
@@ -189,7 +193,7 @@ public sealed partial class ProjectService
             }
             if (remote.Creation != null)
                 createdRemotes.Add(new CreatedRemoteEntry(item.BranchName,
-                    remote.Creation.FullName, remote.Creation.CloneUrl,
+                    remote.Creation.FullName, remote.Creation.OriginUrl,
                     remote.Creation.Visibility, remote.Creation.Created));
 
             var result = await GitRunner.RunAsync(item.WorktreePath,

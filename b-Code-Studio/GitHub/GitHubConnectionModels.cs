@@ -61,4 +61,11 @@ public sealed record GitHubRepositoryCreation(
     string SshUrl,
     string HtmlUrl,
     bool Created,
-    string Visibility);
+    string Visibility)
+{
+    /// <summary>
+    /// 写进 origin 的 URL：优先 SSH。HTTPS 在大包（实测约 17MB 起）上会被稳定重置成
+    /// <c>curl 55/56 Recv failure</c>，同一个包走 SSH 能推完；接口没给 ssh_url 时才退回 HTTPS。
+    /// </summary>
+    public string OriginUrl => string.IsNullOrWhiteSpace(SshUrl) ? CloneUrl : SshUrl;
+}
