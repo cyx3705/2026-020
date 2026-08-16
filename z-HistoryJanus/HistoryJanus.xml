@@ -405,6 +405,12 @@
         <member name="M:HistoryJanus.GitHub.GitHubRepositoryCreation.#ctor(System.String,System.String,System.String,System.String,System.String,System.Boolean,System.String)">
             <summary>首次推送时按需创建（或复用）的远端仓库事实，字段全部来自 GitHub 接口回执。</summary>
         </member>
+        <member name="P:HistoryJanus.GitHub.GitHubRepositoryCreation.OriginUrl">
+            <summary>
+            写进 origin 的 URL：优先 SSH。HTTPS 在大包（实测约 17MB 起）上会被稳定重置成
+            <c>curl 55/56 Recv failure</c>，同一个包走 SSH 能推完；接口没给 ssh_url 时才退回 HTTPS。
+            </summary>
+        </member>
         <member name="T:HistoryJanus.GitHub.GitHubConnectionService">
             <summary>服务器本机 Git 作者、GitHub 凭据、远端和 SSH 事实的读取与修改入口。</summary>
         </member>

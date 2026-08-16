@@ -23,6 +23,7 @@ internal static class GitHubSuite
             await TestProvisionerApiPathsAsync();
             await TestFirstPushProvisionsRemoteAsync(temp);
             await TestFailedProvisionLeavesNoRemoteAsync(temp);
+            await TestFailedPushStillReportsCreatedRemoteAsync(temp);
             await TestExistingOriginSkipsProvisionerAsync(temp);
         }
         finally
@@ -199,6 +200,12 @@ internal static class GitHubSuite
         var created = await provisioner.EnsureAsync("ignored", "2026-018-MyAPI", "public");
         True(created.Created, "201 reports a newly created repository");
         Equal("alice/2026-018-MyAPI", created.FullName, "creation carries the API full_name");
+        Equal("git@github.com:alice/2026-018-MyAPI.git", created.OriginUrl,
+            "origin url prefers ssh_url over clone_url");
+        Equal("https://github.com/alice/2026-018-MyAPI.git",
+            new GitHubRepositoryCreation("n", "f", "https://github.com/alice/2026-018-MyAPI.git",
+                "", "h", true, "public").OriginUrl,
+            "origin url falls back to https when the API omits ssh_url");
         True(requests.SequenceEqual(["GET /user", "POST /user/repos"]), "creation hits user then repos");
 
         // 422 是「同名仓库已存在」，应复用而不是把首次推送卡死。
@@ -248,6 +255,9 @@ internal static class GitHubSuite
         Equal("main", FirstLine(Run(project, ["rev-parse", "--abbrev-ref", "main@{upstream}"]))
             .Replace("origin/", "", StringComparison.Ordinal),
             "first push establishes the upstream branch");
+        Equal(remote, FirstLine(Run(project, ["remote", "get-url", "origin"])),
+            "origin is written from the SSH url, not the HTTPS clone url");
+        Equal(remote, report.RemoteUrl, "push report echoes the url actually configured");
 
         DeleteTree(root);
     }
@@ -263,6 +273,24 @@ internal static class GitHubSuite
         Contains(report.Message, "创建远端仓库失败", "failure names the provisioning step");
         True(!(await GitRunner.RunAsync(project, ["remote", "get-url", "origin"])).Success,
             "a failed provision leaves no half-configured origin behind");
+
+        DeleteTree(root);
+    }
+
+    // 建仓成功但推送失败时，用户看到的只有 git 的报错。消息必须同时说清远端已经建出来了，
+    // 否则 GitHub 上多了个（默认公开的）仓库而操作方毫不知情。
+    private static async Task TestFailedPushStillReportsCreatedRemoteAsync(string temp)
+    {
+        var (root, project, service, _) = await SeedProjectAsync(temp, "created-then-failed");
+        var unreachable = Path.Combine(root, "does-not-exist.git");
+        service.RepositoryProvisioner = new RecordingProvisioner(unreachable);
+
+        var report = await service.PushAsync(ProjectName, RepositoryTarget.Parent);
+        True(!report.Success, "push fails when the provisioned remote cannot be reached");
+        True(report.RemoteCreated, "a failed push still reports that the remote was created");
+        Contains(report.Message, "已新建远端仓库",
+            "failure message still names the repository that was created");
+        Equal(unreachable, report.RemoteUrl, "failure report carries the configured url");
 
         DeleteTree(root);
     }
@@ -308,7 +336,9 @@ internal static class GitHubSuite
            $"\"ssh_url\":\"git@github.com:alice/{name}.git\"," +
            $"\"html_url\":\"https://github.com/alice/{name}\",\"visibility\":\"{visibility}\"}}";
 
-    private sealed class RecordingProvisioner(string cloneUrl) : IGitHubRepositoryProvisioner
+    // origin 取 SshUrl，所以本地裸仓路径必须放在 ssh 槽里；CloneUrl 故意填一个不可达地址，
+    // 一旦实现回退到 HTTPS，推送就会失败而不是悄悄通过。
+    private sealed class RecordingProvisioner(string sshUrl) : IGitHubRepositoryProvisioner
     {
         public List<string> Calls { get; } = [];
 
@@ -318,8 +348,9 @@ internal static class GitHubSuite
         {
             Calls.Add(repositoryName);
             return Task.FromResult(new GitHubRepositoryCreation(
-                repositoryName, $"alice/{repositoryName}", cloneUrl,
-                $"git@github.com:alice/{repositoryName}.git",
+                repositoryName, $"alice/{repositoryName}",
+                "https://invalid.invalid/alice/unreachable.git",
+                sshUrl,
                 $"https://github.com/alice/{repositoryName}", true, visibility));
         }
     }
