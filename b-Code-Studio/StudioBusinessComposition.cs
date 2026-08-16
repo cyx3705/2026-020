@@ -73,6 +73,8 @@ public static class StudioBusinessCompositionFactory
             dataDirectory);
         projects.EnsureDefaultSettings();
         projects.NotesProvider = history.AllNotes;
+        // 首次推送时按需建远端仓库；令牌来自 janus.github.login 已存进 GCM 的 HTTPS 凭据。
+        projects.RepositoryProvisioner = new GitHubRepositoryProvisioner();
 
         var gitRules = new GitFileRuleService(projects);
         var branchHistory = new BranchHistoryService(projects);

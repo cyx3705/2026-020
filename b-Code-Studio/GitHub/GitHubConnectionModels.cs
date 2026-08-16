@@ -52,3 +52,13 @@ public sealed record GitHubAccountOverview(
     DateTimeOffset LastCheckedAt);
 
 public sealed record GitHubMutationResult<T>(T Before, T After, bool Applied, string Action);
+
+/// <summary>首次推送时按需创建（或复用）的远端仓库事实，字段全部来自 GitHub 接口回执。</summary>
+public sealed record GitHubRepositoryCreation(
+    string Name,
+    string FullName,
+    string CloneUrl,
+    string SshUrl,
+    string HtmlUrl,
+    bool Created,
+    string Visibility);

@@ -1,4 +1,7 @@
+using System.Net;
+using System.Text;
 using HistoryVulcan.Core.Commands;
+using HistoryJanus.Git;
 using HistoryJanus.GitHub;
 using static HistoryJanus.Smoke.SmokeKit;
 
@@ -17,6 +20,10 @@ internal static class GitHubSuite
             await TestIdentityRollbackAsync(temp);
             await TestRemoteRollbackAsync(temp);
             await TestCommandsRegisteredAsync(temp);
+            await TestProvisionerApiPathsAsync();
+            await TestFirstPushProvisionsRemoteAsync(temp);
+            await TestFailedProvisionLeavesNoRemoteAsync(temp);
+            await TestExistingOriginSkipsProvisionerAsync(temp);
         }
         finally
         {
@@ -169,6 +176,174 @@ internal static class GitHubSuite
         {
             True(registry.TryGet(name, out var mutation) && mutation.ConfirmPrompt != null,
                 $"{name} is registered with a confirmation gate");
+        }
+    }
+
+    // ---------------------------------------------------------------- 首次推送建远端
+
+    // 门禁不得联网：API 走假 handler，远端仓库用本地裸仓冒充 clone_url。
+    private static async Task TestProvisionerApiPathsAsync()
+    {
+        var requests = new List<string>();
+        var handler = new FakeHandler((method, path) =>
+        {
+            requests.Add($"{method} {path}");
+            if (path == "/user")
+                return (HttpStatusCode.OK, "{\"login\":\"alice\"}");
+            if (path == "/user/repos")
+                return (HttpStatusCode.Created, RepoJson("2026-018-MyAPI", "public"));
+            return (HttpStatusCode.NotFound, "{}");
+        });
+        using var provisioner = new GitHubRepositoryProvisioner(
+            handler, (_, _) => Task.FromResult<string?>("gho_TESTTOKEN"));
+        var created = await provisioner.EnsureAsync("ignored", "2026-018-MyAPI", "public");
+        True(created.Created, "201 reports a newly created repository");
+        Equal("alice/2026-018-MyAPI", created.FullName, "creation carries the API full_name");
+        True(requests.SequenceEqual(["GET /user", "POST /user/repos"]), "creation hits user then repos");
+
+        // 422 是「同名仓库已存在」，应复用而不是把首次推送卡死。
+        var reuseHandler = new FakeHandler((method, path) => path switch
+        {
+            "/user" => (HttpStatusCode.OK, "{\"login\":\"alice\"}"),
+            "/user/repos" => (HttpStatusCode.UnprocessableEntity, "{\"message\":\"name already exists\"}"),
+            "/repos/alice/2026-018-MyAPI" => (HttpStatusCode.OK, RepoJson("2026-018-MyAPI", "private")),
+            _ => (HttpStatusCode.NotFound, "{}"),
+        });
+        using var reuse = new GitHubRepositoryProvisioner(
+            reuseHandler, (_, _) => Task.FromResult<string?>("gho_TESTTOKEN"));
+        var existing = await reuse.EnsureAsync("ignored", "2026-018-MyAPI", "public");
+        True(!existing.Created, "422 falls back to reusing the existing repository");
+        Equal("private", existing.Visibility, "reused repository reports the API visibility, not the request");
+
+        using var tokenless = new GitHubRepositoryProvisioner(
+            new FakeHandler((_, _) => (HttpStatusCode.OK, "{}")),
+            (_, _) => Task.FromResult<string?>(null));
+        await ThrowsAsync<InvalidOperationException>(
+            () => tokenless.EnsureAsync("ignored", "2026-018-MyAPI", "public"));
+
+        using var named = new GitHubRepositoryProvisioner(
+            new FakeHandler((_, _) => (HttpStatusCode.OK, "{}")),
+            (_, _) => Task.FromResult<string?>("gho_TESTTOKEN"));
+        await ThrowsAsync<ArgumentException>(
+            () => named.EnsureAsync("ignored", "bad name/slash", "public"));
+        await ThrowsAsync<ArgumentException>(
+            () => named.EnsureAsync("ignored", "2026-018-MyAPI", "internal"));
+    }
+
+    private static async Task TestFirstPushProvisionsRemoteAsync(string temp)
+    {
+        var (root, project, service, remote) = await SeedProjectAsync(temp, "provision");
+        var provisioner = new RecordingProvisioner(remote);
+        service.RepositoryProvisioner = provisioner;
+
+        var report = await service.PushAsync(ProjectName, RepositoryTarget.Parent);
+        True(report.Success, $"first push provisions and pushes: {report.Message}");
+        True(report.RemoteCreated, "push report records that the remote was created");
+        Equal("public", report.RemoteVisibility, "push report records the visibility");
+        Equal(1, provisioner.Calls.Count, "provisioner is asked exactly once");
+        Equal(ProjectName, provisioner.Calls[0], "provisioner receives the project folder name");
+        Equal(FirstLine(Run(project, ["rev-parse", "HEAD"])), RefSha(remote, "main"),
+            "the newly created remote receives the branch");
+        Contains(report.Message, "已新建远端仓库", "message names the new repository");
+        Equal("main", FirstLine(Run(project, ["rev-parse", "--abbrev-ref", "main@{upstream}"]))
+            .Replace("origin/", "", StringComparison.Ordinal),
+            "first push establishes the upstream branch");
+
+        DeleteTree(root);
+    }
+
+    private static async Task TestFailedProvisionLeavesNoRemoteAsync(string temp)
+    {
+        var (root, project, service, _) = await SeedProjectAsync(temp, "provision-fail");
+        service.RepositoryProvisioner = new ThrowingProvisioner();
+
+        var report = await service.PushAsync(ProjectName, RepositoryTarget.Parent);
+        True(!report.Success, "push fails when the remote cannot be provisioned");
+        True(!report.RemoteCreated, "a failed provision never claims a created remote");
+        Contains(report.Message, "创建远端仓库失败", "failure names the provisioning step");
+        True(!(await GitRunner.RunAsync(project, ["remote", "get-url", "origin"])).Success,
+            "a failed provision leaves no half-configured origin behind");
+
+        DeleteTree(root);
+    }
+
+    private static async Task TestExistingOriginSkipsProvisionerAsync(string temp)
+    {
+        var (root, project, service, remote) = await SeedProjectAsync(temp, "existing-origin");
+        Ensure(await GitRunner.RunAsync(project, ["remote", "add", "origin", remote]),
+            "pre-existing origin");
+        var provisioner = new RecordingProvisioner(remote);
+        service.RepositoryProvisioner = provisioner;
+
+        var report = await service.PushAsync(ProjectName, RepositoryTarget.Parent);
+        True(report.Success, $"push with an existing origin still succeeds: {report.Message}");
+        Equal(0, provisioner.Calls.Count, "an existing origin never reaches the provisioner");
+        True(!report.RemoteCreated, "an existing origin reports no creation");
+
+        DeleteTree(root);
+    }
+
+    private const string ProjectName = "2026-234-Provision";
+
+    private static async Task<(string Root, string Project, ProjectService Service, string Remote)>
+        SeedProjectAsync(string temp, string feature)
+    {
+        var root = Path.Combine(temp, feature);
+        var project = Path.Combine(root, ProjectName);
+        var remote = Path.Combine(root, "remote.git");
+        Directory.CreateDirectory(root);
+        await InitStandaloneRepo(project, "GitHub Smoke", "github-smoke@example.invalid");
+        await CommitFile(project, "README.md", "seed\n", "seed");
+        Ensure(await GitRunner.RunAsync(root, ["init", "--bare", "-b", "main", remote]),
+            "create the stand-in remote");
+
+        var settings = new MemorySettings();
+        BindLibrary(settings, root, ProjectName);
+        return (root, project, new ProjectService(settings, _ => true, root), remote);
+    }
+
+    private static string RepoJson(string name, string visibility)
+        => $"{{\"name\":\"{name}\",\"full_name\":\"alice/{name}\"," +
+           $"\"clone_url\":\"https://github.com/alice/{name}.git\"," +
+           $"\"ssh_url\":\"git@github.com:alice/{name}.git\"," +
+           $"\"html_url\":\"https://github.com/alice/{name}\",\"visibility\":\"{visibility}\"}}";
+
+    private sealed class RecordingProvisioner(string cloneUrl) : IGitHubRepositoryProvisioner
+    {
+        public List<string> Calls { get; } = [];
+
+        public Task<GitHubRepositoryCreation> EnsureAsync(
+            string repositoryPath, string repositoryName, string visibility,
+            CancellationToken cancellation = default)
+        {
+            Calls.Add(repositoryName);
+            return Task.FromResult(new GitHubRepositoryCreation(
+                repositoryName, $"alice/{repositoryName}", cloneUrl,
+                $"git@github.com:alice/{repositoryName}.git",
+                $"https://github.com/alice/{repositoryName}", true, visibility));
+        }
+    }
+
+    private sealed class ThrowingProvisioner : IGitHubRepositoryProvisioner
+    {
+        public Task<GitHubRepositoryCreation> EnsureAsync(
+            string repositoryPath, string repositoryName, string visibility,
+            CancellationToken cancellation = default)
+            => throw new InvalidOperationException("GitHub 拒绝了本次创建");
+    }
+
+    private sealed class FakeHandler(
+        Func<string, string, (HttpStatusCode Status, string Body)> handler) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var (status, body) = handler(
+                request.Method.Method, request.RequestUri?.AbsolutePath ?? string.Empty);
+            return Task.FromResult(new HttpResponseMessage(status)
+            {
+                Content = new StringContent(body, Encoding.UTF8, "application/json"),
+            });
         }
     }
 

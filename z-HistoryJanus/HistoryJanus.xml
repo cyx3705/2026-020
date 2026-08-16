@@ -208,6 +208,12 @@
         <member name="M:HistoryJanus.Git.DeclaredRule.#ctor(System.String,System.Boolean,System.Boolean,System.Boolean,System.Boolean)">
             <summary>项目根已声明的一条格式规则，供台账扫描消费。</summary>
         </member>
+        <member name="T:HistoryJanus.Git.CreatedRemoteEntry">
+            <summary>本次推送为某个项目新建（或复用）的远端仓库。</summary>
+        </member>
+        <member name="M:HistoryJanus.Git.CreatedRemoteEntry.#ctor(System.String,System.String,System.String,System.String,System.Boolean)">
+            <summary>本次推送为某个项目新建（或复用）的远端仓库。</summary>
+        </member>
         <member name="T:HistoryJanus.Git.GitlinkService">
             <summary>直属 160000 gitlink 的结构化发现与只读状态校验。</summary>
         </member>
@@ -289,9 +295,13 @@
         </member>
         <member name="T:HistoryJanus.Git.ProjectCommands">
             <summary>
-            proj.* 指令域注册。
+            proj.* 指令域注册。推送两条指令在 ProjectCommands.Push.cs。
             危险操作（delete / commitall / pushall / repair）统一经过总线 ConfirmPrompt；
             受保护分支在确认之前即由 ConfirmPrompt 返回 null + Handler 拒绝,不弹无意义确认框。
+            </summary>
+            <summary>
+            proj.* 的推送切面。推送与提交共享 target 语义，但多了一条提交链路没有的分支：
+            仓库还没有 origin 时按需在 GitHub 上建远端，因此单独成文件。
             </summary>
         </member>
         <member name="M:HistoryJanus.Git.ProjectCommands.RecordCommit(HistoryJanus.Git.HistoryRecorder,System.String,System.String,HistoryJanus.Git.CommitReport)">
@@ -305,9 +315,9 @@
         </member>
         <member name="T:HistoryJanus.Git.ProjectService">
             <summary>
-            ProjectService 的提交与推送切面。提交链路与确认通道、gitlink 子模块发现、
+            ProjectService 的提交切面。提交链路与确认通道、gitlink 子模块发现、
             文件大小阈值和 LFS 预检共享状态，因此保留在同一个 partial 类型中。
-            子仓库先于父仓库提交，target 决定操作范围。
+            子仓库先于父仓库提交，target 决定操作范围。推送切面在 ProjectService.Push.cs。
             </summary>
             <summary>
             proj.* 指令域：HistoryClio 库根下一项目一仓。
@@ -317,13 +327,28 @@
             ProjectService 的 Meta 文件夹切面：项目根下以 z/Z 开头的一级子目录。
             </summary>
             <summary>
+            ProjectService 的推送切面。与提交切面共享 gitlink 发现和工作树解析，
+            但多了一条提交没有的分支：仓库还没有 origin 时按需建远端，再 remote add 后推送。
+            </summary>
+            <summary>
             逐仓诊断：独立 .git、能 status。指向旧裸仓的 .git 文件只报告，不删盘。
+            </summary>
+        </member>
+        <member name="P:HistoryJanus.Git.ProjectService.RepositoryProvisioner">
+            <summary>
+            首次推送时按需建远端仓库的通道。为空时推送保持旧行为：没有 origin 就直接失败。
             </summary>
         </member>
         <member name="M:HistoryJanus.Git.ProjectService.ListMetaFoldersAsync">
             <summary>
             扫描全部 worktree 根下以 z/Z 开头的一级子文件夹。
             单项目枚举失败只计入警告并跳过,不拖垮整次扫描。
+            </summary>
+        </member>
+        <member name="M:HistoryJanus.Git.ProjectService.EnsureRemoteAsync(System.String,System.String,System.String,System.Threading.CancellationToken)">
+            <summary>
+            推送前确保 origin 存在：已有则原样放行；缺失且配了 provisioner 时按需建远端再 remote add。
+            provision 失败绝不写 remote，避免留下半配的仓库让下一次推送更难诊断。
             </summary>
         </member>
         <member name="P:HistoryJanus.Git.WorktreeInfo.FolderName">
@@ -373,6 +398,12 @@
             janus.github.* 类注册（宿主域为模块名 HistoryJanus，类为 github）。
             读写均登记到宿主命令总线；写操作由 apply 参数和 ConfirmPrompt 统一保护。
             </summary>
+        </member>
+        <member name="T:HistoryJanus.GitHub.GitHubRepositoryCreation">
+            <summary>首次推送时按需创建（或复用）的远端仓库事实，字段全部来自 GitHub 接口回执。</summary>
+        </member>
+        <member name="M:HistoryJanus.GitHub.GitHubRepositoryCreation.#ctor(System.String,System.String,System.String,System.String,System.String,System.Boolean,System.String)">
+            <summary>首次推送时按需创建（或复用）的远端仓库事实，字段全部来自 GitHub 接口回执。</summary>
         </member>
         <member name="T:HistoryJanus.GitHub.GitHubConnectionService">
             <summary>服务器本机 Git 作者、GitHub 凭据、远端和 SSH 事实的读取与修改入口。</summary>
@@ -618,6 +649,43 @@
                 ○ Match the string "://".<br/>
             ○ Match a character in the set [^/@\s] atomically at least once.<br/>
             ○ Match '@'.<br/>
+            </code>
+            </remarks>
+        </member>
+        <member name="T:HistoryJanus.GitHub.IGitHubRepositoryProvisioner">
+            <summary>
+            首次推送时按需创建 GitHub 远端仓库。
+            与 <see cref="T:HistoryJanus.GitHub.GitHubConnectionService"/> 分开的原因：连接服务绑定单个仓库路径
+            （构造函数里的 Func&lt;string&gt;），而推送按各自的项目工作树发生，路径必须逐次传入。
+            </summary>
+        </member>
+        <member name="M:HistoryJanus.GitHub.IGitHubRepositoryProvisioner.EnsureAsync(System.String,System.String,System.String,System.Threading.CancellationToken)">
+            <summary>确保 <paramref name="repositoryName"/> 在 GitHub 上存在，返回接口给出的真实事实。</summary>
+            <param name="repositoryPath">用于读取凭据的本地仓库路径。</param>
+            <param name="repositoryName">期望的仓库名，通常是项目目录名。</param>
+            <param name="visibility">public 或 private。</param>
+        </member>
+        <member name="T:HistoryJanus.GitHub.GitHubRepositoryProvisioner">
+            <summary>
+            令牌来自 <c>git credential fill</c>：janus.github.login 已经把 HTTPS 凭据存进 GCM，
+            所以建仓库不新增任何凭据面，也不把 token 落盘。全部对外文本经 GitHubRedactor 脱敏。
+            </summary>
+        </member>
+        <member name="M:HistoryJanus.GitHub.GitHubRepositoryProvisioner.ReadStoredTokenAsync(System.String,System.Threading.CancellationToken)">
+            <summary>
+            走 GCM 已存的 HTTPS 凭据。<c>credential.interactive=false</c> 是必需的：
+            缺凭据时 GCM 会弹窗，而推送链路跑在没有人值守的宿主进程里。
+            </summary>
+        </member>
+        <member name="M:HistoryJanus.GitHub.GitHubRepositoryProvisioner.RepositoryName">
+            <remarks>
+            Pattern:<br/>
+            <code>^[A-Za-z0-9._-]{1,100}$</code><br/>
+            Explanation:<br/>
+            <code>
+            ○ Match if at the beginning of the string.<br/>
+            ○ Match a character in the set [-.0-9A-Z_a-z] atomically at least 1 and at most 100 times.<br/>
+            ○ Match if at the end of the string or if before an ending newline.<br/>
             </code>
             </remarks>
         </member>
@@ -1015,6 +1083,38 @@
             <returns>true if a possible match was found; false if no more matches are possible.</returns>
         </member>
         <member name="M:System.Text.RegularExpressions.Generated.UrlUserInfo_7.RunnerFactory.Runner.TryMatchAtCurrentPosition(System.ReadOnlySpan{System.Char})">
+            <summary>Determine whether <paramref name="inputSpan"/> at base.runtextpos is a match for the regular expression.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+            <returns>true if the regular expression matches at the current position; otherwise, false.</returns>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.RepositoryName_8">
+            <summary>Custom <see cref="T:System.Text.RegularExpressions.Regex"/>-derived type for the RepositoryName method.</summary>
+        </member>
+        <member name="F:System.Text.RegularExpressions.Generated.RepositoryName_8.Instance">
+            <summary>Cached, thread-safe singleton instance.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.RepositoryName_8.#ctor">
+            <summary>Initializes the instance.</summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.RepositoryName_8.RunnerFactory">
+            <summary>Provides a factory for creating <see cref="T:System.Text.RegularExpressions.RegexRunner"/> instances to be used by methods on <see cref="T:System.Text.RegularExpressions.Regex"/>.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.RepositoryName_8.RunnerFactory.CreateInstance">
+            <summary>Creates an instance of a <see cref="T:System.Text.RegularExpressions.RegexRunner"/> used by methods on <see cref="T:System.Text.RegularExpressions.Regex"/>.</summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.RepositoryName_8.RunnerFactory.Runner">
+            <summary>Provides the runner that contains the custom logic implementing the specified regular expression.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.RepositoryName_8.RunnerFactory.Runner.Scan(System.ReadOnlySpan{System.Char})">
+            <summary>Scan the <paramref name="inputSpan"/> starting from base.runtextstart for the next match.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.RepositoryName_8.RunnerFactory.Runner.TryFindNextPossibleStartingPosition(System.ReadOnlySpan{System.Char})">
+            <summary>Search <paramref name="inputSpan"/> starting from base.runtextpos for the next location a match could possibly start.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+            <returns>true if a possible match was found; false if no more matches are possible.</returns>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.RepositoryName_8.RunnerFactory.Runner.TryMatchAtCurrentPosition(System.ReadOnlySpan{System.Char})">
             <summary>Determine whether <paramref name="inputSpan"/> at base.runtextpos is a match for the regular expression.</summary>
             <param name="inputSpan">The text being scanned by the regular expression.</param>
             <returns>true if the regular expression matches at the current position; otherwise, false.</returns>

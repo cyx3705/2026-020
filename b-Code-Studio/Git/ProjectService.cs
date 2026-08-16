@@ -1,6 +1,7 @@
 ﻿using System.IO;
 using System.Text;
 using HistoryVulcan.Core.Storage;
+using HistoryJanus.GitHub;
 
 namespace HistoryJanus.Git;
 
@@ -77,6 +78,11 @@ public sealed partial class ProjectService
     private readonly GitlinkService _gitlinks = new();
     private readonly BranchTreeService _tree;
     private readonly Func<string, bool> _confirm;
+
+    /// <summary>
+    /// 首次推送时按需建远端仓库的通道。为空时推送保持旧行为：没有 origin 就直接失败。
+    /// </summary>
+    public IGitHubRepositoryProvisioner? RepositoryProvisioner { get; set; }
 
     public Func<IReadOnlyDictionary<string, string>>? NotesProvider
     {
