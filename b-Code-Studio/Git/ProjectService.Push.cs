@@ -111,11 +111,13 @@ public sealed partial class ProjectService
         if (RepositoryProvisioner == null)
             return (false, $"仓库未配置 origin，且未启用远端自动创建: {projectName}", null);
 
+        // 本地目录名保留中文，远端只用编号：GitHub 会吃掉非 ASCII 字符。
+        var remoteName = ProjectRepoLayout.ToRemoteRepositoryName(projectName);
         GitHubRepositoryCreation creation;
         try
         {
             creation = await RepositoryProvisioner.EnsureAsync(
-                worktreePath, projectName,
+                worktreePath, remoteName,
                 GitHubRepositoryProvisioner.NormalizeVisibility(visibility), cancellation);
         }
         catch (OperationCanceledException)
@@ -124,7 +126,7 @@ public sealed partial class ProjectService
         }
         catch (Exception ex)
         {
-            return (false, $"创建远端仓库失败 [{projectName}]: {ex.Message}", null);
+            return (false, $"创建远端仓库失败 [{projectName} → {remoteName}]: {ex.Message}", null);
         }
 
         var added = await GitRunner.RunAsync(worktreePath,

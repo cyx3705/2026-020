@@ -1,4 +1,4 @@
-# HistoryJanus 4.1.1 模块 API
+# HistoryJanus 4.2.0 模块 API
 
 本文件是其他模块和项目消费 HistoryJanus 的唯一人工合同。运行时命令目录是参数、确认策略和可用性的最终真值；历史文档和 Janus 内部类型不构成公开 API。
 
@@ -6,7 +6,7 @@
 
 - 正式快照：`z-HistoryJanus`。
 - 模块名：`HistoryJanus`。
-- 版本：`4.1.1`。
+- 版本：`4.2.0`。
 - 入口：`HistoryJanus.dll`。
 - 宿主基线：HistoryVulcan `3.9.0` current-host 快照，从 `2026-023-HistoryVulcan/z-HistoryVulcan` 消费；该快照的 `sourceDirty` 仍由 HistoryVulcan manifest 如实标记。
 - 主题：页面使用 HistoryVulcan `Shell.Brush.*` 动态资源，跟随宿主深色/浅色切换，不在模块内维护第二套主题。
@@ -15,7 +15,7 @@
 - UI：启用。
 - MCP：只读投影。
 
-本文件描述活动源的 `4.1.1` 候选合同；只有用户另行授权正式发布后，同版本 manifest 和二进制才会提升到
+本文件描述活动源的 `4.2.0` 候选合同；只有用户另行授权正式发布后，同版本 manifest 和二进制才会提升到
 `z-HistoryJanus`。发布前，z 快照自身的 manifest 与 checksum 仍是正式运行版本的真值。
 其他项目从 `z-HistoryJanus/docs/` 或 `diana.docs.janus` 读取已发布 API，从 z 快照读取 `module.manifest.json`、二进制和
 `SHA256SUMS`；不要从 `b-Publish`、Janus 的 `bin/obj`、HistoryVulcan 工作树或 Janus 历史文档建立依赖。
@@ -85,9 +85,9 @@ if (!result.Success)
 | `janus.proj.create` | 从模板仓复制工作树并 `git init` 为独立仓 |
 | `janus.proj.delete` | 删除项目目录 |
 | `janus.proj.commit` | 提交指定项目 |
-| `janus.proj.push` | 推送指定项目；仓库没有 origin 时先在 GitHub 上建同名仓库再推送（`visibility=public\|private`，默认 `public`） |
+| `janus.proj.push` | 推送指定项目；仓库没有 origin 时先在 GitHub 上按项目编号建仓再推送（`visibility=public\|private`，默认 `public`） |
 | `janus.proj.commitall` | 批量提交各项目仓 |
-| `janus.proj.pushall` | 批量推送各项目仓；同样对缺 origin 的项目按需建远端（`visibility` 同上） |
+| `janus.proj.pushall` | 批量推送各项目仓；同样对缺 origin 的项目按编号建远端（`visibility` 同上） |
 | `janus.proj.open` | 请求打开项目位置 |
 | `janus.proj.repair` | 逐仓诊断独立仓与 status；不自动删盘 |
 | `janus.proj.note` | 写入项目历史说明 |
@@ -126,3 +126,4 @@ if (!result.Success)
 - V4.0.0：存储引擎改为独立仓（DEC-015）；`name=` 为已登记项目目录名；仓内默认分支 `main`；DEC-014 作废；图谱 X 按 Git 父边逐点赋值（DEC-016）；平行泳道优先贴主线并复用空行（DEC-018）。
 - V4.1.0：`push` / `pushall` 在仓库缺 `origin` 时按需创建 GitHub 同名仓库后再推送（DEC-019）。新增可选参数 `visibility`（`public` / `private`，默认 `public`）；命令数与窗口不变。令牌取自 GCM 已存的 HTTPS 凭据，模块不新增任何凭据配置项。`PushReport` 增加 `RemoteCreated` / `RemoteUrl` / `RemoteVisibility`，`BatchPushReport` 增加 `CreatedRemotes`；消费者按需投影，旧字段语义不变。
 - V4.1.1：自动建仓写入 `origin` 的 URL 改为优先 `ssh_url`（DEC-020）——HTTPS 在大包（实测约 17MB 起）上会被连接重置。推送认证因此依赖 `~/.ssh` 密钥，而建仓仍走 HTTPS token，两条凭据链路不同。建仓成功但推送失败时，结果消息也会点名新建的仓库。`PushReport.RemoteUrl` 回显的是实际写入 origin 的 URL。
+- V4.2.0：自动建仓的远端仓库名改为只取项目编号 `YYYY-NNN`（DEC-021）——GitHub 会吃掉仓库名里的非 ASCII 字符（请求 `2025-001-AGV洗轮机` 建出 `2025-001-AGV-`），而库内多数项目是中文名。本地项目目录名不变，远端与本地刻意不一致；需要对外展示的仓库由用户自行在 GitHub 改名。已按旧规则建出的仓库保持原名。

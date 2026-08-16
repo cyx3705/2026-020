@@ -19,10 +19,27 @@ internal static class ProjectRepoLayout
     private static readonly Regex NumberedName =
         new(@"^\d{4}-\d{3}-.+", RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
+    private static readonly Regex ProjectNumber =
+        new(@"^(?<id>\d{4}-\d{3})(?:-|$)", RegexOptions.CultureInvariant | RegexOptions.Compiled);
+
     public static bool IsRegisteredProjectName(string name)
         => name.Length > 0
            && name.IndexOfAny(Path.GetInvalidFileNameChars()) < 0
            && (name.StartsWith("0000-", StringComparison.Ordinal) || NumberedName.IsMatch(name));
+
+    /// <summary>
+    /// 远端仓库名取项目编号 <c>YYYY-NNN</c>，不带中文标题部分。
+    /// 本地目录保留中文是为了人肉查找；而 GitHub 会把非 ASCII 字符整段吃掉
+    /// （请求 <c>2025-001-AGV洗轮机</c> 建出来的是 <c>2025-001-AGV-</c>），
+    /// 编号本身已经唯一，用它既避免被截断成无意义的名字，也不会互相撞名。
+    /// 没有编号前缀的项目名原样返回，由调用方按 GitHub 命名规则校验。
+    /// </summary>
+    public static string ToRemoteRepositoryName(string projectName)
+    {
+        var trimmed = (projectName ?? string.Empty).Trim();
+        var match = ProjectNumber.Match(trimmed);
+        return match.Success ? match.Groups["id"].Value : trimmed;
+    }
 
     public static bool IsIndependentGitRepo(string projectPath)
         => Directory.Exists(Path.Combine(projectPath, ".git"));
