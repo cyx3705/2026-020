@@ -313,6 +313,15 @@
             不发 git 进程；身份规则与路径变换集中在此，避免撑破 ProjectService 行数上限。
             </summary>
         </member>
+        <member name="M:HistoryJanus.Git.ProjectRepoLayout.ToRemoteRepositoryName(System.String)">
+            <summary>
+            远端仓库名取项目编号 <c>YYYY-NNN</c>，不带中文标题部分。
+            本地目录保留中文是为了人肉查找；而 GitHub 会把非 ASCII 字符整段吃掉
+            （请求 <c>2025-001-AGV洗轮机</c> 建出来的是 <c>2025-001-AGV-</c>），
+            编号本身已经唯一，用它既避免被截断成无意义的名字，也不会互相撞名。
+            没有编号前缀的项目名原样返回，由调用方按 GitHub 命名规则校验。
+            </summary>
+        </member>
         <member name="T:HistoryJanus.Git.ProjectService">
             <summary>
             ProjectService 的提交切面。提交链路与确认通道、gitlink 子模块发现、

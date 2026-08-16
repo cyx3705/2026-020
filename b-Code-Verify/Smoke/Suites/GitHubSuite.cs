@@ -25,6 +25,7 @@ internal static class GitHubSuite
             await TestFailedProvisionLeavesNoRemoteAsync(temp);
             await TestFailedPushStillReportsCreatedRemoteAsync(temp);
             await TestExistingOriginSkipsProvisionerAsync(temp);
+            await TestRemoteNameUsesProjectNumberAsync(temp);
         }
         finally
         {
@@ -248,7 +249,7 @@ internal static class GitHubSuite
         True(report.RemoteCreated, "push report records that the remote was created");
         Equal("public", report.RemoteVisibility, "push report records the visibility");
         Equal(1, provisioner.Calls.Count, "provisioner is asked exactly once");
-        Equal(ProjectName, provisioner.Calls[0], "provisioner receives the project folder name");
+        Equal("2026-234", provisioner.Calls[0], "provisioner receives the project number");
         Equal(FirstLine(Run(project, ["rev-parse", "HEAD"])), RefSha(remote, "main"),
             "the newly created remote receives the branch");
         Contains(report.Message, "已新建远端仓库", "message names the new repository");
@@ -307,6 +308,43 @@ internal static class GitHubSuite
         True(report.Success, $"push with an existing origin still succeeds: {report.Message}");
         Equal(0, provisioner.Calls.Count, "an existing origin never reaches the provisioner");
         True(!report.RemoteCreated, "an existing origin reports no creation");
+
+        DeleteTree(root);
+    }
+
+    // 远端仓库名只取编号：GitHub 会把非 ASCII 整段吃掉（请求 2025-001-AGV洗轮机 建出 2025-001-AGV-），
+    // 而本地目录名保留中文供人查找，两边刻意不一致。
+    private static async Task TestRemoteNameUsesProjectNumberAsync(string temp)
+    {
+        Equal("2025-001", ProjectRepoLayout.ToRemoteRepositoryName("2025-001-AGV洗轮机"),
+            "a chinese project name collapses to its number");
+        Equal("2026-020", ProjectRepoLayout.ToRemoteRepositoryName("2026-020-HistoryJanus"),
+            "an ascii project name also collapses to its number");
+        Equal("0000-000", ProjectRepoLayout.ToRemoteRepositoryName("0000-000-Template"),
+            "the template project follows the same rule");
+        Equal("scratch", ProjectRepoLayout.ToRemoteRepositoryName("scratch"),
+            "a name without a number prefix is passed through unchanged");
+
+        var root = Path.Combine(temp, "chinese-name");
+        var localName = "2026-235-中文项目名";
+        var project = Path.Combine(root, localName);
+        var remote = Path.Combine(root, "remote.git");
+        Directory.CreateDirectory(root);
+        await InitStandaloneRepo(project, "GitHub Smoke", "github-smoke@example.invalid");
+        await CommitFile(project, "README.md", "seed\n", "seed");
+        Ensure(await GitRunner.RunAsync(root, ["init", "--bare", "-b", "main", remote]),
+            "create the stand-in remote");
+        var settings = new MemorySettings();
+        BindLibrary(settings, root, localName);
+        var service = new ProjectService(settings, _ => true, root);
+        var provisioner = new RecordingProvisioner(remote);
+        service.RepositoryProvisioner = provisioner;
+
+        var report = await service.PushAsync(localName, RepositoryTarget.Parent);
+        True(report.Success, $"a chinese-named project pushes: {report.Message}");
+        Equal(1, provisioner.Calls.Count, "provisioner is asked once");
+        Equal("2026-235", provisioner.Calls[0],
+            "provisioner receives the project number, never the chinese folder name");
 
         DeleteTree(root);
     }
