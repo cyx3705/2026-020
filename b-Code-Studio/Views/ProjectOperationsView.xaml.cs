@@ -15,12 +15,10 @@ public partial class ProjectOperationsView : UserControl
 {
     private readonly Func<CommandBus?> _busAccessor;
     private readonly ProjectSelectionState _selection;
-    private readonly ObservableCollection<RuleEditRow> _rules = [];
+    private readonly Func<string, bool> _isProtected;
     private List<string> _projectNames = [];
     private bool _projectOperationRunning;
-    private bool _ruleOperationRunning;
-    private string? _loadedRuleProject;
-    private int _ruleLoadGeneration;
+    private string? _nameBoxProject;
 
     public ProjectOperationsView(Func<CommandBus?> busAccessor, ProjectSelectionState selection,
         Func<string, bool> isProtected, Func<GitHubConnectionService?> gitHubAccessor)
@@ -28,12 +26,11 @@ public partial class ProjectOperationsView : UserControl
         InitializeComponent();
         _busAccessor = busAccessor;
         _selection = selection;
+        _isProtected = isProtected;
         HistoryPanel.Content = new BranchHistoryView(busAccessor, selection, isProtected);
         // GitHub 连接治理是本页第三个分段，不是宿主级独立窗口。
         GitHubPanel.Content = new GitHubConnectionView(gitHubAccessor, busAccessor);
         SelectedCommitMessageBox.Text = "一键推送更新";
-        RuleGrid.ItemsSource = _rules;
-        InitializeRuleDeferredSave();
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
         ViewKit.RunOnceOnLoaded(this, () => RefreshProjectsAsync(_selection.CurrentProjectName));
@@ -67,10 +64,8 @@ public partial class ProjectOperationsView : UserControl
             return;
         }
         UpdateProjectActions();
-        if (selected != null)
-            await LoadRulesAsync(selected);
-        else
-            ClearRules();
+        // 排除清单是全库共用的设置，与当前选中项目无关，只在页面首次载入时读一次。
+        await LoadExcludeListAsync();
     }
 
     private void OnSharedSelectionChanged(object? sender, EventArgs e)
@@ -78,27 +73,10 @@ public partial class ProjectOperationsView : UserControl
 
     private async Task ApplySharedSelectionAsync()
     {
-        var selected = _selection.CurrentProjectName is { } current
-            ? _projectNames.FirstOrDefault(name => name.Equals(current, StringComparison.OrdinalIgnoreCase))
-            : null;
 
-        if (_loadedRuleProject is { Length: > 0 } loaded
-            && !string.Equals(selected, loaded, StringComparison.OrdinalIgnoreCase)
-            && !await SaveRulesOnPageLeaveAsync())
-        {
-            _selection.CurrentProjectName = loaded;
-            return;
-        }
-
+        // 清单不随项目切换重载，也不需要离页保存协商：它不是按项目的状态。
         UpdateProjectActions();
-        if (selected != null
-            && !string.Equals(selected, _loadedRuleProject, StringComparison.OrdinalIgnoreCase))
-            await LoadRulesAsync(selected);
-        else
-        {
-            if (selected == null)
-                ClearRules();
-        }
+        await Task.CompletedTask;
     }
 
     private void OnNewProjectNameChanged(object sender, TextChangedEventArgs e)
@@ -106,6 +84,9 @@ public partial class ProjectOperationsView : UserControl
 
     private void OnCommitMessageChanged(object sender, TextChangedEventArgs e)
         => UpdateProjectActions();
+
+    private void OnSelectedProjectNameChanged(object sender, TextChangedEventArgs e)
+        => UpdateRenameAction();
 
     private void OnOperationModeChanged(object sender, System.Windows.RoutedEventArgs e)
         => UpdateProjectActions();
@@ -136,6 +117,33 @@ public partial class ProjectOperationsView : UserControl
         {
             NewProjectNameBox.Clear();
             await RefreshProjectsAsync(name);
+        }
+    }
+
+    private async void OnRenameClick(object sender, System.Windows.RoutedEventArgs e)
+    {
+        var current = CurrentProjectName();
+        var target = SelectedProjectNameBox.Text.Trim();
+        if (_busAccessor() is not { } bus || current.Length == 0 || target.Length == 0)
+            return;
+        // 改名前无需再落盘规则草稿：排除清单是全库共用的设置，与项目身份无关，
+        // 也不存在未保存的按项目草稿，因此这里没有需要先冲刷的状态。
+
+        SetProjectOperationRunning(true);
+        try
+        {
+            var result = await bus.ExecuteAsync(
+                $"janus.proj.rename name={CommandParser.QuoteArg(current)} " +
+                $"new={CommandParser.QuoteArg(target)}", "UI");
+            if (result.Success)
+            {
+                _selection.CurrentProjectName = target;
+                await RefreshProjectsAsync(target);
+            }
+        }
+        finally
+        {
+            SetProjectOperationRunning(false);
         }
     }
 
@@ -188,13 +196,15 @@ public partial class ProjectOperationsView : UserControl
     {
         var hasCurrent = CurrentProjectName().Length > 0;
         var mode = CurrentOperationMode();
-        var scopeReady = !ProjectOperationCommandBuilder.RequiresCurrentProject(mode) || hasCurrent;
-        CreateProjectButton.IsEnabled = hasCurrent && NewProjectName().Length > 0;
-        SelectedActionTitle.Text = !ProjectOperationCommandBuilder.RequiresCurrentProject(mode)
-            ? "全部工作树"
-            : hasCurrent
-            ? $"当前项目 · {CurrentProjectName()}"
-            : "当前未选择项目";
+        var currentMode = ProjectOperationCommandBuilder.RequiresCurrentProject(mode);
+        var scopeReady = !currentMode || hasCurrent;
+        if (!string.Equals(_nameBoxProject, CurrentProjectName(), StringComparison.OrdinalIgnoreCase))
+        {
+            _nameBoxProject = CurrentProjectName();
+            SelectedProjectNameBox.Text = CurrentProjectName();
+        }
+        SelectedProjectNameBox.IsEnabled = !_projectOperationRunning && currentMode && hasCurrent;
+        UpdateRenameAction();
         SelectedCommitButton.IsEnabled = !_projectOperationRunning && scopeReady
                                          && SelectedCommitMessageBox.Text.Trim().Length > 0;
         SelectedPushButton.IsEnabled = !_projectOperationRunning && scopeReady;
@@ -203,6 +213,20 @@ public partial class ProjectOperationsView : UserControl
         CurrentBothModeButton.IsEnabled = !_projectOperationRunning;
         AllSubmodulesModeButton.IsEnabled = !_projectOperationRunning;
         AllBothModeButton.IsEnabled = !_projectOperationRunning;
+        CreateProjectButton.IsEnabled = !_projectOperationRunning && hasCurrent && NewProjectName().Length > 0;
+    }
+
+    private void UpdateRenameAction()
+    {
+        if (RenameProjectButton == null || SelectedProjectNameBox == null)
+            return;
+        var current = CurrentProjectName();
+        var currentMode = ProjectOperationCommandBuilder.RequiresCurrentProject(CurrentOperationMode());
+        RenameProjectButton.IsEnabled = !_projectOperationRunning && currentMode
+                                        && current.Length > 0 && !_isProtected(current)
+                                        && SelectedProjectNameBox.Text.Trim().Length > 0
+                                        && !SelectedProjectNameBox.Text.Trim().Equals(
+                                            current, StringComparison.OrdinalIgnoreCase);
     }
 
     private void SetProjectOperationRunning(bool running)
