@@ -187,8 +187,8 @@ $apiCommandNames = @(
         ForEach-Object { $_.Groups['name'].Value } |
         Sort-Object -Unique
 )
-if ($businessCommandNames.Count -ne 39 -or $expectedRuntimeCommandNames.Count -ne 40) {
-    $violations.Add("运行时命令总数应为 40（39 条业务命令 + janus.status）；源码为 $($businessCommandNames.Count) + 1")
+if ($businessCommandNames.Count -ne 40 -or $expectedRuntimeCommandNames.Count -ne 41) {
+    $violations.Add("运行时命令总数应为 41（40 条业务命令 + janus.status）；源码为 $($businessCommandNames.Count) + 1")
 }
 if (($expectedRuntimeCommandNames -join ',') -cne ($apiCommandNames -join ',')) {
     $violations.Add("模块API.md 命令清单与源码不一致：API $($apiCommandNames.Count)，运行时 $($expectedRuntimeCommandNames.Count)")

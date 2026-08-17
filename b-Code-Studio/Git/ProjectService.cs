@@ -347,6 +347,53 @@ public sealed partial class ProjectService
 
     public bool IsProtected(string branchName) => ProtectedBranches.Contains(branchName.Trim());
 
+    public async Task<(bool Success, string Message)> RenameAsync(
+        string currentName, string newName, IProgress<string>? progress)
+    {
+        currentName = currentName.Trim();
+        newName = newName.Trim();
+
+        if (currentName.Length == 0)
+            return (false, "当前项目名称不能为空");
+        if (newName.Length == 0)
+            return (false, "新项目名称不能为空");
+        if (!ProjectRepoLayout.IsRegisteredProjectName(newName))
+            return (false, "项目名称必须是 YYYY-NNN-* 或 0000-*");
+        if (currentName.Equals(newName, StringComparison.OrdinalIgnoreCase))
+            return (false, "新旧项目名称不能相同");
+        if (IsProtected(currentName))
+            return (false, $"\"{currentName}\" 是受保护项目({string.Join("/", ProtectedBranches)}),拒绝改名");
+        if (!TryValidateWorktreeRoot(out var rootError))
+            return (false, $"库根不安全: {rootError}");
+
+        var (resolved, message, worktree) = await ResolveWorktreeAsync(currentName);
+        if (!resolved || worktree == null)
+            return (false, message);
+
+        var targetPath = Path.Combine(LibraryRoot, newName);
+        if (!TryValidateManagedDirectChild(targetPath, rejectReparsePoint: true, out var targetError))
+            return (false, $"目标项目路径不安全: {targetError}");
+        if (Directory.Exists(targetPath) || File.Exists(targetPath))
+            return (false, $"目标项目目录已存在: {targetPath}");
+
+        progress?.Report($"改名项目 {currentName} -> {newName} ...");
+        try
+        {
+            Directory.Move(worktree.WorktreePath, targetPath);
+        }
+        catch (IOException ex)
+        {
+            return (false, $"项目目录改名失败: {ex.Message}");
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return (false, $"项目目录改名失败: {ex.Message}");
+        }
+
+        _tree.InvalidateCache();
+        return (true, $"项目已改名: {currentName} -> {newName}");
+    }
+
     public async Task<(bool Success, string Message)> DeleteAsync(string name, IProgress<string>? progress)
     {
         name = name.Trim();
