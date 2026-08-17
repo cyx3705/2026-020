@@ -124,12 +124,15 @@ foreach ($relativePath in @('Git\ProjectService.Commit.cs', 'Git\BranchHistorySe
     }
 }
 
+# 5.0.0（DEC-022）：规则页是一份全库共用清单的编辑器，没有按项目草稿，
+# 原先的离页保存/延迟保存断言描述的是已不存在的设计。改为守住新形态：
+# 写入只经命令总线（确认归宿主），且不得复活任何延迟保存机制或自建弹窗。
 $ruleViewText = [IO.File]::ReadAllText((Join-Path $componentRoot 'Views\ProjectOperationsView.Rules.cs'))
-if ($ruleViewText -match 'DispatcherTimer|ScheduleRuleAutoSave|OnRuleAutoSaveTick' -or
-    $ruleViewText -notmatch 'RulePanel\.IsVisibleChanged' -or
-    $ruleViewText -notmatch 'SaveRulesOnPageLeaveAsync' -or
-    $ruleViewText -notmatch '_ruleSaveTask') {
-    $violations.Add('Git file rules must use one serialized page-leave save instead of edit-time autosave')
+if ($ruleViewText -match 'DispatcherTimer|ScheduleRuleAutoSave|SaveRulesOnPageLeaveAsync|_ruleSaveTask' -or
+    $ruleViewText -match 'MessageBox\.Show' -or
+    $ruleViewText -notmatch 'SaveExcludeListAsync' -or
+    $ruleViewText -notmatch 'ProjectOperationCommandBuilder\.Excludes') {
+    $violations.Add('Exclude list edits must go through the bus command builder with no deferred-save machinery')
 }
 
 $gitHubRunnerText = [IO.File]::ReadAllText((Join-Path $componentRoot 'GitHub\ToolProcessRunner.cs'))
@@ -187,8 +190,8 @@ $apiCommandNames = @(
         ForEach-Object { $_.Groups['name'].Value } |
         Sort-Object -Unique
 )
-if ($businessCommandNames.Count -ne 39 -or $expectedRuntimeCommandNames.Count -ne 40) {
-    $violations.Add("运行时命令总数应为 40（39 条业务命令 + janus.status）；源码为 $($businessCommandNames.Count) + 1")
+if ($businessCommandNames.Count -ne 34 -or $expectedRuntimeCommandNames.Count -ne 35) {
+    $violations.Add("运行时命令总数应为 35（34 条业务命令 + janus.status）；源码为 $($businessCommandNames.Count) + 1")
 }
 if (($expectedRuntimeCommandNames -join ',') -cne ($apiCommandNames -join ',')) {
     $violations.Add("模块API.md 命令清单与源码不一致：API $($apiCommandNames.Count)，运行时 $($expectedRuntimeCommandNames.Count)")

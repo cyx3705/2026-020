@@ -1,4 +1,4 @@
-﻿using System.IO;
+using System.IO;
 using System.Text;
 using HistoryVulcan.Core.Storage;
 using HistoryJanus.GitHub;
@@ -80,9 +80,26 @@ public sealed partial class ProjectService
     private readonly Func<string, bool> _confirm;
 
     /// <summary>
+    /// GitHub 的单文件硬限，超过即被服务端拒收。这不是可配置偏好，所以不进设置：
+    /// LFS 的唯一触发条件就是触到这条线。
+    /// </summary>
+    public const long GitHubFileLimitBytes = 100L * 1024 * 1024;
+
+    /// <summary>
+    /// 单次推送的字节预算。实测超过约 300MB 的推送在本机链路上会中断
+    /// （HTTPS 17MB 即断，SSH 亦偶发），因此超预算时按提交分批推。
+    /// </summary>
+    public const long PushChunkBudgetBytes = 300L * 1024 * 1024;
+
+    /// <summary>
     /// 首次推送时按需建远端仓库的通道。为空时推送保持旧行为：没有 origin 就直接失败。
     /// </summary>
     public IGitHubRepositoryProvisioner? RepositoryProvisioner { get; set; }
+
+    /// <summary>
+    /// 提交前刷写 .gitignore 排除规则的通道。为空时跳过刷写，提交行为不变。
+    /// </summary>
+    public IExcludeRuleWriter? ExcludeRules { get; set; }
 
     public Func<IReadOnlyDictionary<string, string>>? NotesProvider
     {

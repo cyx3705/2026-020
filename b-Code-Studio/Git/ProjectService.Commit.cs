@@ -231,19 +231,31 @@ public sealed partial class ProjectService
             return (null, new CommitReport(CommitOutcome.Failed,
                 $"无法读取仓库 HEAD [{worktree.BranchName}]:\n{head.Output}"));
 
+        // 规则在提交链路里自动落地，不再要求人工执行下发命令。
+        if (ExcludeRules != null)
+        {
+            var ensured = await ExcludeRules.EnsureIgnoreAsync(worktree.WorktreePath, cancellation);
+            if (!ensured.Success)
+                return (null, new CommitReport(CommitOutcome.Failed,
+                    $"刷新 .gitignore 排除规则失败 [{worktree.BranchName}]: {ensured.Message}"));
+            if (ensured.Changed)
+                progress?.Report($"[{worktree.BranchName}] {ensured.Message}");
+        }
+
         progress?.Report($"[{worktree.BranchName}] 扫描文件大小...");
         var warnBytes = WarnBytes;
-        var rejectBytes = RejectBytes;
         var (checkStatus, largeFiles) = await Task.Run(() =>
-            WorktreeFileScanner.ScanDirectory(worktree.WorktreePath, warnBytes, rejectBytes,
+            WorktreeFileScanner.ScanDirectory(worktree.WorktreePath, warnBytes, GitHubFileLimitBytes,
                 excludedDirectories), cancellation);
-        var oversized = largeFiles.Where(file => file.SizeBytes >= rejectBytes).ToList();
+        // LFS 极保守：只有触到 GitHub 100MB 硬限的文件才考虑，且逐个文件按精确路径 track。
+        // 不按扩展名批量套 LFS——4.x 那套 137 条通配把文本也塞进 LFS，是 11GB 占用的根因。
+        var oversized = largeFiles.Where(file => file.SizeBytes >= GitHubFileLimitBytes).ToList();
         var needsLfs = new List<LargeFileEntry>();
         if (oversized.Count > 0)
         {
             if (!await WorktreeLfsHelper.IsGitLfsAvailableAsync(worktree.WorktreePath))
                 return (null, new CommitReport(CommitOutcome.Failed,
-                    $"发现 {oversized.Count} 个 ≥{rejectBytes / 1024 / 1024}MB 文件,但未检测到 Git LFS,无法处理"));
+                    $"发现 {oversized.Count} 个超过 GitHub 100MB 硬限的文件，但未检测到 Git LFS，无法处理"));
             foreach (var file in oversized)
             {
                 if (!await WorktreeLfsHelper.IsFileManagedByLfsAsync(worktree.WorktreePath, file.RelativePath))
@@ -255,8 +267,11 @@ public sealed partial class ProjectService
 
         if (needsLfs.Count > 0 && !_confirm(BuildLfsPrompt(worktree.BranchName, needsLfs)))
         {
+            // 拒绝就必须中止：这些文件超过 GitHub 硬限，不走 LFS 推上去也会被拒收。
             return (null, new CommitReport(CommitOutcome.Rejected,
-                $"用户拒绝启用 LFS,已跳过项目 [{worktree.BranchName}]", RejectedFiles: needsLfs));
+                $"用户拒绝为超限文件启用 LFS，已跳过项目 [{worktree.BranchName}]；" +
+                "这些文件不走 LFS 无法推送，可改为把它们加入排除清单",
+                RejectedFiles: needsLfs));
         }
 
         if (checkStatus == FileSizeCheckStatus.Warning)
@@ -386,10 +401,14 @@ public sealed partial class ProjectService
     {
         var list = files.ToList();
         var prompt = new StringBuilder();
-        prompt.AppendLine($"项目【{name}】发现 {list.Count} 个超限文件尚未使用 Git LFS 指针:");
+        prompt.AppendLine($"项目【{name}】有 {list.Count} 个文件超过 GitHub 的 100MB 单文件硬限:");
         foreach (var file in list)
             prompt.AppendLine($"  • {file.RelativePath}({file.FormattedSize})");
-        prompt.Append("是否启用 Git LFS 后继续?选择「否」将中止该项目且不创建提交。");
+        prompt.AppendLine();
+        prompt.AppendLine("是否为这些**具体文件**启用 Git LFS 指针后继续？");
+        prompt.AppendLine("只对上列路径生效，不会按扩展名批量套用，也不影响其它文件。");
+        prompt.Append("选择「否」将中止该项目且不创建提交——超限文件不走 LFS 也推不上 GitHub，" +
+                      "此时更该考虑把它们加入不纳入仓库的清单。");
         return prompt.ToString();
     }
 

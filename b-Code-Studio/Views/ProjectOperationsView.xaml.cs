@@ -15,12 +15,8 @@ public partial class ProjectOperationsView : UserControl
 {
     private readonly Func<CommandBus?> _busAccessor;
     private readonly ProjectSelectionState _selection;
-    private readonly ObservableCollection<RuleEditRow> _rules = [];
     private List<string> _projectNames = [];
     private bool _projectOperationRunning;
-    private bool _ruleOperationRunning;
-    private string? _loadedRuleProject;
-    private int _ruleLoadGeneration;
 
     public ProjectOperationsView(Func<CommandBus?> busAccessor, ProjectSelectionState selection,
         Func<string, bool> isProtected, Func<GitHubConnectionService?> gitHubAccessor)
@@ -32,8 +28,6 @@ public partial class ProjectOperationsView : UserControl
         // GitHub 连接治理是本页第三个分段，不是宿主级独立窗口。
         GitHubPanel.Content = new GitHubConnectionView(gitHubAccessor, busAccessor);
         SelectedCommitMessageBox.Text = "一键推送更新";
-        RuleGrid.ItemsSource = _rules;
-        InitializeRuleDeferredSave();
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
         ViewKit.RunOnceOnLoaded(this, () => RefreshProjectsAsync(_selection.CurrentProjectName));
@@ -67,10 +61,8 @@ public partial class ProjectOperationsView : UserControl
             return;
         }
         UpdateProjectActions();
-        if (selected != null)
-            await LoadRulesAsync(selected);
-        else
-            ClearRules();
+        // 排除清单是全库共用的设置，与当前选中项目无关，只在页面首次载入时读一次。
+        await LoadExcludeListAsync();
     }
 
     private void OnSharedSelectionChanged(object? sender, EventArgs e)
@@ -78,27 +70,10 @@ public partial class ProjectOperationsView : UserControl
 
     private async Task ApplySharedSelectionAsync()
     {
-        var selected = _selection.CurrentProjectName is { } current
-            ? _projectNames.FirstOrDefault(name => name.Equals(current, StringComparison.OrdinalIgnoreCase))
-            : null;
 
-        if (_loadedRuleProject is { Length: > 0 } loaded
-            && !string.Equals(selected, loaded, StringComparison.OrdinalIgnoreCase)
-            && !await SaveRulesOnPageLeaveAsync())
-        {
-            _selection.CurrentProjectName = loaded;
-            return;
-        }
-
+        // 清单不随项目切换重载，也不需要离页保存协商：它不是按项目的状态。
         UpdateProjectActions();
-        if (selected != null
-            && !string.Equals(selected, _loadedRuleProject, StringComparison.OrdinalIgnoreCase))
-            await LoadRulesAsync(selected);
-        else
-        {
-            if (selected == null)
-                ClearRules();
-        }
+        await Task.CompletedTask;
     }
 
     private void OnNewProjectNameChanged(object sender, TextChangedEventArgs e)

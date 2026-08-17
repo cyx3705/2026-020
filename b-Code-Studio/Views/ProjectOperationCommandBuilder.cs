@@ -41,6 +41,10 @@ public static class ProjectOperationCommandBuilder
         return $"janus.proj.pushall target={target}";
     }
 
+    /// <summary>排除清单是全库共用的设置，不带项目名。</summary>
+    public static string Excludes(string list)
+        => $"janus.gitrule.excludes list={CommandParser.QuoteArg(list.Trim())}";
+
     private static string Target(ProjectOperationMode mode)
         => mode is ProjectOperationMode.CurrentSubmodules or ProjectOperationMode.AllSubmodules
             ? "submodules"

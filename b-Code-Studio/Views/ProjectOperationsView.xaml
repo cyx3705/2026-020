@@ -140,103 +140,34 @@
 
         <Grid>
             <!-- 分段按钮已给出面板名，上方选中项标题已给出当前项目，面板内不重复标题行。 -->
-            <DockPanel x:Name="RulePanel" IsEnabled="False">
-            <Grid DockPanel.Dock="Top" Margin="0,0,0,6">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <TextBox Grid.Column="0" x:Name="PatternBox" Text="*.xlsx"
-                         VerticalContentAlignment="Center"
-                         ToolTip="文件格式如 *.xlsx；目录规则以 / 结尾如 Library/（只用于忽略）" />
-                <Button Grid.Column="1" x:Name="AddRuleButton" Content="添加规则" Padding="10,3"
-                        Margin="6,0,0,0" Click="OnAddRuleClick" />
-            </Grid>
+            <DockPanel x:Name="RulePanel">
+                <!-- 规则面只回答一个问题：这个后缀/目录要不要进仓库。
+                     LFS 不在这里——它只在提交链路对超过 100MB 的具体文件征求同意。 -->
+                <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap" Margin="0,0,0,6"
+                           Foreground="{DynamicResource Shell.Brush.TextSecondary}"
+                           Text="不纳入仓库的清单（全库共用一份，逗号或换行分隔）。目录以 / 结尾，后缀写 *.xxx。保存后在各项目下次提交时自动生效，无需手动下发。" />
 
-            <ScrollViewer DockPanel.Dock="Top" HorizontalScrollBarVisibility="Auto"
-                          VerticalScrollBarVisibility="Disabled" Margin="0,0,0,6">
-                <StackPanel Orientation="Horizontal">
-                    <Button x:Name="RefreshRulesButton" Content="刷新规则" Padding="10,3"
-                            Click="OnRefreshRulesClick" />
-                    <Button x:Name="ReviewRulesButton" Content="未决与建议" Padding="10,3" Margin="6,0,0,0"
-                            Click="OnReviewRulesClick" />
-                    <Button x:Name="SyncBaselineButton" Content="同步基线" Padding="10,3" Margin="6,0,0,0"
-                            Click="OnSyncBaselineClick"
-                            ToolTip="只预览模板项目 baseline 规则同步；不会从页面直接写入" />
-                    <Button x:Name="DeleteRuleButton" Content="删除规则" Padding="10,3" Margin="6,0,0,0"
-                            IsEnabled="False" Click="OnDeleteRuleClick" />
+                <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,6,0,0">
+                    <Button x:Name="SaveExcludesButton" Content="保存清单" Padding="10,3"
+                            Click="OnSaveExcludesClick"
+                            ToolTip="经宿主确认后写入设置；不删除本地文件、不动索引、不提交、不推送" />
+                    <Button x:Name="RefreshRulesButton" Content="刷新落地状态" Padding="10,3"
+                            Margin="6,0,0,0" Click="OnRefreshRulesClick" />
                 </StackPanel>
-            </ScrollViewer>
 
-            <!-- 选择项目自动加载全格式台账；刷新规则强制刷新缓存。 -->
-            <Border DockPanel.Dock="Top"
-                    Background="{DynamicResource Shell.Brush.SurfaceAlt}"
-                    BorderBrush="{DynamicResource Shell.Brush.Hairline}" BorderThickness="1"
-                    Padding="6" Margin="0,0,0,6">
-                <TextBlock x:Name="CoverageText"
-                           Foreground="{DynamicResource Shell.Brush.TextSecondary}" TextWrapping="Wrap"
-                           Text="格式覆盖：选择项目后自动读取全部文件格式" />
-            </Border>
+                <Border DockPanel.Dock="Bottom"
+                        Background="{DynamicResource Shell.Brush.SurfaceAlt}"
+                        BorderBrush="{DynamicResource Shell.Brush.Hairline}" BorderThickness="1"
+                        Padding="6" Margin="0,6,0,0">
+                    <TextBlock x:Name="RuleStatusText" TextWrapping="Wrap"
+                               Foreground="{DynamicResource Shell.Brush.TextSecondary}"
+                               Text="落地状态：点「刷新落地状态」查看各项目托管块是否已是当前清单" />
+                </Border>
 
-            <DataGrid x:Name="RuleGrid"
-                      Background="{DynamicResource Shell.Brush.Surface}"
-                      Foreground="{DynamicResource Shell.Brush.TextPrimary}"
-                      BorderBrush="{DynamicResource Shell.Brush.Hairline}"
-                      RowBackground="{DynamicResource Shell.Brush.Surface}"
-                      AlternatingRowBackground="{DynamicResource Shell.Brush.SurfaceAlt}"
-                      HorizontalGridLinesBrush="{DynamicResource Shell.Brush.Hairline}"
-                      AutoGenerateColumns="False" CanUserAddRows="False"
-                      CanUserDeleteRows="False" SelectionMode="Single" SelectionUnit="FullRow"
-                      SelectionChanged="OnRuleSelected" HeadersVisibility="Column"
-                      GridLinesVisibility="Horizontal" HorizontalScrollBarVisibility="Auto">
-                <DataGrid.Columns>
-                    <DataGridTextColumn Header="格式 / Pattern" Width="125" Binding="{Binding Pattern}" IsReadOnly="True" />
-                    <DataGridTextColumn Header="来源" Width="95" Binding="{Binding Source}" IsReadOnly="True" />
-                    <DataGridTextColumn Header="文件" Width="50" Binding="{Binding FileCount}" IsReadOnly="True" />
-                    <DataGridCheckBoxColumn Header="Git" Width="50" IsThreeState="True"
-                                            Binding="{Binding Track, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
-                        <DataGridCheckBoxColumn.ElementStyle>
-                            <Style TargetType="CheckBox">
-                                <Setter Property="IsEnabled" Value="{Binding CanEdit}" />
-                            </Style>
-                        </DataGridCheckBoxColumn.ElementStyle>
-                        <DataGridCheckBoxColumn.EditingElementStyle>
-                            <Style TargetType="CheckBox">
-                                <Setter Property="IsEnabled" Value="{Binding CanEdit}" />
-                            </Style>
-                        </DataGridCheckBoxColumn.EditingElementStyle>
-                    </DataGridCheckBoxColumn>
-                    <DataGridCheckBoxColumn Header="LFS 指针" Width="70" IsThreeState="True"
-                                            Binding="{Binding Lfs, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
-                        <DataGridCheckBoxColumn.ElementStyle>
-                            <Style TargetType="CheckBox">
-                                <Setter Property="IsEnabled" Value="{Binding CanEditAttributes}" />
-                            </Style>
-                        </DataGridCheckBoxColumn.ElementStyle>
-                        <DataGridCheckBoxColumn.EditingElementStyle>
-                            <Style TargetType="CheckBox">
-                                <Setter Property="IsEnabled" Value="{Binding CanEditAttributes}" />
-                            </Style>
-                        </DataGridCheckBoxColumn.EditingElementStyle>
-                    </DataGridCheckBoxColumn>
-                    <DataGridCheckBoxColumn Header="LF 文本" Width="65" IsThreeState="True"
-                                            Binding="{Binding Lf, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
-                        <DataGridCheckBoxColumn.ElementStyle>
-                            <Style TargetType="CheckBox">
-                                <Setter Property="IsEnabled" Value="{Binding CanEditAttributes}" />
-                            </Style>
-                        </DataGridCheckBoxColumn.ElementStyle>
-                        <DataGridCheckBoxColumn.EditingElementStyle>
-                            <Style TargetType="CheckBox">
-                                <Setter Property="IsEnabled" Value="{Binding CanEditAttributes}" />
-                            </Style>
-                        </DataGridCheckBoxColumn.EditingElementStyle>
-                    </DataGridCheckBoxColumn>
-                    <DataGridTextColumn Header="存储结果" Width="220" Binding="{Binding StorageResult}" IsReadOnly="True" />
-                    <DataGridTextColumn Header="当前状态" Width="280" Binding="{Binding Status}" IsReadOnly="True" />
-                </DataGrid.Columns>
-            </DataGrid>
-        </DockPanel>
+                <TextBox x:Name="ExcludeListBox" AcceptsReturn="True" TextWrapping="Wrap"
+                         VerticalScrollBarVisibility="Auto" MinHeight="120"
+                         FontFamily="Consolas" />
+            </DockPanel>
             <ContentControl x:Name="HistoryPanel" Visibility="Collapsed" />
             <ContentControl x:Name="GitHubPanel" Visibility="Collapsed" />
         </Grid>

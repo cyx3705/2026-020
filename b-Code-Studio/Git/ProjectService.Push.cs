@@ -64,11 +64,9 @@ public sealed partial class ProjectService
                 PartialCompletion: entries.Any(item => item.Pushed), Target: target,
                 ParentPointerPending: pendingParentCount > 0);
 
-        // 新建的远端还没有上游分支，首推带 -u 一并建立跟踪。
         var created = remote.Creation;
-        var result = await GitRunner.RunAsync(worktreePath,
-            created == null ? ["push", "origin", "HEAD"] : ["push", "-u", "origin", "HEAD"],
-            cancellation: cancellation);
+        var result = await PushBranchAsync(
+            worktreePath, branch: null, setUpstream: created != null, progress: null, cancellation);
 
         // 建仓的结果必须同时出现在成功和失败两条消息里：推送失败时用户只看到 git 的报错，
         // 不说清楚就不知道 GitHub 上已经多了一个仓库。
@@ -85,11 +83,103 @@ public sealed partial class ProjectService
                 RemoteUrl: created?.OriginUrl ?? string.Empty,
                 RemoteVisibility: created?.Visibility ?? string.Empty);
 
-        return new PushReport(true, $"{prefix}已推送到 origin (HEAD)\n{result.Output}".Trim(),
+        return new PushReport(true, $"{prefix}已推送到 origin\n{result.Output}".Trim(),
             true, entries, Target: target,
             RemoteCreated: created?.Created ?? false,
             RemoteUrl: created?.OriginUrl ?? string.Empty,
             RemoteVisibility: created?.Visibility ?? string.Empty);
+    }
+
+    /// <summary>
+    /// 全部父仓库推送的唯一出口。把 2026-08 全库首推里手工验证过的四条经验固化下来：
+    ///
+    /// 1. **推显式分支名，不推 HEAD**。`push origin HEAD` 在部分仓上报
+    ///    「hint: 'HEAD:refs/heads/HEAD'?」而失败，换成分支名即通过。
+    /// 2. **关掉 lfs.locksverify**。缺失 LFS 对象较多的仓在 locks/verify 端点撞 EOF，
+    ///    整个推送失败；这个校验对本链路没有价值。
+    /// 3. **超预算就按提交分批推**。单次推送超过约 300MB 在本机链路上会中断，
+    ///    分批后同样的内容能稳定推完。
+    /// 4. 失败消息保留 git 原文，便于区分传输中断和服务端拒收（pre-receive）。
+    /// </summary>
+    private static async Task<GitResult> PushBranchAsync(
+        string worktreePath,
+        string? branch,
+        bool setUpstream,
+        IProgress<string>? progress,
+        CancellationToken cancellation)
+    {
+        // 分支名必须现读：WorktreeInfo.BranchName 是项目目录名（共享裸仓时代的遗留命名），
+        // 不是 git 分支名，拿它去推会得到 "src refspec ... does not match any"。
+        if (string.IsNullOrWhiteSpace(branch))
+        {
+            var head = await GitRunner.RunAsync(worktreePath,
+                ["symbolic-ref", "--quiet", "--short", "HEAD"], cancellation);
+            branch = head.Success ? FirstLine(head.Output) : string.Empty;
+        }
+        if (string.IsNullOrWhiteSpace(branch))
+            return new GitResult(1,
+                "无法确定要推送的分支名：仓库处于 detached HEAD，请先 checkout 到分支");
+
+        var batches = await PlanPushBatchesAsync(worktreePath, branch, cancellation);
+        for (var i = 0; i < batches.Count; i++)
+        {
+            var last = i == batches.Count - 1;
+            var refspec = last ? branch : $"{batches[i]}:refs/heads/{branch}";
+            if (batches.Count > 1)
+                progress?.Report($"[{branch}] 分批推送 {i + 1}/{batches.Count} ...");
+            List<string> arguments = ["-c", "lfs.locksverify=false", "push"];
+            if (setUpstream && last)
+                arguments.Add("-u");
+            arguments.Add("origin");
+            arguments.Add(refspec);
+            var result = await GitRunner.RunAsync(worktreePath, arguments, cancellation);
+            if (!result.Success)
+                return batches.Count > 1
+                    ? new GitResult(result.ExitCode,
+                        $"分批推送在第 {i + 1}/{batches.Count} 批失败（之前各批已推上去，重跑会从断点继续）:\n{result.Output}")
+                    : result;
+        }
+        return new GitResult(0, batches.Count > 1
+            ? $"已分 {batches.Count} 批推送 {branch}"
+            : $"已推送 {branch}");
+    }
+
+    /// <summary>
+    /// 规划推送批次：返回中间提交列表，最后一项恒为分支 tip（由调用方用分支名推）。
+    /// 待推内容在预算内时返回单批，不引入任何额外 git 调用带来的开销。
+    /// </summary>
+    private static async Task<List<string>> PlanPushBatchesAsync(
+        string worktreePath, string branch, CancellationToken cancellation)
+    {
+        var single = new List<string> { branch };
+        // --disk-usage 直接给出待推字节数，比自己遍历对象可靠（git 2.31+）。
+        var range = await GitRunner.RunAsync(worktreePath,
+            ["rev-list", "--disk-usage", "--objects", branch, "--not", "--remotes=origin"],
+            cancellation);
+        if (!range.Success || !long.TryParse(FirstLine(range.Output), out var bytes)
+                           || bytes <= PushChunkBudgetBytes)
+            return single;
+
+        var listed = await GitRunner.RunAsync(worktreePath,
+            ["rev-list", "--reverse", branch, "--not", "--remotes=origin"], cancellation);
+        if (!listed.Success)
+            return single;
+        var commits = listed.Output
+            .Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+            .ToList();
+        if (commits.Count <= 1)
+            return single; // 单个提交无法再切；只能整包推，失败由调用方原样报出
+
+        // 按字节预算估算批数，再按提交数均分。均分不精确，但足以把单批压回预算量级，
+        // 而逐提交量算 disk-usage 会带来 N 次 git 调用。
+        var batchCount = (int)Math.Min(commits.Count,
+            Math.Max(2, (bytes + PushChunkBudgetBytes - 1) / PushChunkBudgetBytes));
+        var step = (commits.Count + batchCount - 1) / batchCount;
+        var batches = new List<string>();
+        for (var index = step - 1; index < commits.Count - 1; index += step)
+            batches.Add(commits[index]);
+        batches.Add(branch);
+        return batches;
     }
 
     /// <summary>
@@ -198,9 +288,8 @@ public sealed partial class ProjectService
                     remote.Creation.FullName, remote.Creation.OriginUrl,
                     remote.Creation.Visibility, remote.Creation.Created));
 
-            var result = await GitRunner.RunAsync(item.WorktreePath,
-                remote.Creation == null ? ["push", "origin", "HEAD"] : ["push", "-u", "origin", "HEAD"],
-                cancellation: cancellation);
+            var result = await PushBranchAsync(item.WorktreePath, branch: null,
+                setUpstream: remote.Creation != null, progress: null, cancellation);
             if (result.Success)
                 pushed++;
             else
@@ -298,8 +387,8 @@ public sealed partial class ProjectService
         var entries = new List<SubmoduleOperationEntry>();
         foreach (var (_, link) in items)
         {
-            var result = await GitRunner.RunAsync(link.FullPath,
-                ["push", "origin", link.Branch], cancellation: cancellation);
+            var result = await PushBranchAsync(link.FullPath, link.Branch,
+                setUpstream: false, progress: null, cancellation);
             var entry = new SubmoduleOperationEntry(link.RelativePath, link.Branch,
                 link.HeadSha, link.HeadSha,
                 result.Success ? SubmoduleOperationOutcome.Success : SubmoduleOperationOutcome.Failed,

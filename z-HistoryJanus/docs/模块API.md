@@ -1,4 +1,4 @@
-# HistoryJanus 4.2.0 模块 API
+# HistoryJanus 5.0.0 模块 API
 
 本文件是其他模块和项目消费 HistoryJanus 的唯一人工合同。运行时命令目录是参数、确认策略和可用性的最终真值；历史文档和 Janus 内部类型不构成公开 API。
 
@@ -6,7 +6,7 @@
 
 - 正式快照：`z-HistoryJanus`。
 - 模块名：`HistoryJanus`。
-- 版本：`4.2.0`。
+- 版本：`5.0.0`。
 - 入口：`HistoryJanus.dll`。
 - 宿主基线：HistoryVulcan `3.9.0` current-host 快照，从 `2026-023-HistoryVulcan/z-HistoryVulcan` 消费；该快照的 `sourceDirty` 仍由 HistoryVulcan manifest 如实标记。
 - 主题：页面使用 HistoryVulcan `Shell.Brush.*` 动态资源，跟随宿主深色/浅色切换，不在模块内维护第二套主题。
@@ -15,7 +15,7 @@
 - UI：启用。
 - MCP：只读投影。
 
-本文件描述活动源的 `4.2.0` 候选合同；只有用户另行授权正式发布后，同版本 manifest 和二进制才会提升到
+本文件描述活动源的 `5.0.0` 候选合同；只有用户另行授权正式发布后，同版本 manifest 和二进制才会提升到
 `z-HistoryJanus`。发布前，z 快照自身的 manifest 与 checksum 仍是正式运行版本的真值。
 其他项目从 `z-HistoryJanus/docs/` 或 `diana.docs.janus` 读取已发布 API，从 z 快照读取 `module.manifest.json`、二进制和
 `SHA256SUMS`；不要从 `b-Publish`、Janus 的 `bin/obj`、HistoryVulcan 工作树或 Janus 历史文档建立依赖。
@@ -48,7 +48,7 @@ if (!result.Success)
 
 3.7.0 再次收敛指令类：`debug` 类整体退役（`janus.debug.logflood` 与宿主 `vulcan.log.flood` 重复，`janus.debug.sleep` 无调用点），`meta` 类并入 `proj`（`janus.meta.list` → `janus.proj.metas`，`janus.meta.open` → `janus.proj.metaopen`）。3.8.0 业务命令为 35 条、类为 `proj` / `gitrule` / `history` / `github` 四类；加上模块宿主投影的 `janus.status`，运行时命令总数为 36 条。
 
-3.9.0（DEC-012）新增 `graph` 类四条只读 DAG 命令；3.9.1（DEC-013）改为独立图谱窗口与编号主线/平行泳道。4.0.0（DEC-015）存储引擎改为独立仓：`name=` 是已登记项目目录名，仓内主线为 `main`。业务命令 39 条、指令类五类（`proj` / `gitrule` / `history` / `github` / `graph`）；加上 `janus.status`，运行时命令总数为 **40** 条。
+3.9.0（DEC-012）新增 `graph` 类四条只读 DAG 命令；3.9.1（DEC-013）改为独立图谱窗口与编号主线/平行泳道。4.0.0（DEC-015）存储引擎改为独立仓：`name=` 是已登记项目目录名，仓内主线为 `main`。业务命令 39 条、指令类五类（`proj` / `gitrule` / `history` / `github` / `graph`）；加上 `janus.status`，运行时命令总数为 **40** 条。5.0.0（DEC-022）规则面收敛：`gitrule` 只剩 `list` / `excludes`，业务命令 39 → **34** 条，运行时总数 **35** 条。
 
 ### 模块与读取
 
@@ -63,9 +63,7 @@ if (!result.Success)
 | `janus.history.list` | 只读 | 列出分支自有提交 |
 | `janus.history.show` | 只读 | 读取提交详情 |
 | `janus.history.diff` | 只读 | 预览历史节点与 HEAD 的差异 |
-| `janus.gitrule.list` | 只读 | 列出 Git 文件规则与索引状态 |
-| `janus.gitrule.scan` | 只读 | 扫描格式台账和覆盖率 |
-| `janus.gitrule.review` | 只读 | 查看未决格式与规则建议 |
+| `janus.gitrule.list` | 只读 | 查看全库共用的不纳入仓库清单，及各项目托管块落地情况 |
 | `janus.github.status` | 只读 | 服务器 Git、GCM、提交身份、origin 和 SSH 状态 |
 | `janus.github.accounts` | 只读 | 列出 GCM 中已知的 GitHub HTTPS 凭据账号 |
 | `janus.github.test` | 只读 | 检测 GitHub SSH/HTTPS 连接（`transport=auto\|ssh\|https`，`timeout=1..120`），不执行 push |
@@ -95,10 +93,7 @@ if (!result.Success)
 | `janus.history.rollback` | 回滚到指定历史节点 |
 | `janus.history.reset` | 重置到指定历史节点 |
 | `janus.history.forcepush` | 强制推送历史状态 |
-| `janus.gitrule.sync` | 同步模板规则基线 |
-| `janus.gitrule.set` | 保存单条 Git 文件规则 |
-| `janus.gitrule.batchset` | 原子保存多条 Git 文件规则 |
-| `janus.gitrule.remove` | 删除 Git 文件规则 |
+| `janus.gitrule.excludes` | 改写全库共用的不纳入仓库清单（整体替换，需确认） |
 
 写操作必须尊重宿主返回的确认要求，不能通过直接调用 Janus 内部服务绕过确认。MCP 只允许投影只读命令；Janus 不再公开 `debug` 类诊断命令。
 
@@ -127,3 +122,4 @@ if (!result.Success)
 - V4.1.0：`push` / `pushall` 在仓库缺 `origin` 时按需创建 GitHub 同名仓库后再推送（DEC-019）。新增可选参数 `visibility`（`public` / `private`，默认 `public`）；命令数与窗口不变。令牌取自 GCM 已存的 HTTPS 凭据，模块不新增任何凭据配置项。`PushReport` 增加 `RemoteCreated` / `RemoteUrl` / `RemoteVisibility`，`BatchPushReport` 增加 `CreatedRemotes`；消费者按需投影，旧字段语义不变。
 - V4.1.1：自动建仓写入 `origin` 的 URL 改为优先 `ssh_url`（DEC-020）——HTTPS 在大包（实测约 17MB 起）上会被连接重置。推送认证因此依赖 `~/.ssh` 密钥，而建仓仍走 HTTPS token，两条凭据链路不同。建仓成功但推送失败时，结果消息也会点名新建的仓库。`PushReport.RemoteUrl` 回显的是实际写入 origin 的 URL。
 - V4.2.0：自动建仓的远端仓库名改为只取项目编号 `YYYY-NNN`（DEC-021）——GitHub 会吃掉仓库名里的非 ASCII 字符（请求 `2025-001-AGV洗轮机` 建出 `2025-001-AGV-`），而库内多数项目是中文名。本地项目目录名不变，远端与本地刻意不一致；需要对外展示的仓库由用户自行在 GitHub 改名。已按旧规则建出的仓库保持原名。
+- V5.0.0（破坏性）：Git 文件规则收敛为**一份全库共用的「不纳入仓库」清单**（设置 `proj.excludesuffixes`），只有"是否纳入仓库"一个维度（DEC-022）。`janus.gitrule.set` / `batchset` / `remove` / `sync` / `scan` / `review` 六条命令一次性退役、不留别名，新增 `janus.gitrule.excludes`；业务命令 39 → 34 条，运行时 40 → 35 条。LFS 完全退出规则面：Janus 不再按扩展名生成任何 `.gitattributes` LFS 属性，只在提交链路对超过 GitHub 100MB 硬限的**具体文件**弹确认后按精确路径 `git lfs track`。清单由提交链路自动刷进各仓 `.gitignore` 托管块，消费方不需要（也无法）手动下发。推送统一走一个出口：推显式分支名、`lfs.locksverify=false`、待推超 300MB 时按提交分批推。
