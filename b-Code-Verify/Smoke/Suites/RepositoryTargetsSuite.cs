@@ -161,6 +161,18 @@ internal static class RepositoryTargetsSuite
                 "janus.proj.metaopen keeps its name/meta parameters");
 
             await VerifyOverviewMetaMerge(service, parent, noChild);
+
+            var renamedProject = "2026-233-Renamed";
+            var renamed = await service.RenameAsync(noChildBranch, renamedProject, null);
+            True(renamed.Success, $"project rename succeeds: {renamed.Message}");
+            True(!Directory.Exists(noChild) && Directory.Exists(Path.Combine(root, renamedProject)),
+                "project rename moves the worktree directory");
+            var renamedList = await service.ListWorktreesAsync();
+            True(renamedList.Worktrees.Any(item => item.BranchName == renamedProject),
+                "project list exposes the renamed branch/worktree");
+            var protectedRename = await service.RenameAsync(parentBranch, "2026-232-Renamed", null);
+            True(!protectedRename.Success && protectedRename.Message.Contains("受保护"),
+                "protected project cannot be renamed");
             VerifyXamlLayout();
         }
         finally
@@ -183,6 +195,8 @@ internal static class RepositoryTargetsSuite
             .Select(element => element.Attribute(x + "Name")?.Value)
             .Where(name => name != null).ToList();
         Equal(1, named.Count(name => name == "SelectedCommitMessageBox"), "one commit message box");
+        True(named.Contains("SelectedProjectNameBox") && named.Contains("RenameProjectButton"),
+            "project operation row exposes editable name and rename action");
         foreach (var removed in new[]
                  {
                      "OpenProjectButton", "ScanCoverageButton", "ReloadRulesButton",
