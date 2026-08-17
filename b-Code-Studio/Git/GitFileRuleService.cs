@@ -1,408 +1,275 @@
 using System.IO;
 using System.Text;
-using System.Text.Json;
-using System.Text.RegularExpressions;
+using HistoryVulcan.Core.Storage;
 
 namespace HistoryJanus.Git;
 
-public sealed record GitFileRuleInfo(
-    string Pattern,
-    bool Track,
-    bool Lfs,
-    bool Lf,
-    bool Managed,
-    int FileCount,
-    int TrackedCount,
-    int IgnoredCount,
-    int LfsAttributeCount,
-    int LfsPointerCount,
-    int LfAttributeCount,
-    string Status);
-
-/// <summary>项目根已声明的一条格式规则，供台账扫描消费。</summary>
-public sealed record DeclaredRule(string Pattern, bool Track, bool Lfs, bool Lf, bool Managed);
-
-public sealed record GitFileRulePreview(
+/// <summary>一个项目的"不纳入仓库"规则落地状态。</summary>
+public sealed record ExcludeRuleState(
     string Project,
-    string Pattern,
-    bool? Track,
-    bool? Lfs,
-    bool? Lf,
-    string GitIgnoreDiff,
-    string GitAttributesDiff,
-    int AffectedFiles,
-    int AddToIndex,
-    int RemoveFromIndex,
-    int Renormalize,
-    bool Changed,
-    bool Applied);
+    bool BlockCurrent,
+    int IgnoredFileCount,
+    int TrackedButExcludedCount,
+    string Detail);
 
-public sealed record GitFileRuleChange(string Pattern, bool Track, bool Lfs, bool Lf);
-
-public sealed record GitFileRuleBatchItem(
-    string Pattern,
-    bool Track,
-    bool Lfs,
-    bool Lf,
-    int AffectedFiles,
-    int AddToIndex,
-    int RemoveFromIndex,
-    int Renormalize,
-    bool Changed,
-    bool Applied);
-
-public sealed record GitFileRuleBatchPreview(
-    string Project,
-    IReadOnlyList<GitFileRuleBatchItem> Items,
-    string GitIgnoreDiff,
-    string GitAttributesDiff,
-    int AddToIndex,
-    int RemoveFromIndex,
-    int Renormalize,
-    bool Changed,
-    bool Applied);
+/// <summary>整库共用的排除清单及各项目的落地情况。</summary>
+public sealed record ExcludeRuleReport(
+    IReadOnlyList<string> Suffixes,
+    IReadOnlyList<string> Directories,
+    IReadOnlyList<ExcludeRuleState> Projects);
 
 /// <summary>
-/// 项目根文件格式规则：.gitignore 决定是否跟踪，.gitattributes 只生成标准 LFS/LF 行。
-/// 注释块外内容保持；索引操作只使用 Git 枚举出的精确相对路径。
+/// 提交链路刷写 .gitignore 托管块的窄接口。
+/// 单独抽出来只为打断依赖环：GitFileRuleService 需要 ProjectService 解析项目路径，
+/// 而提交链路又要回头刷规则；ProjectService 只依赖这个接口，且可为空。
 /// </summary>
-public sealed partial class GitFileRuleService
+public interface IExcludeRuleWriter
 {
+    Task<(bool Success, bool Changed, string Message)> EnsureIgnoreAsync(
+        string root, CancellationToken cancellation = default);
+}
+
+/// <summary>
+/// Git 文件规则的唯一形态：一份**全库共用**的「不纳入仓库」清单。
+///
+/// 4.x 曾按格式逐条维护 Git/LFS/LF 三态规则表，并要求人工执行 sync 下发。
+/// 实践证明那套规则面本身就是故障源：137 条按扩展名的 LFS 通配把 *.asm / *.baml
+/// 这类文本也塞进 LFS，最终 11 GB LFS 占用、推送被 GitHub pre-receive 拒收。
+/// 5.0.0 起规则只回答一个问题——这个后缀/目录要不要进仓库；LFS 完全退出规则面，
+/// 只在提交链路里对超过 GitHub 100MB 硬限的**具体文件**征求人工同意。
+///
+/// 清单存在设置里而不是各仓文件里：全库一致才不消耗认知，且提交链路会自动把它
+/// 幂等刷进各仓 .gitignore 托管块，不再需要任何手动下发命令。
+/// </summary>
+public sealed class GitFileRuleService : IExcludeRuleWriter
+{
+    public const string KeyExcludeSuffixes = "proj.excludesuffixes";
+
+    /// <summary>
+    /// 默认清单来自 2026-08 全库推送的实测：这些目录与后缀全是可再生产物或 IDE 状态，
+    /// 入库只会撑大仓库并把推送顶到传输上限。目录项以 / 结尾。
+    /// </summary>
+    public const string DefaultExcludeSuffixes =
+        "bin/, obj/, venv/, .venv/, __pycache__/, .vs/, .idea/, node_modules/, " +
+        ".pytest_cache/, .mypy_cache/, tools/jdk/, " +
+        "*.user, *.suo, *.tmp, *.temp, *.log, *.bak, *.swp, *.xlk, *.autosave, Thumbs.db, .DS_Store";
+
     private const string ManagedBegin = "# HistoryJanus managed begin";
     private const string ManagedEnd = "# HistoryJanus managed end";
 
-    /// <summary>
-    /// 基线块由 janus.gitrule.sync 从模板整块重刷，属于机器所有内容。
-    /// 与 managed 块(本项目特例)分离,基线更新不伤项目自身决定;两者都在块外内容之外。
-    /// </summary>
-    private const string BaselineBegin = "# HistoryJanus baseline begin";
-    private const string BaselineEnd = "# HistoryJanus baseline end";
-    private const string LfsAttributes = "filter=lfs diff=lfs merge=lfs -text";
-    private const string LfAttributes = "text eol=lf";
-    private const int GitBatchSize = 100;
+    private static readonly string[] ManagedHeader =
+    [
+        "# 本块由 HistoryJanus 按设置 proj.excludesuffixes 自动生成，全库一致。",
+        "# 不要手工编辑块内内容；改清单请用 janus.gitrule.excludes。",
+        "# 块外内容属于本项目自己，Janus 逐字保留。",
+    ];
 
+    private readonly ISettingsService _settings;
     private readonly ProjectService _projects;
     private readonly SemaphoreSlim _writeGate = new(1, 1);
 
-    public GitFileRuleService(ProjectService projects) => _projects = projects;
+    public GitFileRuleService(ProjectService projects, ISettingsService settings)
+    {
+        _projects = projects;
+        _settings = settings;
+        if (_settings.Get(KeyExcludeSuffixes) == null)
+            _settings.Set(KeyExcludeSuffixes, DefaultExcludeSuffixes);
+    }
+
+    public string RawExcludeList => _settings.Get(KeyExcludeSuffixes) ?? DefaultExcludeSuffixes;
+
+    /// <summary>后缀项（*.xxx 或裸文件名），不含目录项。</summary>
+    public IReadOnlyList<string> Suffixes => Parse(RawExcludeList).Suffixes;
+
+    /// <summary>目录项（以 / 结尾），生成时统一加 **/ 前缀以匹配任意层级。</summary>
+    public IReadOnlyList<string> Directories => Parse(RawExcludeList).Directories;
 
     /// <summary>
-    /// 基线同步：把模板项目根规则文件的托管内容
-    /// 整块刷入目标项目的 baseline 块;项目自身的 managed 块与块外手写内容不动。
-    /// apply=false 只预览。省略 project 则同步全部工作树(模板自身除外)。
+    /// 改写整库共用清单。逐项校验后整体接受或整体拒绝，不做部分写入。
     /// </summary>
-    public async Task<(bool Success, string Message)> SyncBaselineAsync(
-        string? project,
-        bool apply,
-        IProgress<string>? progress,
-        CancellationToken cancellation = default)
+    public (bool Success, string Message) SetExcludeList(string raw)
     {
-        var templateName = _projects.BaseBranch;
-        var template = await _projects.ResolveWorktreeAsync(templateName).ConfigureAwait(false);
-        if (!template.Success || template.Worktree == null)
-            return (false, $"未找到模板项目 {templateName}: {template.Message}");
+        var parsed = Parse(raw);
+        if (parsed.Invalid.Count > 0)
+            return (false, "以下条目不合法，清单未改动:\n  " + string.Join("\n  ", parsed.Invalid));
+        if (parsed.Suffixes.Count == 0 && parsed.Directories.Count == 0)
+            return (false, "清单不能为空；要停用排除请只保留少量条目而不是清空");
 
-        var templateRoot = template.Worktree.WorktreePath;
-        var templateDocs = await ReadDocumentsAsync(templateRoot, cancellation).ConfigureAwait(false);
-        var ignoreBaseline = ManagedLines(templateDocs.Ignore);
-        var attrBaseline = ManagedLines(templateDocs.Attributes);
-        if (ignoreBaseline.Count == 0 && attrBaseline.Count == 0)
-            return (false, $"模板 {templateName} 的托管块为空,先用 janus.gitrule.set 在模板上建立基线");
+        var canonical = string.Join(", ", parsed.Directories.Concat(parsed.Suffixes));
+        _settings.Set(KeyExcludeSuffixes, canonical);
+        return (true,
+            $"清单已更新: {parsed.Directories.Count} 个目录 + {parsed.Suffixes.Count} 个后缀。" +
+            "下次提交时自动刷入各仓 .gitignore 托管块。\n  " + canonical);
+    }
 
+    /// <summary>
+    /// 把当前清单幂等刷进该仓 .gitignore 的托管块。提交链路每次调用，
+    /// 所以不需要任何手动下发命令；块外内容与其它块逐字保留。
+    /// </summary>
+    public async Task<(bool Success, bool Changed, string Message)> EnsureIgnoreAsync(
+        string root, CancellationToken cancellation = default)
+    {
+        var desired = BuildManagedBlock();
+        await _writeGate.WaitAsync(cancellation).ConfigureAwait(false);
+        try
+        {
+            var path = Path.Combine(root, ".gitignore");
+            var original = File.Exists(path)
+                ? await File.ReadAllTextAsync(path, cancellation).ConfigureAwait(false)
+                : string.Empty;
+            var rewritten = RewriteManagedBlock(original, desired);
+            if (rewritten == original)
+                return (true, false, ".gitignore 托管块已是最新");
+            await File.WriteAllTextAsync(path, rewritten, cancellation).ConfigureAwait(false);
+            return (true, true, ".gitignore 托管块已刷新为全库统一清单");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return (false, false, $"写入 .gitignore 失败: {ex.Message}");
+        }
+        finally
+        {
+            _writeGate.Release();
+        }
+    }
+
+    /// <summary>
+    /// 只读：清单本身，以及各项目托管块是否最新、有多少文件被排除、
+    /// 有多少**已被跟踪却命中排除**（这类需要人工决定是否 git rm --cached）。
+    /// </summary>
+    public async Task<(bool Success, string Message, ExcludeRuleReport? Report)> ListAsync(
+        string? project, CancellationToken cancellation = default)
+    {
         List<WorktreeInfo> targets;
         if (!string.IsNullOrWhiteSpace(project))
         {
             var one = await _projects.ResolveWorktreeAsync(project).ConfigureAwait(false);
             if (!one.Success || one.Worktree == null)
-                return (false, one.Message);
+                return (false, one.Message, null);
             targets = [one.Worktree];
         }
         else
         {
             var (git, worktrees) = await _projects.ListWorktreesAsync().ConfigureAwait(false);
             if (!git.Success)
-                return (false, $"获取工作树清单失败:\n{git.Output}");
-            targets = worktrees
-                .Where(w => Directory.Exists(w.WorktreePath)
-                            && !w.BranchName.Equals(templateName, StringComparison.OrdinalIgnoreCase))
-                .ToList();
+                return (false, $"获取项目清单失败:\n{git.Output}", null);
+            targets = worktrees.Where(w => Directory.Exists(w.WorktreePath)).ToList();
         }
 
-        var text = new StringBuilder();
-        text.Append($"基线同步({(apply ? "已写入" : "预览")}): 源 = {templateName} " +
-                    $"({ignoreBaseline.Count} 条忽略 / {attrBaseline.Count} 条属性),目标 {targets.Count} 个项目");
-
-        var changed = 0;
-        var failed = 0;
-        await _writeGate.WaitAsync(cancellation).ConfigureAwait(false);
-        try
+        var desired = BuildManagedBlock();
+        var states = new List<ExcludeRuleState>(targets.Count);
+        foreach (var target in targets)
         {
-            foreach (var target in targets)
+            var path = Path.Combine(target.WorktreePath, ".gitignore");
+            var text = File.Exists(path)
+                ? await File.ReadAllTextAsync(path, cancellation).ConfigureAwait(false)
+                : string.Empty;
+            var current = RewriteManagedBlock(text, desired) == text;
+
+            var ignored = await GitRunner.RunAsync(target.WorktreePath,
+                ["ls-files", "--others", "--ignored", "--exclude-standard", "-z"],
+                cancellation).ConfigureAwait(false);
+            var stale = await GitRunner.RunAsync(target.WorktreePath,
+                ["ls-files", "--cached", "--ignored", "--exclude-standard", "-z"],
+                cancellation).ConfigureAwait(false);
+            var ignoredCount = CountNul(ignored);
+            var staleCount = CountNul(stale);
+            states.Add(new ExcludeRuleState(target.BranchName, current, ignoredCount, staleCount,
+                current
+                    ? staleCount > 0
+                        ? $"{staleCount} 个文件已被跟踪却命中排除，需人工决定是否移出索引"
+                        : "一致"
+                    : "托管块落后于当前清单，下次提交会自动刷新"));
+        }
+
+        var parsed = Parse(RawExcludeList);
+        var text2 = new StringBuilder();
+        text2.Append($"全库共用排除清单: {parsed.Directories.Count} 个目录 + {parsed.Suffixes.Count} 个后缀");
+        text2.Append($"\n  {string.Join(", ", parsed.Directories.Concat(parsed.Suffixes))}");
+        text2.Append($"\n项目落地情况({states.Count} 个):");
+        foreach (var state in states)
+            text2.Append($"\n  {state.Project,-28} {(state.BlockCurrent ? "✓" : "✗")} " +
+                         $"排除 {state.IgnoredFileCount} 个文件  {state.Detail}");
+        return (true, text2.ToString(),
+            new ExcludeRuleReport(parsed.Suffixes, parsed.Directories, states));
+    }
+
+    private IReadOnlyList<string> BuildManagedBlock()
+    {
+        var parsed = Parse(RawExcludeList);
+        var lines = new List<string>(ManagedHeader);
+        // 目录项统一加 **/ 前缀：不带前缀时 git 只按仓库根匹配，
+        // 嵌套的 a17-xxx/tools/jdk/ 会漏掉（2026-08 实测踩过）。
+        foreach (var dir in parsed.Directories)
+            lines.Add(dir.TrimEnd('/').Contains('/') && !dir.StartsWith("**/", StringComparison.Ordinal)
+                ? "**/" + dir
+                : dir);
+        lines.AddRange(parsed.Suffixes);
+        return lines;
+    }
+
+    private static string RewriteManagedBlock(string original, IReadOnlyList<string> block)
+    {
+        var newline = original.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+        var lines = original.Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Split('\n').ToList();
+        var begin = lines.FindIndex(line => line.Trim() == ManagedBegin);
+        var end = begin >= 0
+            ? lines.FindIndex(begin, line => line.Trim() == ManagedEnd)
+            : -1;
+
+        var rendered = new List<string> { ManagedBegin };
+        rendered.AddRange(block);
+        rendered.Add(ManagedEnd);
+
+        if (begin >= 0 && end > begin)
+        {
+            lines.RemoveRange(begin, end - begin + 1);
+            lines.InsertRange(begin, rendered);
+        }
+        else
+        {
+            if (lines.Count > 0 && lines[^1].Trim().Length > 0)
+                lines.Add(string.Empty);
+            lines.AddRange(rendered);
+            lines.Add(string.Empty);
+        }
+        return string.Join(newline, lines);
+    }
+
+    private static (List<string> Suffixes, List<string> Directories, List<string> Invalid) Parse(string? raw)
+    {
+        var suffixes = new List<string>();
+        var directories = new List<string>();
+        var invalid = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var token in (raw ?? string.Empty)
+                 .Split([',', ';', '\n', '\r', '\t', ' '], StringSplitOptions.TrimEntries
+                                                           | StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (token.StartsWith('#'))
+                continue;
+            if (token.IndexOfAny(['\\', ':', '"', '\'', '|', '<', '>']) >= 0)
             {
-                progress?.Report($"基线同步 {target.BranchName} ...");
-                var docs = await ReadDocumentsAsync(target.WorktreePath, cancellation).ConfigureAwait(false);
-                var newIgnore = RewriteBaselineBlock(docs.Ignore, ignoreBaseline);
-                var newAttr = RewriteBaselineBlock(docs.Attributes, attrBaseline);
-                var ignoreDiffers = newIgnore != docs.Ignore.Text;
-                var attrDiffers = newAttr != docs.Attributes.Text;
-
-                if (!ignoreDiffers && !attrDiffers)
-                    continue;
-
-                changed++;
-                if (!apply)
-                {
-                    text.Append($"\n  {target.BranchName}: 待更新" +
-                                $"{(ignoreDiffers ? " .gitignore" : "")}{(attrDiffers ? " .gitattributes" : "")}");
-                    continue;
-                }
-
-                var write = await WriteDocumentsAsync(docs, newIgnore, newAttr, cancellation).ConfigureAwait(false);
-                if (write.Success)
-                {
-                    text.Append($"\n  {target.BranchName}: ✓ 基线块已刷新");
-                }
-                else
-                {
-                    failed++;
-                    text.Append($"\n  {target.BranchName}: ✗ {write.Message}");
-                }
+                invalid.Add($"{token} —— 不允许反斜杠、盘符或引号，目录分隔一律用 /");
+                continue;
             }
+            if (!seen.Add(token))
+                continue;
+            if (token.EndsWith('/'))
+                directories.Add(token);
+            else if (token.StartsWith("*.", StringComparison.Ordinal) && token.Length > 2)
+                suffixes.Add(token);
+            else if (!token.Contains('*') && !token.Contains('/'))
+                suffixes.Add(token); // 裸文件名，如 Thumbs.db
+            else
+                invalid.Add($"{token} —— 只接受 *.后缀、裸文件名，或以 / 结尾的目录");
         }
-        finally
-        {
-            _writeGate.Release();
-        }
-
-        text.Append(changed == 0
-            ? "\n全部项目基线已是最新,无需变更"
-            : apply
-                ? $"\n完成: {changed - failed}/{changed} 个项目已更新" +
-                  (failed > 0 ? $",{failed} 个失败" : "") + ";项目自身 managed 块与块外内容未动"
-                : "\napply=true 写入(经二次确认)");
-        return (failed == 0, text.ToString());
+        return (suffixes, directories, invalid);
     }
 
-    /// <summary>
-    /// 读取项目根已声明的格式规则，供台账扫描复用并保持规则解析只有一份实现。
-    /// 只回声明,不查索引——调用方若需归宿判定,应以 git ls-files 的三态为权威。
-    /// </summary>
-    public static async Task<IReadOnlyDictionary<string, DeclaredRule>> ReadDeclaredRulesAsync(
-        string root,
-        CancellationToken cancellation = default)
-    {
-        var documents = await ReadDocumentsAsync(root, cancellation).ConfigureAwait(false);
-        return ReadDefinitions(documents.Ignore, documents.Attributes).ToDictionary(
-            entry => entry.Key,
-            entry => new DeclaredRule(
-                entry.Value.Pattern, entry.Value.Track, entry.Value.Lfs, entry.Value.Lf, entry.Value.Managed),
-            StringComparer.OrdinalIgnoreCase);
-    }
-
-    public async Task<(bool Success, string Message, IReadOnlyList<GitFileRuleInfo> Rules)> ListAsync(
-        string project,
-        CancellationToken cancellation = default)
-    {
-        var resolved = await ResolveAsync(project).ConfigureAwait(false);
-        if (!resolved.Success)
-            return (false, resolved.Message, []);
-
-        var documents = await ReadDocumentsAsync(resolved.Root!, cancellation).ConfigureAwait(false);
-        var definitions = ReadDefinitions(documents.Ignore, documents.Attributes);
-        var repository = await ReadRepositoryStateAsync(resolved.Root!, definitions.Keys, cancellation)
-            .ConfigureAwait(false);
-        if (!repository.Success)
-            return (false, repository.Message, []);
-
-        var rows = BuildRows(definitions, repository);
-        return (true, $"{project}: {rows.Count} 条文件格式规则", rows);
-    }
-
-    public async Task<(bool Success, string Message, GitFileRulePreview? Preview)> SetAsync(
-        string project,
-        string pattern,
-        bool track,
-        bool lfs,
-        bool lf,
-        bool apply,
-        CancellationToken cancellation = default)
-    {
-        try
-        {
-            pattern = ValidatePattern(pattern);
-        }
-        catch (InvalidOperationException ex)
-        {
-            return (false, ex.Message, null);
-        }
-        if (!track && (lfs || lf))
-            return (false, "不纳入 Git 时 LFS 和 LF 必须同时关闭", null);
-        if (lfs && lf)
-            return (false, "LFS 与 LF 互斥，不能同时开启", null);
-        // 目录规则只表达“忽略”，不生成 .gitattributes 行；目录级 LFS/LF 没有意义。
-        if (LooksLikeDirectoryPattern(pattern) && (track || lfs || lf))
-            return (false, "目录规则只能用于忽略:请设 track=false lfs=false lf=false", null);
-
-        await _writeGate.WaitAsync(cancellation).ConfigureAwait(false);
-        try
-        {
-            var resolved = await ResolveAsync(project).ConfigureAwait(false);
-            if (!resolved.Success)
-                return (false, resolved.Message, null);
-            return await SetCoreAsync(
-                project, resolved.Root!, pattern, track, lfs, lf, apply, cancellation).ConfigureAwait(false);
-        }
-        finally
-        {
-            _writeGate.Release();
-        }
-    }
-
-    public async Task<(bool Success, string Message, GitFileRulePreview? Preview)> RemoveAsync(
-        string project,
-        string pattern,
-        bool apply,
-        CancellationToken cancellation = default)
-    {
-        try
-        {
-            pattern = ValidatePattern(pattern);
-        }
-        catch (InvalidOperationException ex)
-        {
-            return (false, ex.Message, null);
-        }
-        await _writeGate.WaitAsync(cancellation).ConfigureAwait(false);
-        try
-        {
-            var resolved = await ResolveAsync(project).ConfigureAwait(false);
-            if (!resolved.Success)
-                return (false, resolved.Message, null);
-            return await RemoveCoreAsync(project, resolved.Root!, pattern, apply, cancellation)
-                .ConfigureAwait(false);
-        }
-        finally
-        {
-            _writeGate.Release();
-        }
-    }
-
-    private async Task<(bool Success, string Message, GitFileRulePreview? Preview)> SetCoreAsync(
-        string project,
-        string root,
-        string pattern,
-        bool track,
-        bool lfs,
-        bool lf,
-        bool apply,
-        CancellationToken cancellation)
-    {
-        var documents = await ReadDocumentsAsync(root, cancellation).ConfigureAwait(false);
-        var ignoreManaged = ManagedLines(documents.Ignore)
-            .Where(line => !IgnorePatternEquals(line, pattern)).ToList();
-        if (!track)
-            ignoreManaged.Add(pattern);
-
-        var attributeManaged = ManagedLines(documents.Attributes)
-            .Where(line => !AttributePatternEquals(line, pattern)).ToList();
-        if (track && lfs)
-            attributeManaged.Add($"{pattern} {LfsAttributes}");
-        else if (track && lf)
-            attributeManaged.Add($"{pattern} {LfAttributes}");
-
-        var newIgnore = RewriteDocument(
-            documents.Ignore, ignoreManaged,
-            line => IgnorePatternEquals(line, pattern));
-        var newAttributes = RewriteDocument(
-            documents.Attributes, attributeManaged,
-            line => IsCanonicalAttributeForPattern(line, pattern));
-
-        var definitions = ReadDefinitions(documents.Ignore, documents.Attributes);
-        definitions[pattern] = new RuleDefinition(pattern, track, lfs, lf, true);
-        var repository = await ReadRepositoryStateAsync(root, definitions.Keys, cancellation)
-            .ConfigureAwait(false);
-        if (!repository.Success)
-            return (false, repository.Message, null);
-
-        var affected = repository.AllFiles.Where(path => MatchesPattern(pattern, path)).ToList();
-        var tracked = affected.Count(path => repository.Tracked.Contains(path));
-        var add = track ? affected.Count - tracked : 0;
-        var remove = track ? 0 : tracked;
-        var renormalize = track ? tracked : 0;
-        var filesChanged = documents.Ignore.Text != newIgnore || documents.Attributes.Text != newAttributes;
-        var indexChanged = add > 0 || remove > 0 || (track && (lfs || lf) && renormalize > 0);
-        var preview = new GitFileRulePreview(
-            project, pattern, track, lfs, lf,
-            BuildDiff(".gitignore", documents.Ignore.Text, newIgnore),
-            BuildDiff(".gitattributes", documents.Attributes.Text, newAttributes),
-            affected.Count, add, remove, renormalize,
-            filesChanged || indexChanged, false);
-
-        if (!apply || !preview.Changed)
-            return (true, PreviewMessage(preview, apply: false), preview);
-
-        var write = await WriteDocumentsAsync(
-            documents, newIgnore, newAttributes, cancellation).ConfigureAwait(false);
-        if (!write.Success)
-            return (false, write.Message, preview);
-
-        var sync = await SynchronizeSetAsync(root, pattern, track, cancellation).ConfigureAwait(false);
-        if (!sync.Success)
-            return (false, $"规则已写入，但索引同步失败：\n{sync.Output}", preview with { Applied = true });
-
-        return (true, PreviewMessage(preview, apply: true), preview with { Applied = true });
-    }
-
-    private async Task<(bool Success, string Message, GitFileRulePreview? Preview)> RemoveCoreAsync(
-        string project,
-        string root,
-        string pattern,
-        bool apply,
-        CancellationToken cancellation)
-    {
-        var documents = await ReadDocumentsAsync(root, cancellation).ConfigureAwait(false);
-        var newIgnore = RewriteDocument(
-            documents.Ignore,
-            ManagedLines(documents.Ignore).Where(line => !IgnorePatternEquals(line, pattern)).ToList(),
-            line => IgnorePatternEquals(line, pattern));
-        var newAttributes = RewriteDocument(
-            documents.Attributes,
-            ManagedLines(documents.Attributes).Where(line => !AttributePatternEquals(line, pattern)).ToList(),
-            line => IsCanonicalAttributeForPattern(line, pattern));
-
-        var definitions = ReadDefinitions(documents.Ignore, documents.Attributes);
-        var repository = await ReadRepositoryStateAsync(root, definitions.Keys.Append(pattern), cancellation)
-            .ConfigureAwait(false);
-        if (!repository.Success)
-            return (false, repository.Message, null);
-        var affected = repository.AllFiles.Where(path => MatchesPattern(pattern, path)).ToList();
-        var tracked = affected.Count(path => repository.Tracked.Contains(path));
-        var changed = documents.Ignore.Text != newIgnore || documents.Attributes.Text != newAttributes;
-        var preview = new GitFileRulePreview(
-            project, pattern, null, null, null,
-            BuildDiff(".gitignore", documents.Ignore.Text, newIgnore),
-            BuildDiff(".gitattributes", documents.Attributes.Text, newAttributes),
-            affected.Count, 0, 0, tracked, changed, false);
-
-        if (!apply || !changed)
-            return (true, PreviewMessage(preview, apply: false), preview);
-
-        var write = await WriteDocumentsAsync(
-            documents, newIgnore, newAttributes, cancellation).ConfigureAwait(false);
-        if (!write.Success)
-            return (false, write.Message, preview);
-        var trackedExisting = affected
-            .Where(path => repository.Tracked.Contains(path) && File.Exists(ToAbsolute(root, path)))
-            .ToList();
-        var normalize = await RunBatchesAsync(
-            root, ["add", "--renormalize", "--"], trackedExisting, cancellation).ConfigureAwait(false);
-        if (!normalize.Success)
-            return (false, $"规则已删除，但索引重新写入失败：\n{normalize.Output}", preview with { Applied = true });
-        var stage = await StageRuleFilesAsync(root, cancellation).ConfigureAwait(false);
-        if (!stage.Success)
-            return (false, $"规则已删除，但规则文件暂存失败：\n{stage.Output}", preview with { Applied = true });
-
-        return (true, PreviewMessage(preview, apply: true), preview with { Applied = true });
-    }
-
+    private static int CountNul(GitResult result)
+        => result.Success
+            ? result.Output.Split('\0', StringSplitOptions.RemoveEmptyEntries).Length
+            : 0;
 }

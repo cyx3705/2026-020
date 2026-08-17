@@ -17,7 +17,6 @@ public sealed class StudioBusinessComposition
         HistoryRecorder history,
         GitFileRuleService gitRules,
         BranchHistoryService branchHistory,
-        FormatInventoryService formatInventory,
         GitHubConnectionService gitHub,
         GraphService graph)
     {
@@ -25,7 +24,6 @@ public sealed class StudioBusinessComposition
         History = history;
         GitRules = gitRules;
         BranchHistory = branchHistory;
-        FormatInventory = formatInventory;
         GitHub = gitHub;
         Graph = graph;
     }
@@ -37,8 +35,6 @@ public sealed class StudioBusinessComposition
     public GitFileRuleService GitRules { get; }
 
     public BranchHistoryService BranchHistory { get; }
-
-    public FormatInventoryService FormatInventory { get; }
 
     public GitHubConnectionService GitHub { get; }
 
@@ -76,9 +72,10 @@ public static class StudioBusinessCompositionFactory
         // 首次推送时按需建远端仓库；令牌来自 janus.github.login 已存进 GCM 的 HTTPS 凭据。
         projects.RepositoryProvisioner = new GitHubRepositoryProvisioner();
 
-        var gitRules = new GitFileRuleService(projects);
+        var gitRules = new GitFileRuleService(projects, settings);
+        // 排除规则由提交链路自动落地，不再需要人工下发命令。
+        projects.ExcludeRules = gitRules;
         var branchHistory = new BranchHistoryService(projects);
-        var formatInventory = new FormatInventoryService(projects, log, dataDirectory);
         // GitHub 事实读取指向当前选中项目仓；无选中时回退库根（非 git 仓则诊断失败）
         var gitHub = new GitHubConnectionService(
             () => projects.ResolveGitHubRepository(currentProjectName?.Invoke()));
@@ -86,7 +83,7 @@ public static class StudioBusinessCompositionFactory
 
         ProjectCommands.RegisterAll(registry, projects, history, commandSource);
         BranchHistoryCommands.RegisterAll(registry, branchHistory, history, commandSource);
-        GitRuleCommands.RegisterAll(registry, gitRules, formatInventory, projects, commandSource);
+        GitRuleCommands.RegisterAll(registry, gitRules, commandSource);
         GitHubCommands.RegisterAll(registry, gitHub, commandSource);
         GraphCommands.RegisterAll(registry, graph, commandSource);
         // 业务模块不注册诊断或自动化辅助指令：日志承压由宿主 vulcan.log.flood 承担，
@@ -97,7 +94,6 @@ public static class StudioBusinessCompositionFactory
             history,
             gitRules,
             branchHistory,
-            formatInventory,
             gitHub,
             graph);
     }

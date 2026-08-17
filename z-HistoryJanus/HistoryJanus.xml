@@ -77,136 +77,67 @@
             继承树：按各仓 project.manifest.json 的 template.source 建树，缓存键为库根。
             </summary>
         </member>
-        <member name="T:HistoryJanus.Git.FormatRow">
-            <summary>台账中的一种文件格式。Suggestion 由规则建议引擎填充。</summary>
+        <member name="T:HistoryJanus.Git.ExcludeRuleState">
+            <summary>一个项目的"不纳入仓库"规则落地状态。</summary>
         </member>
-        <member name="M:HistoryJanus.Git.FormatRow.#ctor(System.String,System.Int32,System.Int32,System.Int32,System.Int32,System.Int32,System.Int64,System.Int64,System.String,System.Nullable{System.Boolean},System.Nullable{System.Boolean},System.Nullable{System.Boolean},System.String,System.Boolean)">
-            <summary>台账中的一种文件格式。Suggestion 由规则建议引擎填充。</summary>
+        <member name="M:HistoryJanus.Git.ExcludeRuleState.#ctor(System.String,System.Boolean,System.Int32,System.Int32,System.String)">
+            <summary>一个项目的"不纳入仓库"规则落地状态。</summary>
         </member>
-        <member name="T:HistoryJanus.Git.DirectoryCandidateRow">
-            <summary>无扩展名/杂项文件的目录候选(§3.3:只有目录规则能闭合这部分)。</summary>
+        <member name="T:HistoryJanus.Git.ExcludeRuleReport">
+            <summary>整库共用的排除清单及各项目的落地情况。</summary>
         </member>
-        <member name="M:HistoryJanus.Git.DirectoryCandidateRow.#ctor(System.String,System.String,System.Int32,System.Boolean,System.String)">
-            <summary>无扩展名/杂项文件的目录候选(§3.3:只有目录规则能闭合这部分)。</summary>
+        <member name="M:HistoryJanus.Git.ExcludeRuleReport.#ctor(System.Collections.Generic.IReadOnlyList{System.String},System.Collections.Generic.IReadOnlyList{System.String},System.Collections.Generic.IReadOnlyList{HistoryJanus.Git.ExcludeRuleState})">
+            <summary>整库共用的排除清单及各项目的落地情况。</summary>
         </member>
-        <member name="T:HistoryJanus.Git.InventoryReport">
-            <summary>一次扫描的完整台账。</summary>
-        </member>
-        <member name="M:HistoryJanus.Git.InventoryReport.#ctor(System.Int32,System.Int32,System.Int32,System.Int32,System.Int32,System.Double,System.String,System.Int32,System.Int64,System.Collections.Generic.IReadOnlyList{HistoryJanus.Git.FormatRow},System.Collections.Generic.IReadOnlyList{HistoryJanus.Git.DirectoryCandidateRow})">
-            <summary>一次扫描的完整台账。</summary>
-        </member>
-        <member name="T:HistoryJanus.Git.GitRuleReviewReport">
-            <summary>一次扫描生成的未决清单、自动建议和需人工判断的未知格式。</summary>
-        </member>
-        <member name="M:HistoryJanus.Git.GitRuleReviewReport.#ctor(HistoryJanus.Git.InventoryReport,System.Collections.Generic.IReadOnlyList{HistoryJanus.Git.RuleSuggestion},System.Collections.Generic.IReadOnlyList{HistoryJanus.Git.FormatRow},System.Int32,System.Double)">
-            <summary>一次扫描生成的未决清单、自动建议和需人工判断的未知格式。</summary>
-        </member>
-        <member name="T:HistoryJanus.Git.FormatInventoryService">
+        <member name="T:HistoryJanus.Git.IExcludeRuleWriter">
             <summary>
-            文件格式全覆盖扫描。三条效率约束：
-            ①按格式聚合不按文件展开(实测 39311 文件 → 278 格式,141:1);
-            ②项目级有界并行;③缓存 + 增量失效(HEAD + 索引 mtime + 两规则文件哈希)。
-            git 自身的 ls-files 即权威归宿判定,不重复实现忽略匹配。
-            </summary>
-        </member>
-        <member name="F:HistoryJanus.Git.FormatInventoryService.NoExtension">
-            <summary>无扩展名文件的台账键。</summary>
-        </member>
-        <member name="F:HistoryJanus.Git.FormatInventoryService.DirectoryRollupSegments">
-            <summary>目录候选的归并深度:实测 2 段即可把 Unity Library 4314 个文件收敛成一行。</summary>
-        </member>
-        <member name="F:HistoryJanus.Git.FormatInventoryService.DirectoryCandidateThreshold">
-            <summary>
-            目录候选阈值：文件数达标才单列为目录候选，
-            未达标的散尾统一归入 other 类别整体决策,避免长尾淹没缺口清单。
-            </summary>
-        </member>
-        <member name="M:HistoryJanus.Git.FormatInventoryService.ScanAsync(System.String,System.Boolean,System.Boolean,System.IProgress{System.String},System.Threading.CancellationToken)">
-            <summary>
-            扫描并产出台账。project 为空 = 全库;depth ∈ quick/normal/deep;
-            refresh=true 忽略缓存全量重扫。
-            </summary>
-        </member>
-        <member name="M:HistoryJanus.Git.FormatInventoryService.ReviewAsync(System.String,System.Int64,System.IProgress{System.String},System.Threading.CancellationToken)">
-            <summary>一次扫描同时生成未决清单与规则建议；未知格式留给人工判断。</summary>
-        </member>
-        <member name="M:HistoryJanus.Git.FormatInventoryService.BuildCacheKeyAsync(HistoryJanus.Git.WorktreeInfo,System.String,System.Threading.CancellationToken)">
-            <summary>失效键 = HEAD sha + 索引 mtime + 两规则文件哈希;任一变化即重扫该项目。</summary>
-        </member>
-        <member name="M:HistoryJanus.Git.FormatInventoryService.ReadIndexStampAsync(System.String,System.Threading.CancellationToken)">
-            <summary>
-            读取索引文件的时间戳，作为「HEAD 没动但暂存区动了」的缓存失效信号。
-            </summary>
-            <remarks>
-            两种仓形态都要支持：独立仓的 <c>.git</c> 是目录，索引就在其中；
-            git worktree 的 <c>.git</c> 是文件，内含真实 gitdir 路径。
-            一项目一仓之后绝大多数项目是前者，而这里原本只处理后者，
-            于是 indexStamp 恒为 noindex——键再也感知不到暂存区变化，暂存但未提交时会命中过期缓存。
-            </remarks>
-        </member>
-        <member name="M:HistoryJanus.Git.FormatInventoryService.FormatOf(System.String)">
-            <summary>路径 → 台账格式键;复合扩展(如 .tar.gz)取末段,无扩展名归入专用桶。</summary>
-        </member>
-        <member name="T:HistoryJanus.Git.FormatInventoryService.ProjectScan">
-            <summary>单项目扫描结果(可序列化,进缓存)。</summary>
-        </member>
-        <member name="M:HistoryJanus.Git.FormatInventoryService.ProjectScan.#ctor(System.String,System.String,System.String,System.Int32,System.Int32,System.Int32,System.Int32,System.Collections.Generic.Dictionary{System.String,HistoryJanus.Git.FormatInventoryService.FormatStat},System.Collections.Generic.Dictionary{System.String,HistoryJanus.Git.FormatInventoryService.DirectoryStat},System.Collections.Generic.Dictionary{System.String,HistoryJanus.Git.FormatInventoryService.DeclaredDto})">
-            <summary>单项目扫描结果(可序列化,进缓存)。</summary>
-        </member>
-        <member name="P:HistoryJanus.Git.FormatInventoryService.FormatStat.BinarySniff">
-            <summary>样本内容嗅探结果:true=二进制。用于纠正扩展名清单的误判(见 SniffBinary)。</summary>
-        </member>
-        <member name="M:HistoryJanus.Git.FormatInventoryService.SniffBinary(System.String,System.String)">
-            <summary>
-            内容嗅探:读样本前 512 字节判断是否二进制。
-            存在的意义是**数据胜过硬编码清单**——实测本库 .asm/.cfg 实为 Solid Edge 的
-            OLE2 复合文档(D0 CF 11 E0),若按扩展名当文本做 LF 规范化会损坏 1871 个 CAD 文件。
+            提交链路刷写 .gitignore 托管块的窄接口。
+            单独抽出来只为打断依赖环：GitFileRuleService 需要 ProjectService 解析项目路径，
+            而提交链路又要回头刷规则；ProjectService 只依赖这个接口，且可为空。
             </summary>
         </member>
         <member name="T:HistoryJanus.Git.GitFileRuleService">
+             <summary>
+             Git 文件规则的唯一形态：一份**全库共用**的「不纳入仓库」清单。
+            
+             4.x 曾按格式逐条维护 Git/LFS/LF 三态规则表，并要求人工执行 sync 下发。
+             实践证明那套规则面本身就是故障源：137 条按扩展名的 LFS 通配把 *.asm / *.baml
+             这类文本也塞进 LFS，最终 11 GB LFS 占用、推送被 GitHub pre-receive 拒收。
+             5.0.0 起规则只回答一个问题——这个后缀/目录要不要进仓库；LFS 完全退出规则面，
+             只在提交链路里对超过 GitHub 100MB 硬限的**具体文件**征求人工同意。
+            
+             清单存在设置里而不是各仓文件里：全库一致才不消耗认知，且提交链路会自动把它
+             幂等刷进各仓 .gitignore 托管块，不再需要任何手动下发命令。
+             </summary>
+        </member>
+        <member name="F:HistoryJanus.Git.GitFileRuleService.DefaultExcludeSuffixes">
             <summary>
-            项目根文件格式规则：.gitignore 决定是否跟踪，.gitattributes 只生成标准 LFS/LF 行。
-            注释块外内容保持；索引操作只使用 Git 枚举出的精确相对路径。
+            默认清单来自 2026-08 全库推送的实测：这些目录与后缀全是可再生产物或 IDE 状态，
+            入库只会撑大仓库并把推送顶到传输上限。目录项以 / 结尾。
             </summary>
         </member>
-        <member name="F:HistoryJanus.Git.GitFileRuleService.BaselineBegin">
+        <member name="P:HistoryJanus.Git.GitFileRuleService.Suffixes">
+            <summary>后缀项（*.xxx 或裸文件名），不含目录项。</summary>
+        </member>
+        <member name="P:HistoryJanus.Git.GitFileRuleService.Directories">
+            <summary>目录项（以 / 结尾），生成时统一加 **/ 前缀以匹配任意层级。</summary>
+        </member>
+        <member name="M:HistoryJanus.Git.GitFileRuleService.SetExcludeList(System.String)">
             <summary>
-            基线块由 janus.gitrule.sync 从模板整块重刷，属于机器所有内容。
-            与 managed 块(本项目特例)分离,基线更新不伤项目自身决定;两者都在块外内容之外。
+            改写整库共用清单。逐项校验后整体接受或整体拒绝，不做部分写入。
             </summary>
         </member>
-        <member name="M:HistoryJanus.Git.GitFileRuleService.SyncBaselineAsync(System.String,System.Boolean,System.IProgress{System.String},System.Threading.CancellationToken)">
+        <member name="M:HistoryJanus.Git.GitFileRuleService.EnsureIgnoreAsync(System.String,System.Threading.CancellationToken)">
             <summary>
-            基线同步：把模板项目根规则文件的托管内容
-            整块刷入目标项目的 baseline 块;项目自身的 managed 块与块外手写内容不动。
-            apply=false 只预览。省略 project 则同步全部工作树(模板自身除外)。
+            把当前清单幂等刷进该仓 .gitignore 的托管块。提交链路每次调用，
+            所以不需要任何手动下发命令；块外内容与其它块逐字保留。
             </summary>
         </member>
-        <member name="M:HistoryJanus.Git.GitFileRuleService.ReadDeclaredRulesAsync(System.String,System.Threading.CancellationToken)">
+        <member name="M:HistoryJanus.Git.GitFileRuleService.ListAsync(System.String,System.Threading.CancellationToken)">
             <summary>
-            读取项目根已声明的格式规则，供台账扫描复用并保持规则解析只有一份实现。
-            只回声明,不查索引——调用方若需归宿判定,应以 git ls-files 的三态为权威。
+            只读：清单本身，以及各项目托管块是否最新、有多少文件被排除、
+            有多少**已被跟踪却命中排除**（这类需要人工决定是否 git rm --cached）。
             </summary>
-        </member>
-        <member name="M:HistoryJanus.Git.GitFileRuleService.RewriteBaselineBlock(HistoryJanus.Git.GitFileRuleService.TextDocument,System.Collections.Generic.IReadOnlyList{System.String})">
-            <summary>
-            只重刷基线块：managed 块与块外手写内容逐字保留,且基线块留在原位。
-            新建文件才把基线块置于最前,便于人一眼看出"哪些是全库统一的";
-            已有文件不得挪位——gitattributes 是最后匹配生效,把块前移会让块外
-            手写的兜底规则(如 * text=auto)落到块后面,反过来盖掉块内的 -text。
-            </summary>
-        </member>
-        <member name="M:HistoryJanus.Git.GitFileRuleService.LooksLikeDirectoryPattern(System.String)">
-            <summary>
-            目录规则是以 / 结尾的相对路径，如 Library/、b-Unity/Temp/。
-            禁绝对路径、盘符、`..`、反斜杠、通配符与空白。
-            </summary>
-        </member>
-        <member name="T:HistoryJanus.Git.DeclaredRule">
-            <summary>项目根已声明的一条格式规则，供台账扫描消费。</summary>
-        </member>
-        <member name="M:HistoryJanus.Git.DeclaredRule.#ctor(System.String,System.Boolean,System.Boolean,System.Boolean,System.Boolean)">
-            <summary>项目根已声明的一条格式规则，供台账扫描消费。</summary>
         </member>
         <member name="T:HistoryJanus.Git.CreatedRemoteEntry">
             <summary>本次推送为某个项目新建（或复用）的远端仓库。</summary>
@@ -216,6 +147,13 @@
         </member>
         <member name="T:HistoryJanus.Git.GitlinkService">
             <summary>直属 160000 gitlink 的结构化发现与只读状态校验。</summary>
+        </member>
+        <member name="T:HistoryJanus.Git.GitRuleCommands">
+            <summary>
+            gitrule.* 指令域：只暴露「全库共用的不纳入仓库清单」的读与改。
+            没有下发命令——清单由提交链路每次自动刷进各仓托管块。
+            也没有 LFS 相关命令——LFS 只在提交链路对超 100MB 的具体文件征求同意。
+            </summary>
         </member>
         <member name="T:HistoryJanus.Git.GitRunner">
             <summary>
@@ -343,15 +281,51 @@
             逐仓诊断：独立 .git、能 status。指向旧裸仓的 .git 文件只报告，不删盘。
             </summary>
         </member>
+        <member name="F:HistoryJanus.Git.ProjectService.GitHubFileLimitBytes">
+            <summary>
+            GitHub 的单文件硬限，超过即被服务端拒收。这不是可配置偏好，所以不进设置：
+            LFS 的唯一触发条件就是触到这条线。
+            </summary>
+        </member>
+        <member name="F:HistoryJanus.Git.ProjectService.PushChunkBudgetBytes">
+            <summary>
+            单次推送的字节预算。实测超过约 300MB 的推送在本机链路上会中断
+            （HTTPS 17MB 即断，SSH 亦偶发），因此超预算时按提交分批推。
+            </summary>
+        </member>
         <member name="P:HistoryJanus.Git.ProjectService.RepositoryProvisioner">
             <summary>
             首次推送时按需建远端仓库的通道。为空时推送保持旧行为：没有 origin 就直接失败。
+            </summary>
+        </member>
+        <member name="P:HistoryJanus.Git.ProjectService.ExcludeRules">
+            <summary>
+            提交前刷写 .gitignore 排除规则的通道。为空时跳过刷写，提交行为不变。
             </summary>
         </member>
         <member name="M:HistoryJanus.Git.ProjectService.ListMetaFoldersAsync">
             <summary>
             扫描全部 worktree 根下以 z/Z 开头的一级子文件夹。
             单项目枚举失败只计入警告并跳过,不拖垮整次扫描。
+            </summary>
+        </member>
+        <member name="M:HistoryJanus.Git.ProjectService.PushBranchAsync(System.String,System.String,System.Boolean,System.IProgress{System.String},System.Threading.CancellationToken)">
+             <summary>
+             全部父仓库推送的唯一出口。把 2026-08 全库首推里手工验证过的四条经验固化下来：
+            
+             1. **推显式分支名，不推 HEAD**。`push origin HEAD` 在部分仓上报
+                「hint: 'HEAD:refs/heads/HEAD'?」而失败，换成分支名即通过。
+             2. **关掉 lfs.locksverify**。缺失 LFS 对象较多的仓在 locks/verify 端点撞 EOF，
+                整个推送失败；这个校验对本链路没有价值。
+             3. **超预算就按提交分批推**。单次推送超过约 300MB 在本机链路上会中断，
+                分批后同样的内容能稳定推完。
+             4. 失败消息保留 git 原文，便于区分传输中断和服务端拒收（pre-receive）。
+             </summary>
+        </member>
+        <member name="M:HistoryJanus.Git.ProjectService.PlanPushBatchesAsync(System.String,System.String,System.Threading.CancellationToken)">
+            <summary>
+            规划推送批次：返回中间提交列表，最后一项恒为分支 tip（由调用方用分支名推）。
+            待推内容在预算内时返回单批，不引入任何额外 git 调用带来的开销。
             </summary>
         </member>
         <member name="M:HistoryJanus.Git.ProjectService.EnsureRemoteAsync(System.String,System.String,System.String,System.Threading.CancellationToken)">
@@ -371,36 +345,6 @@
         </member>
         <member name="M:HistoryJanus.Git.MetaFolderInfo.#ctor(System.String,System.String,System.String,System.String)">
             <summary>某项目根下以 z/Z 开头的一级 Meta 文件夹。</summary>
-        </member>
-        <member name="T:HistoryJanus.Git.RuleSuggestion">
-            <summary>一条格式处置建议。Track=false 即建议忽略。</summary>
-        </member>
-        <member name="M:HistoryJanus.Git.RuleSuggestion.#ctor(System.String,System.Boolean,System.Boolean,System.Boolean,System.String,System.Int32)">
-            <summary>一条格式处置建议。Track=false 即建议忽略。</summary>
-        </member>
-        <member name="T:HistoryJanus.Git.RuleSuggestionEngine">
-            <summary>
-            规则建议引擎：只建议、不自动应用；未知格式一律留白不猜。
-            分类清单为代码内常量，避免出现与实现行为分离的配置入口。
-            </summary>
-        </member>
-        <member name="F:HistoryJanus.Git.RuleSuggestionEngine.Junk">
-            <summary>派生/临时件:构建产物、锁文件、软件缓存——建议忽略。</summary>
-        </member>
-        <member name="F:HistoryJanus.Git.RuleSuggestionEngine.Text">
-            <summary>文本格式:建议纳入 Git 并统一 LF。</summary>
-        </member>
-        <member name="F:HistoryJanus.Git.RuleSuggestionEngine.Binary">
-            <summary>二进制格式:纳入 Git;是否走 LFS 由体积判据决定。</summary>
-        </member>
-        <member name="F:HistoryJanus.Git.RuleSuggestionEngine.DerivedBinary">
-            <summary>构建产物类二进制:虽是二进制,但属派生物,建议忽略而非入库。</summary>
-        </member>
-        <member name="M:HistoryJanus.Git.RuleSuggestionEngine.Suggest(HistoryJanus.Git.FormatRow,System.Int64)">
-            <summary>
-            对一行台账给出建议;返回 null = 不建议(未知格式,留白待人工判定)。
-            lfsThresholdBytes 取 proj.rejectmb(默认 100MB):最大单件超阈即建议 LFS。
-            </summary>
         </member>
         <member name="T:HistoryJanus.GitHub.GitHubCommands">
             <summary>
@@ -798,21 +742,43 @@
             InitializeComponent
             </summary>
         </member>
+        <member name="M:HistoryJanus.Views.ProjectOperationCommandBuilder.Excludes(System.String)">
+            <summary>排除清单是全库共用的设置，不带项目名。</summary>
+        </member>
         <member name="T:HistoryJanus.Views.ProjectOperationsView">
+             <summary>
+             规则分段：全库共用的「不纳入仓库」清单。
+            
+             4.x 这里是一张十列三态规则表（Git/LFS/LF × 每个格式 × 每个项目），
+             外加延迟保存、离页确认和格式台账缓存共约 500 行。
+             5.0.0 起清单全库只有一份、只有"要不要进仓库"一个维度，所以既不需要按项目加载，
+             也不需要离页保存协商——页面只是设置的一个编辑器。
+             </summary>
             <summary>项目创建、提交推送和所选项目的三状态 Git 文件格式规则。</summary>
             <summary>
             ProjectOperationsView
             </summary>
         </member>
-        <member name="M:HistoryJanus.Views.ProjectOperationsView.OnRefreshRulesClick(System.Object,System.Windows.RoutedEventArgs)">
-            <summary>强制重扫本项目，并把台账与声明规则原子替换进表格。</summary>
-        </member>
-        <member name="M:HistoryJanus.Views.ProjectOperationsView.OnSyncBaselineClick(System.Object,System.Windows.RoutedEventArgs)">
-            <summary>基线同步只发预览:写入需在控制台显式 apply=true(人在环上)。</summary>
+        <member name="M:HistoryJanus.Views.ProjectOperationsView.SaveExcludeListAsync(System.String)">
+            <summary>
+            保存清单。返回 null 表示页面自己就拒了（空清单），没有发出任何命令。
+            单独成一个可 await 的方法，是为了让 Smoke 能确定性地断言总线调用，
+            而不必对 async void 处理器泵 WPF 消息队列。
+            </summary>
         </member>
         <member name="M:HistoryJanus.Views.ProjectOperationsView.InitializeComponent">
             <summary>
             InitializeComponent
+            </summary>
+        </member>
+        <member name="T:HistoryJanus.Views.ExcludeRuleReportView">
+            <summary>
+            跨宿主 HTTP 边界后结构化结果可能是 JsonElement，页面只取自己要显示的两组清单。
+            </summary>
+        </member>
+        <member name="M:HistoryJanus.Views.ExcludeRuleReportView.#ctor(System.Collections.Generic.IReadOnlyList{System.String},System.Collections.Generic.IReadOnlyList{System.String})">
+            <summary>
+            跨宿主 HTTP 边界后结构化结果可能是 JsonElement，页面只取自己要显示的两组清单。
             </summary>
         </member>
         <member name="T:HistoryJanus.Views.ProjectSelectionState">
