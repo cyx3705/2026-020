@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Reflection;
 using System.Windows;
 using System.Windows.Controls;
@@ -68,7 +68,10 @@ if (!File.Exists(manifestPath))
 
 using var manifestJson = System.Text.Json.JsonDocument.Parse(File.ReadAllText(manifestPath));
 var expectedVersion = manifestJson.RootElement.GetProperty("version").GetString();
-const int expectedRuntimeCommandCount = 40;
+// 35 条业务命令 + 宿主投影的 janus.status。
+// 4.3.0 新增 proj.rename（39 -> 40）；5.0.0 规则面收敛退役 6 条 gitrule 命令、
+// 新增 excludes 1 条（40 -> 35），运行时 41 -> 36。
+const int expectedRuntimeCommandCount = 36;
 
 var meta = host.Modules[0];
 if (!meta.ModuleName.Equals("HistoryJanus", StringComparison.Ordinal)
@@ -105,7 +108,7 @@ var businessCommands = new[]
     "janus.history.reset",
     "janus.history.forcepush",
     "janus.gitrule.list",
-    "janus.gitrule.batchset",
+    "janus.gitrule.excludes",
     "janus.github.status",
     "janus.github.accounts",
     "janus.github.test",

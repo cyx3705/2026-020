@@ -161,6 +161,18 @@ internal static class RepositoryTargetsSuite
                 "janus.proj.metaopen keeps its name/meta parameters");
 
             await VerifyOverviewMetaMerge(service, parent, noChild);
+
+            var renamedProject = "2026-233-Renamed";
+            var renamed = await service.RenameAsync(noChildBranch, renamedProject, null);
+            True(renamed.Success, $"project rename succeeds: {renamed.Message}");
+            True(!Directory.Exists(noChild) && Directory.Exists(Path.Combine(root, renamedProject)),
+                "project rename moves the worktree directory");
+            var renamedList = await service.ListWorktreesAsync();
+            True(renamedList.Worktrees.Any(item => item.BranchName == renamedProject),
+                "project list exposes the renamed branch/worktree");
+            var protectedRename = await service.RenameAsync(parentBranch, "2026-232-Renamed", null);
+            True(!protectedRename.Success && protectedRename.Message.Contains("受保护"),
+                "protected project cannot be renamed");
             VerifyXamlLayout();
         }
         finally
@@ -183,6 +195,8 @@ internal static class RepositoryTargetsSuite
             .Select(element => element.Attribute(x + "Name")?.Value)
             .Where(name => name != null).ToList();
         Equal(1, named.Count(name => name == "SelectedCommitMessageBox"), "one commit message box");
+        True(named.Contains("SelectedProjectNameBox") && named.Contains("RenameProjectButton"),
+            "project operation row exposes editable name and rename action");
         foreach (var removed in new[]
                  {
                      "OpenProjectButton", "ScanCoverageButton", "ReloadRulesButton",
@@ -311,31 +325,36 @@ internal static class RepositoryTargetsSuite
              && commitActions.Attribute("Grid.Column")?.Value == "2",
             "commit and push buttons share the description row immediately to its right");
 
-        True(ReferenceEquals(byName["PatternBox"].Parent, byName["AddRuleButton"].Parent)
-             && byName["AddRuleButton"].Parent?.Name.LocalName == "Grid"
-             && byName["AddRuleButton"].Attribute("Grid.Column")?.Value == "1",
-            "add rule action sits on the extension input row");
-        var actionNames = new[]
+        // 规则分段只剩一个清单编辑框：没有格式输入行、没有规则表、没有多按钮动作条。
+        True(byName.ContainsKey("ExcludeListBox")
+             && byName["ExcludeListBox"].Attribute("AcceptsReturn")?.Value == "True",
+            "the rules segment is a single multi-line exclude list field");
+        var ruleActions = byName["SaveExcludesButton"].Parent;
+        True(ruleActions != null && ruleActions.Name.LocalName == "StackPanel"
+             && ReferenceEquals(ruleActions, byName["RefreshRulesButton"].Parent),
+            "save and refresh are the only two rule actions, side by side");
+        foreach (var retired in new[]
+                 {
+                     "PatternBox", "AddRuleButton", "RuleGrid", "DeleteRuleButton",
+                     "ReviewRulesButton", "SyncBaselineButton", "CoverageText",
+                 })
         {
-            "RefreshRulesButton", "ReviewRulesButton", "SyncBaselineButton", "DeleteRuleButton",
-        };
-        var actionStrip = byName[actionNames[0]].Parent;
-        True(actionStrip != null && actionStrip.Name.LocalName == "StackPanel"
-             && actionNames.All(name => ReferenceEquals(actionStrip, byName[name].Parent))
-             && actionStrip.Parent?.Name.LocalName == "ScrollViewer",
-            "the remaining Git rule actions stay in one horizontally scrollable strip");
+            True(!byName.ContainsKey(retired), $"{retired} is gone from the rules segment");
+        }
+        True(!project.Descendants().Any(element => element.Name.LocalName == "DataGrid"),
+            "the rules table no longer exists anywhere on the page");
 
         var rulesCode = File.ReadAllText(Path.Combine(
             RepoRoot, "Views", "ProjectOperationsView.Rules.cs"));
         True(!rulesCode.Contains("DispatcherTimer", StringComparison.Ordinal)
-             && !rulesCode.Contains("ScheduleRuleAutoSave", StringComparison.Ordinal)
-             && rulesCode.Contains("RulePanel.IsVisibleChanged", StringComparison.Ordinal)
-             && rulesCode.Contains("SaveRulesOnPageLeaveAsync", StringComparison.Ordinal)
-             && rulesCode.Contains("_ruleSaveTask", StringComparison.Ordinal),
-            "rule edits defer one serialized batch save until the rules page is left");
-        True(!rulesCode.Contains("OnSaveRuleClick", StringComparison.Ordinal)
-             && !rulesCode.Contains("MessageBox.Show", StringComparison.Ordinal),
-            "manual save entry and unsaved-change dialog are removed");
+             && !rulesCode.Contains("SaveRulesOnPageLeaveAsync", StringComparison.Ordinal)
+             && !rulesCode.Contains("_ruleSaveTask", StringComparison.Ordinal),
+            "the deferred batch-save machinery is gone with the rule table");
+        True(rulesCode.Contains("SaveExcludeListAsync", StringComparison.Ordinal)
+             && rulesCode.Contains("ProjectOperationCommandBuilder.Excludes", StringComparison.Ordinal),
+            "the page writes the shared list only through the bus command builder");
+        True(!rulesCode.Contains("MessageBox.Show", StringComparison.Ordinal),
+            "the page raises no dialog of its own; confirmation belongs to the host");
     }
 
     private static async Task VerifyOverviewMetaMerge(ProjectService service, string parent, string noChild)

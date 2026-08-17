@@ -209,6 +209,23 @@ public sealed class BranchTreeService
 
     private string TreeCachePath => Path.Combine(AppPaths.GetDataDir(_dataDir), "branch-tree.json");
 
+    public void InvalidateCache()
+    {
+        try
+        {
+            if (File.Exists(TreeCachePath))
+                File.Delete(TreeCachePath);
+        }
+        catch (IOException)
+        {
+            // A stale cache is harmless; the next explicit refresh will rebuild it.
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // A stale cache is harmless; the next explicit refresh will rebuild it.
+        }
+    }
+
     private sealed record TreeCacheNode(string Name, string Time, string Desc, List<TreeCacheNode> Children);
 
     private sealed record TreeCacheFile(DateTime BuiltAt, int BranchCount, string LibraryRoot, TreeCacheNode Root);

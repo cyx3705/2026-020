@@ -1,4 +1,4 @@
-﻿using System.IO;
+using System.IO;
 using System.Text;
 using HistoryVulcan.Core.Storage;
 using HistoryJanus.GitHub;
@@ -80,9 +80,26 @@ public sealed partial class ProjectService
     private readonly Func<string, bool> _confirm;
 
     /// <summary>
+    /// GitHub 的单文件硬限，超过即被服务端拒收。这不是可配置偏好，所以不进设置：
+    /// LFS 的唯一触发条件就是触到这条线。
+    /// </summary>
+    public const long GitHubFileLimitBytes = 100L * 1024 * 1024;
+
+    /// <summary>
+    /// 单次推送的字节预算。实测超过约 300MB 的推送在本机链路上会中断
+    /// （HTTPS 17MB 即断，SSH 亦偶发），因此超预算时按提交分批推。
+    /// </summary>
+    public const long PushChunkBudgetBytes = 300L * 1024 * 1024;
+
+    /// <summary>
     /// 首次推送时按需建远端仓库的通道。为空时推送保持旧行为：没有 origin 就直接失败。
     /// </summary>
     public IGitHubRepositoryProvisioner? RepositoryProvisioner { get; set; }
+
+    /// <summary>
+    /// 提交前刷写 .gitignore 排除规则的通道。为空时跳过刷写，提交行为不变。
+    /// </summary>
+    public IExcludeRuleWriter? ExcludeRules { get; set; }
 
     public Func<IReadOnlyDictionary<string, string>>? NotesProvider
     {
@@ -346,6 +363,53 @@ public sealed partial class ProjectService
     }
 
     public bool IsProtected(string branchName) => ProtectedBranches.Contains(branchName.Trim());
+
+    public async Task<(bool Success, string Message)> RenameAsync(
+        string currentName, string newName, IProgress<string>? progress)
+    {
+        currentName = currentName.Trim();
+        newName = newName.Trim();
+
+        if (currentName.Length == 0)
+            return (false, "当前项目名称不能为空");
+        if (newName.Length == 0)
+            return (false, "新项目名称不能为空");
+        if (!ProjectRepoLayout.IsRegisteredProjectName(newName))
+            return (false, "项目名称必须是 YYYY-NNN-* 或 0000-*");
+        if (currentName.Equals(newName, StringComparison.OrdinalIgnoreCase))
+            return (false, "新旧项目名称不能相同");
+        if (IsProtected(currentName))
+            return (false, $"\"{currentName}\" 是受保护项目({string.Join("/", ProtectedBranches)}),拒绝改名");
+        if (!TryValidateWorktreeRoot(out var rootError))
+            return (false, $"库根不安全: {rootError}");
+
+        var (resolved, message, worktree) = await ResolveWorktreeAsync(currentName);
+        if (!resolved || worktree == null)
+            return (false, message);
+
+        var targetPath = Path.Combine(LibraryRoot, newName);
+        if (!TryValidateManagedDirectChild(targetPath, rejectReparsePoint: true, out var targetError))
+            return (false, $"目标项目路径不安全: {targetError}");
+        if (Directory.Exists(targetPath) || File.Exists(targetPath))
+            return (false, $"目标项目目录已存在: {targetPath}");
+
+        progress?.Report($"改名项目 {currentName} -> {newName} ...");
+        try
+        {
+            Directory.Move(worktree.WorktreePath, targetPath);
+        }
+        catch (IOException ex)
+        {
+            return (false, $"项目目录改名失败: {ex.Message}");
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return (false, $"项目目录改名失败: {ex.Message}");
+        }
+
+        _tree.InvalidateCache();
+        return (true, $"项目已改名: {currentName} -> {newName}");
+    }
 
     public async Task<(bool Success, string Message)> DeleteAsync(string name, IProgress<string>? progress)
     {
