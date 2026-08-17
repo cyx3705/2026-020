@@ -34,14 +34,14 @@
       "b-Code-Studio/**/obj",
       "b-Code-Verify/**/bin",
       "b-Code-Verify/**/obj",
-      "z-Publish/current"
+      "z-Publish"
     ],
     "archiveRoots": [
       "b-Office/history",
-      "z-Publish"
+      "z-Publish/history"
     ],
     "releaseRoots": [
-      "z-HistoryJanus"
+      "z-Publish"
     ],
     "allowedRootDirectoryPrefixes": [
       "a-",
@@ -68,14 +68,13 @@
     "package": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\b-Code-Studio\\eng\\Build-HistoryJanusPackage.ps1"
   },
   "externalDependencies": [
-    "HistoryVulcan >= 3.9.0 host snapshot from ../2026-023-HistoryVulcan/z-HistoryVulcan",
+    "HistoryVulcan >= 3.9.0 host snapshot from ../2026-023-HistoryVulcan/z-Publish/host",
     ".NET 8 SDK and Windows Desktop Runtime",
     "Git command-line client"
   ],
-  "contextExclusions": [
-    "b-Office/history/**",
-    "z-Publish/**",
-    "z-HistoryJanus/**",
+    "contextExclusions": [
+      "b-Office/history/**",
+      "z-Publish/**",
     "**/bin/**",
     "**/obj/**",
     "**/node_modules/**",

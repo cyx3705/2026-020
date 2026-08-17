@@ -10,7 +10,7 @@ $ErrorActionPreference = 'Stop'
 # HistoryJanus 日常质量门禁（VERIFY-FAST 组成部分）。
 # 定位：代码管道化条件 4 —— 漂移由日常检查自动阻断，而不是积累到正式发布才暴露。
 # 权威源上游：JanusVersion.props（版本）、module.manifest.json（模块身份）、
-# z-HistoryJanus（正式树边界）、2026-023-HistoryVulcan z 级快照（宿主合同）。
+# z-Publish（正式树边界）、2026-023-HistoryVulcan z 级快照（宿主合同）。
 #
 # 注意：所有收集结果必须经 @(...) 包装；单个违规项在 Windows PowerShell 5.1 下是标量，
 # 直接读 .Count 会得到 $null 并静默绕过失败分支（2026-08 在 HistoryVulcan 同类脚本中实证）。
@@ -18,7 +18,7 @@ $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $componentRoot = Join-Path $root 'b-Code-Studio'
 $activeRoots = @('b-Code-Studio', 'b-Code-Verify')
-$excluded = '\\(bin|obj|Unused|z-Publish|z-HistoryJanus)\\'
+$excluded = '\\(bin|obj|Unused|z-Publish|z-Publish)\\'
 
 $violations = [System.Collections.Generic.List[string]]::new()
 
@@ -197,30 +197,30 @@ if (($expectedRuntimeCommandNames -join ',') -cne ($apiCommandNames -join ',')) 
     $violations.Add("模块API.md 命令清单与源码不一致：API $($apiCommandNames.Count)，运行时 $($expectedRuntimeCommandNames.Count)")
 }
 
-# --- 6. 正式树边界（QA-004 日常化）：运行四件 + 可选 docs/*.md -----------------------------
-$packageRoot = Join-Path $root 'z-HistoryJanus'
+# --- 6. 根候选边界（QA-004 日常化）：运行文件 + docs/*.md + 独立 history -------------------
+$packageRoot = Join-Path $root 'z-Publish'
 if (Test-Path -LiteralPath $packageRoot) {
-    $allowed = @('HistoryJanus.dll', 'HistoryJanus.xml', 'module.manifest.json', 'SHA256SUMS', 'docs')
+    $allowed = @('HistoryJanus.dll', 'HistoryJanus.xml', 'module.manifest.json', 'SHA256SUMS', 'docs', 'history')
     $unexpected = @(
         Get-ChildItem -LiteralPath $packageRoot |
             Where-Object { $_.Name -notin $allowed }
     )
     foreach ($item in $unexpected) {
-        $violations.Add("Unexpected entry in z-HistoryJanus: $($item.Name)")
+        $violations.Add("Unexpected entry in z-Publish candidate: $($item.Name)")
     }
     $formalManifestPath = Join-Path $packageRoot 'module.manifest.json'
     if (-not (Test-Path -LiteralPath $formalManifestPath -PathType Leaf)) {
-        $violations.Add('z-HistoryJanus/module.manifest.json is missing')
+        $violations.Add('z-Publish/module.manifest.json is missing')
     }
     $docsRoot = Join-Path $packageRoot 'docs'
     if (Test-Path -LiteralPath $docsRoot) {
         if (-not (Test-Path -LiteralPath $docsRoot -PathType Container)) {
-            $violations.Add('z-HistoryJanus/docs must be a directory of Markdown')
+            $violations.Add('z-Publish/docs must be a directory of Markdown')
         }
         else {
             foreach ($item in @(Get-ChildItem -LiteralPath $docsRoot -Recurse -File)) {
                 if ([IO.Path]::GetExtension($item.Name) -ne '.md') {
-                    $violations.Add("z-HistoryJanus/docs may contain only Markdown: $($item.Name)")
+                    $violations.Add("z-Publish/docs may contain only Markdown: $($item.Name)")
                 }
             }
         }
@@ -229,7 +229,7 @@ if (Test-Path -LiteralPath $packageRoot) {
 
 # --- 7. 宿主合同预检：发布脚本同源检查日常化 --------------------------------------------
 $vulcanRoot = if ([string]::IsNullOrWhiteSpace($HistoryVulcanPackageRoot)) {
-    [IO.Path]::GetFullPath((Join-Path $root '..\2026-023-HistoryVulcan\z-HistoryVulcan'))
+    [IO.Path]::GetFullPath((Join-Path $root '..\2026-023-HistoryVulcan\z-Publish'))
 }
 else {
     [IO.Path]::GetFullPath($HistoryVulcanPackageRoot)

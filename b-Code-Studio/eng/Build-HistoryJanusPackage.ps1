@@ -15,7 +15,7 @@ $componentRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $componentRoot '..'))
 $publishRoot = Join-Path $repoRoot 'z-Publish'
 if ([string]::IsNullOrWhiteSpace($OutputRoot)) {
-    $OutputRoot = Join-Path $publishRoot 'current\HistoryJanus'
+    $OutputRoot = $publishRoot
 }
 $OutputRoot = [IO.Path]::GetFullPath($OutputRoot)
 $repoPrefix = $repoRoot.TrimEnd('\') + '\'
@@ -32,16 +32,15 @@ if ($apiDocuments.Count -ne 1) {
 $apiDocumentSource = $apiDocuments[0].FullName
 $apiDocumentName = $apiDocuments[0].Name
 $historyVulcanRoot = if ([string]::IsNullOrWhiteSpace($HistoryVulcanPackageRoot)) {
-    [IO.Path]::GetFullPath((Join-Path $repoRoot '..\2026-023-HistoryVulcan\z-HistoryVulcan'))
+    [IO.Path]::GetFullPath((Join-Path $repoRoot '..\2026-023-HistoryVulcan\z-Publish'))
 }
 else {
     [IO.Path]::GetFullPath($HistoryVulcanPackageRoot)
 }
-$workRoot = Join-Path $publishRoot 'work'
 $transactionId = [Guid]::NewGuid().ToString('N')
-$stage = Join-Path $workRoot "HistoryJanus-candidate-$transactionId"
-$backup = Join-Path $workRoot "HistoryJanus-previous-$transactionId"
-$failed = Join-Path $workRoot "HistoryJanus-failed-$transactionId"
+$transactionRoot = Join-Path ([IO.Path]::GetTempPath()) "HistoryJanus.Package.$transactionId"
+$stage = Join-Path $transactionRoot 'candidate'
+$backup = Join-Path $transactionRoot 'previous'
 
 function Invoke-Dotnet {
     param([Parameter(Mandatory = $true)][string[]]$Arguments)
@@ -70,9 +69,14 @@ function Assert-ModulePackage {
         'HistoryJanus.dll',
         'HistoryJanus.xml',
         'module.manifest.json',
-        'SHA256SUMS'
+        'SHA256SUMS',
+        "docs/$apiDocumentName"
     ) | Sort-Object
-    $actualFiles = @(Get-ChildItem -LiteralPath $Root -File -Recurse | ForEach-Object {
+    $rootPrefix = [IO.Path]::GetFullPath($Root).TrimEnd('\') + '\'
+    $historyPrefix = $rootPrefix + 'history\'
+    $actualFiles = @(Get-ChildItem -LiteralPath $Root -File -Recurse |
+        Where-Object { -not $_.FullName.StartsWith($historyPrefix, [StringComparison]::OrdinalIgnoreCase) } |
+        ForEach-Object {
         Get-RelativePackagePath $_.FullName $Root
     } | Sort-Object)
     if (($actualFiles -join "`n") -ne ($expectedFiles -join "`n")) {
@@ -152,9 +156,7 @@ if ([version]$hostManifest.version -lt [version]$minimumVulcan) {
     throw "HistoryJanus $version requires HistoryVulcan >= $minimumVulcan; found $($hostManifest.version)"
 }
 
-$promoted = $false
-$backedUp = $false
-New-Item -ItemType Directory -Force -Path $workRoot, (Split-Path -Parent $OutputRoot) | Out-Null
+New-Item -ItemType Directory -Force -Path $transactionRoot, $backup, $OutputRoot | Out-Null
 Push-Location $repoRoot
 try {
     Invoke-Dotnet @('restore', 'HistoryJanus.sln', '--locked-mode', '-p:NuGetAudit=false')
@@ -166,8 +168,9 @@ try {
     Copy-Item -LiteralPath (Join-Path $releaseRoot 'HistoryJanus.dll') -Destination $stage
     Copy-Item -LiteralPath (Join-Path $releaseRoot 'HistoryJanus.xml') -Destination $stage
     Copy-Item -LiteralPath $moduleManifestSource -Destination (Join-Path $stage 'module.manifest.json')
-    # 候选只含运行四件。消费 Markdown 由 Diana 发布管线在校验后写入 docs/ 并重写 SHA256SUMS。
-    $relativeFiles = @('HistoryJanus.dll', 'HistoryJanus.xml', 'module.manifest.json')
+    New-Item -ItemType Directory -Force -Path (Join-Path $stage 'docs') | Out-Null
+    Copy-Item -LiteralPath $apiDocumentSource -Destination (Join-Path $stage "docs\$apiDocumentName")
+    $relativeFiles = @('HistoryJanus.dll', 'HistoryJanus.xml', 'module.manifest.json', "docs/$apiDocumentName")
     $checksumLines = foreach ($relative in $relativeFiles) {
         $path = Join-Path $stage $relative.Replace('/', '\')
         "$((Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash)  $relative"
@@ -178,25 +181,32 @@ try {
         [Text.UTF8Encoding]::new($false))
     Assert-ModulePackage $stage $version
 
+    $movedPrevious = [Collections.Generic.List[string]]::new()
+    $movedCandidate = [Collections.Generic.List[string]]::new()
     try {
-        if (Test-Path -LiteralPath $OutputRoot) {
-            Move-Item -LiteralPath $OutputRoot -Destination $backup
-            $backedUp = $true
+        foreach ($item in @(Get-ChildItem -LiteralPath $OutputRoot -Force |
+                Where-Object { $_.Name -ne 'history' })) {
+            Move-Item -LiteralPath $item.FullName -Destination $backup
+            $movedPrevious.Add($item.Name)
         }
-        Move-Item -LiteralPath $stage -Destination $OutputRoot
-        $promoted = $true
+        foreach ($item in @(Get-ChildItem -LiteralPath $stage -Force)) {
+            Move-Item -LiteralPath $item.FullName -Destination $OutputRoot
+            $movedCandidate.Add($item.Name)
+        }
         Assert-ModulePackage $OutputRoot $version
-        if ($backedUp) {
-            Remove-Item -LiteralPath $backup -Recurse -Force
-            $backedUp = $false
-        }
     }
     catch {
-        if ($promoted -and (Test-Path -LiteralPath $OutputRoot)) {
-            Move-Item -LiteralPath $OutputRoot -Destination $failed
+        foreach ($name in $movedCandidate) {
+            $path = Join-Path $OutputRoot $name
+            if (Test-Path -LiteralPath $path) {
+                Remove-Item -LiteralPath $path -Recurse -Force
+            }
         }
-        if ($backedUp -and (Test-Path -LiteralPath $backup)) {
-            Move-Item -LiteralPath $backup -Destination $OutputRoot
+        foreach ($name in $movedPrevious) {
+            $path = Join-Path $backup $name
+            if (Test-Path -LiteralPath $path) {
+                Move-Item -LiteralPath $path -Destination $OutputRoot
+            }
         }
         throw
     }
@@ -205,9 +215,7 @@ try {
 finally {
     & dotnet build-server shutdown | Out-Null
     Pop-Location
-    foreach ($path in @($stage, $backup, $failed)) {
-        if (Test-Path -LiteralPath $path) {
-            Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction SilentlyContinue
-        }
+    if (Test-Path -LiteralPath $transactionRoot) {
+        Remove-Item -LiteralPath $transactionRoot -Recurse -Force -ErrorAction SilentlyContinue
     }
 }
