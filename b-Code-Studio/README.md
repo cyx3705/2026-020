@@ -12,7 +12,7 @@
 
 ## 发布边界
 
-`b-Publish/current/HistoryJanus` 保存当前模块候选，`b-Publish/history` 只保存被替换的正式包，`z-HistoryJanus` 只保存最新正式消费快照。正式包不得包含 EXE、PDB、HistoryVulcan DLL、deps/runtimeconfig 或旧综合 Help。
+`z-Publish/current/HistoryJanus` 保存当前模块候选，`z-Publish/history` 只保存被替换的正式包，`z-HistoryJanus` 只保存最新正式消费快照。正式包不得包含 EXE、PDB、HistoryVulcan DLL、deps/runtimeconfig 或旧综合 Help。
 
 ```powershell
 .\b-Code-Studio\eng\Build-HistoryJanusPackage.ps1
