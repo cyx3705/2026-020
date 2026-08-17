@@ -51,8 +51,16 @@ public sealed class GitFileRuleService : IExcludeRuleWriter
     /// </summary>
     public const string DefaultExcludeSuffixes =
         "bin/, obj/, venv/, .venv/, __pycache__/, .vs/, .idea/, node_modules/, " +
-        ".pytest_cache/, .mypy_cache/, tools/jdk/, " +
+        ".pytest_cache/, .mypy_cache/, tools/jdk/, packages/, " +
+        "*.dll, *.pdb, *.lib, *.exp, *.ilk, *.idb, *.obj, *.cache, " +
         "*.user, *.suo, *.tmp, *.temp, *.log, *.bak, *.swp, *.xlk, *.autosave, Thumbs.db, .DS_Store";
+
+    /// <summary>
+    /// 正式消费快照目录前缀。`z-*` 下的内容由发布管线刻意入库
+    /// （例如 z-HistoryVulcan/host 的宿主 DLL、各模块的 z-&lt;模块&gt;/*.dll），
+    /// 是跨项目消费的权威产物，绝不能被排除清单顺手删出索引。
+    /// </summary>
+    private const string SnapshotPrefix = "z-";
 
     private const string ManagedBegin = "# HistoryJanus managed begin";
     private const string ManagedEnd = "# HistoryJanus managed end";
@@ -62,6 +70,19 @@ public sealed class GitFileRuleService : IExcludeRuleWriter
         "# 本块由 HistoryJanus 按设置 proj.excludesuffixes 自动生成，全库一致。",
         "# 不要手工编辑块内内容；改清单请用 janus.gitrule.excludes。",
         "# 块外内容属于本项目自己，Janus 逐字保留。",
+    ];
+
+    /// <summary>
+    /// 块尾的豁免：必须排在全部排除项之后，gitignore 才会让后面的否定规则生效。
+    /// 这是系统不变量而不是用户选项，所以不进清单——把 dll 之类写进清单的人
+    /// 不应该因此把正式快照删出索引。
+    /// </summary>
+    private static readonly string[] ManagedFooter =
+    [
+        "",
+        "# 正式消费快照由发布管线刻意入库，不受上面任何排除项影响。",
+        "!" + SnapshotPrefix + "*/",
+        "!" + SnapshotPrefix + "*/**",
     ];
 
     private readonly ISettingsService _settings;
@@ -205,6 +226,7 @@ public sealed class GitFileRuleService : IExcludeRuleWriter
                 ? "**/" + dir
                 : dir);
         lines.AddRange(parsed.Suffixes);
+        lines.AddRange(ManagedFooter);
         return lines;
     }
 
