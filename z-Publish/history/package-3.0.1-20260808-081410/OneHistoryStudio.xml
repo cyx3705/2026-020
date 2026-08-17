@@ -1,0 +1,606 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>OneHistoryStudio</name>
+    </assembly>
+    <members>
+        <member name="T:OneHistoryStudio.Module.OneHistoryStudioCommands">
+            <summary>Reports the loaded OHS module identity and registered business surfaces.</summary>
+        </member>
+        <member name="T:OneHistoryStudio.Module.OneHistoryStudioUiModule">
+            <summary>Registers the existing OHS business pages into the AppShell host.</summary>
+        </member>
+        <member name="T:OneHistoryStudio.StudioBusinessComposition">
+            <summary>
+            OHS business services registered into a host-owned command bus.
+            This boundary deliberately owns no process, window, module loader, MCP, Web, or LAN lifetime.
+            </summary>
+        </member>
+        <member name="T:OneHistoryStudio.StudioBusinessCompositionFactory">
+            <summary>
+            Builds the OHS domain graph inside infrastructure supplied by the AppShell host.
+            </summary>
+        </member>
+        <member name="T:OneHistoryStudio.DebugCommands">
+            <summary>
+            debug.* 工具指令：
+            logflood 用于承压回归；sleep 是 --exec 自动化脚本的等待原语。
+            </summary>
+        </member>
+        <member name="M:OneHistoryStudio.DebugCommands.BuildLogFlood(AppShell.Core.Logging.IShellLog)">
+            <summary>
+            debug.logflood：按指定速率注入日志以执行承压验证。
+            异步长任务示范:后台线程产出、经 Progress 上报进度、全程不阻塞 UI(§5.2)。
+            </summary>
+        </member>
+        <member name="M:OneHistoryStudio.DebugCommands.BuildSleep">
+            <summary>debug.sleep:异步等待(自动化脚本用,如 --exec 序列中等待模块热重载生效)。</summary>
+        </member>
+        <member name="T:OneHistoryStudio.Git.BranchHistoryCommands">
+            <summary>分支历史、恢复提交、本地硬重置与 lease 强推指令。</summary>
+        </member>
+        <member name="T:OneHistoryStudio.Git.BranchHistoryService">
+            <summary>
+            分支历史与安全回滚。Git 提交图是历史真值；所有进程调用仍统一经过 GitRunner。
+            </summary>
+        </member>
+        <member name="M:OneHistoryStudio.Git.BranchHistoryService.BuildRollbackPrompt(System.String,System.String,System.Boolean)">
+            <summary>CommandDescriptor 的同步确认合同使用；执行阶段仍会完整异步重验。</summary>
+        </member>
+        <member name="T:OneHistoryStudio.Git.BranchTreeNode">
+            <summary>proj.tree 跨进程传输合同；不携带 WPF 控件或展开状态。</summary>
+        </member>
+        <member name="T:OneHistoryStudio.Git.BranchTreeService">
+             <summary>
+             分支继承树的构建、渲染与文件缓存。
+             分支树构建服务只依赖裸仓库路径、根分支名、
+             数据目录和描述提供者,与提交/推送/修复互不相干,是最干净的一刀。
+             ProjectService 保留同名转调方法,调用方签名一字未改。
+            
+             节点类型仍是 ProjectService.BranchNode / BranchInfo:它们是嵌套公共类型,
+             移出会改变 11 处调用点的类型名。本版铁律是对外行为不变,不为整理而制造调用面变更。
+            
+             配置以委托方式注入而非快照：proj.barerepo / proj.basebranch 现读现生效，
+             构造时取值会让 app.set 改配置后本服务仍用旧路径。
+             </summary>
+        </member>
+        <member name="P:OneHistoryStudio.Git.BranchTreeService.NotesProvider">
+            <summary>
+            分支描述提供者，由装配点连接 HistoryRecorder.AllNotes：
+            继承树在展示前用它覆盖节点描述——缓存里存的是构建时的提交信息,
+            覆盖在读取时进行,proj.note 后无需重扫即可见。
+            </summary>
+        </member>
+        <member name="M:OneHistoryStudio.Git.BranchTreeService.BuildTreeAsync(System.IProgress{System.String},System.Boolean,System.Boolean)">
+            <summary>
+            继承树入口：默认读取文件缓存；refresh=true 时重扫并更新缓存；
+            cachedOnly=true 无缓存时不触发扫描(视图启动自动加载用)。
+            </summary>
+        </member>
+        <member name="M:OneHistoryStudio.Git.BranchTreeService.ApplyNotes(OneHistoryStudio.Git.ProjectService.BranchNode)">
+            <summary>用 branch_notes 的项目描述覆盖节点默认描述。</summary>
+        </member>
+        <member name="M:OneHistoryStudio.Git.BranchTreeService.BuildInheritanceTreeAsync(System.Collections.Generic.List{OneHistoryStudio.Git.ProjectService.BranchInfo},OneHistoryStudio.Git.ProjectService.BranchInfo,System.IProgress{System.String})">
+            <summary>
+            继承树算法一次性读取每个分支的完整提交链，比对全部在内存完成，
+            从而把 git 调用从 O(n²) 降到 O(n)。
+            判定规则——候选 P 是 child 的父分支候选,当且仅当 child 提交链上第一个
+            属于 P 的提交(分叉点)是 P 的**自有提交**(不在根模板分支历史内):
+            分叉点若落在模板历史里，说明两者只是共同的模板血统，不构成父子证据；
+            不能只按 merge-base 最短距离判断，否则同点分叉的兄弟分支可能被错误挂成父子。
+            多个候选同时成立时取分叉点最深(离 child tip 最近)者;仍并列按名称升序
+            (编号约定 = 创建顺序)。无任何候选 → 挂根模板。
+            </summary>
+        </member>
+        <member name="T:OneHistoryStudio.Git.FormatRow">
+            <summary>台账中的一种文件格式。Suggestion 由规则建议引擎填充。</summary>
+        </member>
+        <member name="M:OneHistoryStudio.Git.FormatRow.#ctor(System.String,System.Int32,System.Int32,System.Int32,System.Int32,System.Int32,System.Int64,System.Int64,System.String,System.Nullable{System.Boolean},System.Nullable{System.Boolean},System.Nullable{System.Boolean},System.String,System.Boolean)">
+            <summary>台账中的一种文件格式。Suggestion 由规则建议引擎填充。</summary>
+        </member>
+        <member name="T:OneHistoryStudio.Git.DirectoryCandidateRow">
+            <summary>无扩展名/杂项文件的目录候选(§3.3:只有目录规则能闭合这部分)。</summary>
+        </member>
+        <member name="M:OneHistoryStudio.Git.DirectoryCandidateRow.#ctor(System.String,System.String,System.Int32,System.Boolean,System.String)">
+            <summary>无扩展名/杂项文件的目录候选(§3.3:只有目录规则能闭合这部分)。</summary>
+        </member>
+        <member name="T:OneHistoryStudio.Git.InventoryReport">
+            <summary>一次扫描的完整台账。</summary>
+        </member>
+        <member name="M:OneHistoryStudio.Git.InventoryReport.#ctor(System.Int32,System.Int32,System.Int32,System.Int32,System.Int32,System.Double,System.String,System.Int32,System.Int64,System.Collections.Generic.IReadOnlyList{OneHistoryStudio.Git.FormatRow},System.Collections.Generic.IReadOnlyList{OneHistoryStudio.Git.DirectoryCandidateRow})">
+            <summary>一次扫描的完整台账。</summary>
+        </member>
+        <member name="T:OneHistoryStudio.Git.GitRuleReviewReport">
+            <summary>一次扫描生成的未决清单、自动建议和需人工判断的未知格式。</summary>
+        </member>
+        <member name="M:OneHistoryStudio.Git.GitRuleReviewReport.#ctor(OneHistoryStudio.Git.InventoryReport,System.Collections.Generic.IReadOnlyList{OneHistoryStudio.Git.RuleSuggestion},System.Collections.Generic.IReadOnlyList{OneHistoryStudio.Git.FormatRow},System.Int32,System.Double)">
+            <summary>一次扫描生成的未决清单、自动建议和需人工判断的未知格式。</summary>
+        </member>
+        <member name="T:OneHistoryStudio.Git.FormatInventoryService">
+            <summary>
+            文件格式全覆盖扫描。三条效率约束：
+            ①按格式聚合不按文件展开(实测 39311 文件 → 278 格式,141:1);
+            ②项目级有界并行;③缓存 + 增量失效(HEAD + 索引 mtime + 两规则文件哈希)。
+            git 自身的 ls-files 即权威归宿判定,不重复实现忽略匹配。
+            </summary>
+        </member>
+        <member name="F:OneHistoryStudio.Git.FormatInventoryService.NoExtension">
+            <summary>无扩展名文件的台账键。</summary>
+        </member>
+        <member name="F:OneHistoryStudio.Git.FormatInventoryService.DirectoryRollupSegments">
+            <summary>目录候选的归并深度:实测 2 段即可把 Unity Library 4314 个文件收敛成一行。</summary>
+        </member>
+        <member name="F:OneHistoryStudio.Git.FormatInventoryService.DirectoryCandidateThreshold">
+            <summary>
+            目录候选阈值：文件数达标才单列为目录候选，
+            未达标的散尾统一归入 other 类别整体决策,避免长尾淹没缺口清单。
+            </summary>
+        </member>
+        <member name="M:OneHistoryStudio.Git.FormatInventoryService.ScanAsync(System.String,System.Boolean,System.Boolean,System.IProgress{System.String},System.Threading.CancellationToken)">
+            <summary>
+            扫描并产出台账。project 为空 = 全库;depth ∈ quick/normal/deep;
+            refresh=true 忽略缓存全量重扫。
+            </summary>
+        </member>
+        <member name="M:OneHistoryStudio.Git.FormatInventoryService.ReviewAsync(System.String,System.Int64,System.IProgress{System.String},System.Threading.CancellationToken)">
+            <summary>一次扫描同时生成未决清单与规则建议；未知格式留给人工判断。</summary>
+        </member>
+        <member name="M:OneHistoryStudio.Git.FormatInventoryService.BuildCacheKeyAsync(OneHistoryStudio.Git.WorktreeInfo,System.String,System.Threading.CancellationToken)">
+            <summary>失效键 = HEAD sha + 索引 mtime + 两规则文件哈希;任一变化即重扫该项目。</summary>
+        </member>
+        <member name="M:OneHistoryStudio.Git.FormatInventoryService.FormatOf(System.String)">
+            <summary>路径 → 台账格式键;复合扩展(如 .tar.gz)取末段,无扩展名归入专用桶。</summary>
+        </member>
+        <member name="T:OneHistoryStudio.Git.FormatInventoryService.ProjectScan">
+            <summary>单项目扫描结果(可序列化,进缓存)。</summary>
+        </member>
+        <member name="M:OneHistoryStudio.Git.FormatInventoryService.ProjectScan.#ctor(System.String,System.String,System.String,System.Int32,System.Int32,System.Int32,System.Int32,System.Collections.Generic.Dictionary{System.String,OneHistoryStudio.Git.FormatInventoryService.FormatStat},System.Collections.Generic.Dictionary{System.String,OneHistoryStudio.Git.FormatInventoryService.DirectoryStat},System.Collections.Generic.Dictionary{System.String,OneHistoryStudio.Git.FormatInventoryService.DeclaredDto})">
+            <summary>单项目扫描结果(可序列化,进缓存)。</summary>
+        </member>
+        <member name="P:OneHistoryStudio.Git.FormatInventoryService.FormatStat.BinarySniff">
+            <summary>样本内容嗅探结果:true=二进制。用于纠正扩展名清单的误判(见 SniffBinary)。</summary>
+        </member>
+        <member name="M:OneHistoryStudio.Git.FormatInventoryService.SniffBinary(System.String,System.String)">
+            <summary>
+            内容嗅探:读样本前 512 字节判断是否二进制。
+            存在的意义是**数据胜过硬编码清单**——实测本库 .asm/.cfg 实为 Solid Edge 的
+            OLE2 复合文档(D0 CF 11 E0),若按扩展名当文本做 LF 规范化会损坏 1871 个 CAD 文件。
+            </summary>
+        </member>
+        <member name="T:OneHistoryStudio.Git.GitFileRuleService">
+            <summary>
+            项目根文件格式规则：.gitignore 决定是否跟踪，.gitattributes 只生成标准 LFS/LF 行。
+            注释块外内容保持；索引操作只使用 Git 枚举出的精确相对路径。
+            </summary>
+        </member>
+        <member name="F:OneHistoryStudio.Git.GitFileRuleService.BaselineBegin">
+            <summary>
+            基线块由 git.rule.sync 从模板整块重刷，属于机器所有内容。
+            与 managed 块(本项目特例)分离,基线更新不伤项目自身决定;两者都在块外内容之外。
+            </summary>
+        </member>
+        <member name="M:OneHistoryStudio.Git.GitFileRuleService.SyncBaselineAsync(System.String,System.Boolean,System.IProgress{System.String},System.Threading.CancellationToken)">
+            <summary>
+            基线同步：把模板项目根规则文件的托管内容
+            整块刷入目标项目的 baseline 块;项目自身的 managed 块与块外手写内容不动。
+            apply=false 只预览。省略 project 则同步全部工作树(模板自身除外)。
+            </summary>
+        </member>
+        <member name="M:OneHistoryStudio.Git.GitFileRuleService.ReadDeclaredRulesAsync(System.String,System.Threading.CancellationToken)">
+            <summary>
+            读取项目根已声明的格式规则，供台账扫描复用并保持规则解析只有一份实现。
+            只回声明,不查索引——调用方若需归宿判定,应以 git ls-files 的三态为权威。
+            </summary>
+        </member>
+        <member name="M:OneHistoryStudio.Git.GitFileRuleService.RewriteBaselineBlock(OneHistoryStudio.Git.GitFileRuleService.TextDocument,System.Collections.Generic.IReadOnlyList{System.String})">
+            <summary>
+            只重刷基线块：managed 块与块外手写内容逐字保留。
+            基线块统一置于文件最前,便于人一眼看出"哪些是全库统一的"。
+            </summary>
+        </member>
+        <member name="M:OneHistoryStudio.Git.GitFileRuleService.LooksLikeDirectoryPattern(System.String)">
+            <summary>
+            目录规则是以 / 结尾的相对路径，如 Library/、b-Unity/Temp/。
+            禁绝对路径、盘符、`..`、反斜杠、通配符与空白。
+            </summary>
+        </member>
+        <member name="T:OneHistoryStudio.Git.DeclaredRule">
+            <summary>项目根已声明的一条格式规则，供台账扫描消费。</summary>
+        </member>
+        <member name="M:OneHistoryStudio.Git.DeclaredRule.#ctor(System.String,System.Boolean,System.Boolean,System.Boolean,System.Boolean)">
+            <summary>项目根已声明的一条格式规则，供台账扫描消费。</summary>
+        </member>
+        <member name="T:OneHistoryStudio.Git.GitlinkService">
+            <summary>直属 160000 gitlink 的结构化发现与只读状态校验。</summary>
+        </member>
+        <member name="T:OneHistoryStudio.Git.GitRunner">
+            <summary>
+            统一 git 进程封装：固定 -C 工作目录、UTF-8 输出、超时与异常兜底。
+            全项目禁止在此之外散落 Process.Start("git")。
+            </summary>
+        </member>
+        <member name="T:OneHistoryStudio.Git.HistoryRecorder">
+            <summary>
+            操作留痕与分支描述的文件存储：操作和 MCP 留痕使用 JSONL 追加，
+            分支描述使用原子替换 JSON。记录失败仍只告警，不阻断主操作。
+            </summary>
+        </member>
+        <member name="T:OneHistoryStudio.Git.ProjectCommands">
+            <summary>
+            proj.* 指令域注册。
+            危险操作（delete / commitall / pushall / repair）统一经过总线 ConfirmPrompt；
+            受保护分支在确认之前即由 ConfirmPrompt 返回 null + Handler 拒绝,不弹无意义确认框。
+            </summary>
+        </member>
+        <member name="M:OneHistoryStudio.Git.ProjectCommands.RecordCommit(OneHistoryStudio.Git.HistoryRecorder,System.String,System.String,OneHistoryStudio.Git.CommitReport)">
+            <summary>proj.commit / proj.commitall 共用的单项目提交留痕(R4:结果映射唯一实现)。</summary>
+        </member>
+        <member name="T:OneHistoryStudio.Git.ProjectService">
+            <summary>
+            ProjectService 的提交与推送切面。提交链路与确认通道、gitlink 子模块发现、
+            文件大小阈值和 LFS 预检共享状态，因此保留在同一个 partial 类型中。
+            子仓库先于父仓库提交，target 决定操作范围。
+            </summary>
+             <summary>
+             proj.* 指令域的业务实现:OneHistory 项目库(裸仓库 + worktree)管理。
+             确认交互统一走总线确认通道，运行参数通过配置服务现读现生效。
+            
+             ProjectService 按职责拆分为多个 partial 文件：
+             - 本文件:配置、工作树增删改查、扫描、打开、继承树转调、**路径守卫**;
+             - ProjectService.Commit.cs：提交与推送；
+             - ProjectService.Repair.cs：仓库修复；
+             - ProjectService.Meta.cs：Meta 文件夹；
+             - BranchTreeService.cs:继承树构建与缓存(已抽为独立类,本类保留转调)。
+            
+             路径守卫 TryValidateManagedDirectChild / TryValidateWorktreeRoot 刻意留在本文件:
+             它是四个切面共用的安全底座,不随任一职责外迁。
+             </summary>
+            <summary>
+            ProjectService 的 Meta 文件夹切面：项目根下以 z/Z 开头的一级子目录。
+            </summary>
+            <summary>
+            ProjectService 的仓库修复切面。
+            worktree 修复切面；路径守卫（TryValidateManagedDirectChild / TryValidateWorktreeRoot）
+            留在主文件,本块只调用,不改其行为——先生成完整计划、任何越界都在零删除状态下拒绝,
+            该安全次序一行未动。
+            </summary>
+        </member>
+        <member name="F:OneHistoryStudio.Git.ProjectService._tree">
+            <summary>继承树构建与缓存由 BranchTreeService 实现；本类保留同名转调方法。</summary>
+        </member>
+        <member name="F:OneHistoryStudio.Git.ProjectService._confirm">
+            <summary>执行中途的二次确认通道(LFS 启用询问等);由装配点接到总线 Confirmation。</summary>
+        </member>
+        <member name="P:OneHistoryStudio.Git.ProjectService.NotesProvider">
+            <summary>
+            分支描述提供者，由装配点连接 HistoryRecorder.AllNotes：
+            继承树在展示前用它覆盖节点描述——缓存里存的是构建时的提交信息,
+            覆盖在读取时进行,proj.note 后无需重扫即可见。
+            </summary>
+        </member>
+        <member name="M:OneHistoryStudio.Git.ProjectService.EnsureDefaultSettings">
+            <summary>首启把默认配置写入 settings.json,使 app.get 可见、app.set 可改。</summary>
+        </member>
+        <member name="M:OneHistoryStudio.Git.ProjectService.ResolveWorktreeAsync(System.String)">
+            <summary>按登记分支解析工作树，并强制其仍是受管根下的直接、非重解析点子目录。</summary>
+        </member>
+        <member name="M:OneHistoryStudio.Git.ProjectService.ParseWorktreeList(System.String)">
+            <summary>解析 git worktree list --porcelain 输出。</summary>
+        </member>
+        <member name="M:OneHistoryStudio.Git.ProjectService.BuildTreeAsync(System.IProgress{System.String},System.Boolean,System.Boolean)">
+            <summary>
+            继承树入口：默认读取文件缓存；refresh=true 时重扫并更新缓存；
+            cachedOnly=true 无缓存时不触发扫描(视图启动自动加载用)。
+            </summary>
+        </member>
+        <member name="P:OneHistoryStudio.Git.ProjectService.BranchNode.Description">
+            <summary>展示描述默认使用最后提交信息，读取时可被 branch_notes 覆盖。</summary>
+        </member>
+        <member name="P:OneHistoryStudio.Git.ProjectService.BranchNode.IsExpanded">
+            <summary>继承树视图的展开状态，与 TreeViewItem 双向绑定。</summary>
+        </member>
+        <member name="M:OneHistoryStudio.Git.ProjectService.ListMetaFoldersAsync">
+            <summary>
+            扫描全部 worktree 根下以 z/Z 开头的一级子文件夹。
+            单项目枚举失败只计入警告并跳过,不拖垮整次扫描。
+            </summary>
+        </member>
+        <member name="T:OneHistoryStudio.Git.MetaFolderInfo">
+            <summary>某项目根下以 z/Z 开头的一级 Meta 文件夹。</summary>
+        </member>
+        <member name="M:OneHistoryStudio.Git.MetaFolderInfo.#ctor(System.String,System.String,System.String,System.String)">
+            <summary>某项目根下以 z/Z 开头的一级 Meta 文件夹。</summary>
+        </member>
+        <member name="T:OneHistoryStudio.Git.RuleSuggestion">
+            <summary>一条格式处置建议。Track=false 即建议忽略。</summary>
+        </member>
+        <member name="M:OneHistoryStudio.Git.RuleSuggestion.#ctor(System.String,System.Boolean,System.Boolean,System.Boolean,System.String,System.Int32)">
+            <summary>一条格式处置建议。Track=false 即建议忽略。</summary>
+        </member>
+        <member name="T:OneHistoryStudio.Git.RuleSuggestionEngine">
+            <summary>
+            规则建议引擎：只建议、不自动应用；未知格式一律留白不猜。
+            分类清单为代码内常量，避免出现与实现行为分离的配置入口。
+            </summary>
+        </member>
+        <member name="F:OneHistoryStudio.Git.RuleSuggestionEngine.Junk">
+            <summary>派生/临时件:构建产物、锁文件、软件缓存——建议忽略。</summary>
+        </member>
+        <member name="F:OneHistoryStudio.Git.RuleSuggestionEngine.Text">
+            <summary>文本格式:建议纳入 Git 并统一 LF。</summary>
+        </member>
+        <member name="F:OneHistoryStudio.Git.RuleSuggestionEngine.Binary">
+            <summary>二进制格式:纳入 Git;是否走 LFS 由体积判据决定。</summary>
+        </member>
+        <member name="F:OneHistoryStudio.Git.RuleSuggestionEngine.DerivedBinary">
+            <summary>构建产物类二进制:虽是二进制,但属派生物,建议忽略而非入库。</summary>
+        </member>
+        <member name="M:OneHistoryStudio.Git.RuleSuggestionEngine.Suggest(OneHistoryStudio.Git.FormatRow,System.Int64)">
+            <summary>
+            对一行台账给出建议;返回 null = 不建议(未知格式,留白待人工判定)。
+            lfsThresholdBytes 取 proj.rejectmb(默认 100MB):最大单件超阈即建议 LFS。
+            </summary>
+        </member>
+        <member name="T:OneHistoryStudio.Git.ToolCommands">
+            <summary>
+            tool.* 工具发现、同步与溯源指令域。
+            tool.scan 是只读盘点；sync / remove / list 管理模块槽与溯源。
+            </summary>
+        </member>
+        <member name="T:OneHistoryStudio.Git.ToolManifest">
+            <summary>
+            工具项目 z 级元文件夹中 module.manifest.json 的解析结果。
+            路径字段均已解析为绝对路径并通过 worktree 内界校验。
+            </summary>
+        </member>
+        <member name="P:OneHistoryStudio.Git.ToolManifest.McpExposure">
+            <summary>standard / readonly / hidden。</summary>
+        </member>
+        <member name="P:OneHistoryStudio.Git.ToolManifest.SourceProject">
+            <summary>来源项目(分支名)。</summary>
+        </member>
+        <member name="T:OneHistoryStudio.Git.ToolManifestEntry">
+            <summary>一份清单文件的装载结果：成功携 Manifest，失败携错误说明且不中断其他项。</summary>
+        </member>
+        <member name="M:OneHistoryStudio.Git.ToolManifestEntry.#ctor(OneHistoryStudio.Git.ToolManifest,System.String,System.String,System.String)">
+            <summary>一份清单文件的装载结果：成功携 Manifest，失败携错误说明且不中断其他项。</summary>
+        </member>
+        <member name="T:OneHistoryStudio.Git.ToolManifestLoader">
+            <summary>module.manifest.json 装载与校验。</summary>
+        </member>
+        <member name="F:OneHistoryStudio.Git.ToolManifestLoader.PermanentBuiltinDomains">
+            <summary>
+            尚未装配注册表时仍需保留的根命令。带点号的内置域必须来自运行时注册表，
+            不再在清单解析器中复制一份域名单。
+            </summary>
+        </member>
+        <member name="M:OneHistoryStudio.Git.ToolManifestLoader.FindUnreservedBuiltinDomains(System.Collections.Generic.IEnumerable{System.String},System.Collections.Generic.IEnumerable{System.String})">
+            <summary>
+            启动期自检：返回注册表已有、但保留清单尚未覆盖的一级指令域。
+            调用方应在模块装载前传入内置注册表快照；根命令不构成点号域，故不参与比较。
+            </summary>
+        </member>
+        <member name="M:OneHistoryStudio.Git.ToolManifestLoader.Load(System.String,System.String,System.String,System.Collections.Generic.IEnumerable{System.String},System.Func{System.String,System.Boolean})">
+            <param name="isInstalled">
+            判定同名工具是否已在模块槽内。已安装时本次是"自我更新"而非抢占，动态指令域检查必须跳过：
+            模块加载后自己占着同名指令域，否则清单名与自身指令域同名的工具将永远无法更新自己。
+            永久内置域(help/history/cls)任何情况下都不放行。
+            </param>
+        </member>
+        <member name="M:OneHistoryStudio.Git.ToolManifestLoader.Resolve(System.String,System.String,System.String@)">
+            <summary>相对路径转为 worktree 内绝对路径；越界或带盘符时拒绝。返回错误文本或 null。</summary>
+        </member>
+        <member name="M:OneHistoryStudio.Git.ToolManifestLoader.NamePattern">
+            <remarks>
+            Pattern:<br/>
+            <code>^[A-Za-z_][A-Za-z0-9_-]{0,63}$</code><br/>
+            Explanation:<br/>
+            <code>
+            ○ Match if at the beginning of the string.<br/>
+            ○ Match a character in the set [A-Z_a-z].<br/>
+            ○ Match a character in the set [-0-9A-Z_a-z] atomically at most 63 times.<br/>
+            ○ Match if at the end of the string or if before an ending newline.<br/>
+            </code>
+            </remarks>
+        </member>
+        <member name="T:OneHistoryStudio.Git.ToolScanRow">
+            <summary>tool.scan 的一行结果(Data 载荷,MCP 可读)。</summary>
+        </member>
+        <member name="M:OneHistoryStudio.Git.ToolScanRow.#ctor(System.String,System.String,System.String,System.String,System.String,System.String,System.String,System.String)">
+            <summary>tool.scan 的一行结果(Data 载荷,MCP 可读)。</summary>
+        </member>
+        <member name="T:OneHistoryStudio.Git.ToolSyncService">
+            <summary>
+            项目库工具发现、同步与溯源业务层：
+            提供清单发现、部署状态判定、同步、移除与模块槽写入。
+            工具溯源写入 state/tool-registry.json，模块槽仍是部署产物真值。
+            </summary>
+        </member>
+        <member name="M:OneHistoryStudio.Git.ToolSyncService.GetExposure(System.String)">
+            <summary>模块名 → 清单声明的 mcpExposure(来自溯源表);根平铺等无记录 → null(=standard)。</summary>
+        </member>
+        <member name="M:OneHistoryStudio.Git.ToolSyncService.ScanAsync">
+            <summary>
+            沿 worktree 清单发现全部 module.manifest.json，
+            逐项校验并标注部署状态；单项错误不中断整次扫描。
+            </summary>
+        </member>
+        <member name="M:OneHistoryStudio.Git.ToolSyncService.IsInstalled(System.String)">
+            <summary>同名工具是否已在模块槽内。已安装即视为自我更新，放行其自身占用的指令域。</summary>
+        </member>
+        <member name="M:OneHistoryStudio.Git.ToolSyncService.DeployStateOf(OneHistoryStudio.Git.ToolManifest)">
+            <summary>按产物 SHA-256 与 tool_registry 对比判定部署状态。</summary>
+        </member>
+        <member name="M:OneHistoryStudio.Git.ToolSyncService.SyncAsync(System.String,System.Boolean,System.IProgress{System.String})">
+            <summary>
+            tool.sync:把清单产物复制入模块槽 Modules\&lt;name&gt;\ 并落溯源;热重载自动接手。
+            all=true 只处理“未同步/已过期”项；这是显式动作，不自动装载其他项。
+            </summary>
+        </member>
+        <member name="M:OneHistoryStudio.Git.ToolSyncService.Remove(System.String)">
+            <summary>tool.remove：删除槽并注销溯源；面板副本在下次重载时回收。</summary>
+        </member>
+        <member name="M:OneHistoryStudio.Git.ToolSyncService.ListRegistered">
+            <summary>tool.list:溯源清单 + 槽在位状态(与 module.list 的运行时视角互补)。</summary>
+        </member>
+        <member name="T:OneHistoryStudio.Git.ToolRegistryRow">
+            <summary>tool.list 的一行(溯源视角)。</summary>
+        </member>
+        <member name="M:OneHistoryStudio.Git.ToolRegistryRow.#ctor(System.String,System.String,System.String,System.String,System.String,System.String)">
+            <summary>tool.list 的一行(溯源视角)。</summary>
+        </member>
+        <member name="T:OneHistoryStudio.Views.BranchHistoryView">
+            <summary>跟随共享项目选择的分支提交历史窗口。</summary>
+            <summary>
+            BranchHistoryView
+            </summary>
+        </member>
+        <member name="M:OneHistoryStudio.Views.BranchHistoryView.InitializeComponent">
+            <summary>
+            InitializeComponent
+            </summary>
+        </member>
+        <member name="T:OneHistoryStudio.Views.BranchTreeView">
+            <summary>
+            继承树工具窗口内容：
+            启动自动加载文件缓存(proj.tree cached=true,秒开);
+            「重新扫描」= proj.tree refresh=true(重扫裸仓库并更新缓存)。
+            视图只消费 CommandResult.Data,与控制台 proj.tree 同源。
+            </summary>
+            <summary>
+            BranchTreeView
+            </summary>
+        </member>
+        <member name="M:OneHistoryStudio.Views.BranchTreeView.InitializeComponent">
+            <summary>
+            InitializeComponent
+            </summary>
+        </member>
+        <member name="T:OneHistoryStudio.Views.HistoryPreviewDialog">
+            <summary>
+            HistoryPreviewDialog
+            </summary>
+        </member>
+        <member name="M:OneHistoryStudio.Views.HistoryPreviewDialog.InitializeComponent">
+            <summary>
+            InitializeComponent
+            </summary>
+        </member>
+        <member name="T:OneHistoryStudio.Views.MetaView">
+            <summary>
+            Meta 文件工具窗口：汇总各项目根下 z/Z 开头的一级元文件夹。
+            架构不变量 1:刷新/双击组装指令经总线执行(来源 "UI");
+            搜索框是纯视图过滤,不改状态、不发指令。
+            </summary>
+            <summary>
+            MetaView
+            </summary>
+        </member>
+        <member name="M:OneHistoryStudio.Views.MetaView.InitializeComponent">
+            <summary>
+            InitializeComponent
+            </summary>
+        </member>
+        <member name="T:OneHistoryStudio.Views.ModuleResultData">
+            <summary>Restores typed OHS contracts when a command result crossed the AppShell web boundary.</summary>
+        </member>
+        <member name="T:OneHistoryStudio.Views.OverviewView">
+            <summary>项目工作树列表、当前项目选择与批量提交推送。</summary>
+            <summary>
+            OverviewView
+            </summary>
+        </member>
+        <member name="M:OneHistoryStudio.Views.OverviewView.InitializeComponent">
+            <summary>
+            InitializeComponent
+            </summary>
+        </member>
+        <member name="T:OneHistoryStudio.Views.ProjectOperationsView">
+            <summary>项目创建、提交推送和所选项目的三状态 Git 文件格式规则。</summary>
+            <summary>
+            ProjectOperationsView
+            </summary>
+        </member>
+        <member name="M:OneHistoryStudio.Views.ProjectOperationsView.OnRefreshRulesClick(System.Object,System.Windows.RoutedEventArgs)">
+            <summary>强制重扫本项目，并把台账与声明规则原子替换进表格。</summary>
+        </member>
+        <member name="M:OneHistoryStudio.Views.ProjectOperationsView.OnSyncBaselineClick(System.Object,System.Windows.RoutedEventArgs)">
+            <summary>基线同步只发预览:写入需在控制台显式 apply=true(人在环上)。</summary>
+        </member>
+        <member name="M:OneHistoryStudio.Views.ProjectOperationsView.InitializeComponent">
+            <summary>
+            InitializeComponent
+            </summary>
+        </member>
+        <member name="T:OneHistoryStudio.Views.ProjectSelectionState">
+            <summary>进程内共享的当前项目选择，只传递稳定的项目名。</summary>
+        </member>
+        <member name="T:OneHistoryStudio.Views.RollbackMessageDialog">
+            <summary>
+            RollbackMessageDialog
+            </summary>
+        </member>
+        <member name="M:OneHistoryStudio.Views.RollbackMessageDialog.InitializeComponent">
+            <summary>
+            InitializeComponent
+            </summary>
+        </member>
+        <member name="T:OneHistoryStudio.Views.ViewKit">
+            <summary>
+            视图通用小件。
+            说明:未做视图基类——WPF 要求 XAML 根元素类型与代码后置基类一致,
+            使用组合式助手，避免为共享小功能改动所有 XAML 根元素。
+            </summary>
+        </member>
+        <member name="M:OneHistoryStudio.Views.ViewKit.RunOnceOnLoaded(System.Windows.FrameworkElement,System.Func{System.Threading.Tasks.Task})">
+            <summary>
+            Loaded 首次触发时执行一次(停靠重排会反复触发 Loaded,守卫防重复加载)。
+            适用于"标志只作守卫"的视图;标志兼作加载状态位的视图(如搜索框联动)自持字段。
+            </summary>
+        </member>
+        <member name="T:BaseVariable.ModuleInfoBase">
+            <summary>Compatibility contract recognized by AppShell ModuleHost.</summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.NamePattern_0">
+            <summary>Custom <see cref="T:System.Text.RegularExpressions.Regex"/>-derived type for the NamePattern method.</summary>
+        </member>
+        <member name="F:System.Text.RegularExpressions.Generated.NamePattern_0.Instance">
+            <summary>Cached, thread-safe singleton instance.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.NamePattern_0.#ctor">
+            <summary>Initializes the instance.</summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.NamePattern_0.RunnerFactory">
+            <summary>Provides a factory for creating <see cref="T:System.Text.RegularExpressions.RegexRunner"/> instances to be used by methods on <see cref="T:System.Text.RegularExpressions.Regex"/>.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.NamePattern_0.RunnerFactory.CreateInstance">
+            <summary>Creates an instance of a <see cref="T:System.Text.RegularExpressions.RegexRunner"/> used by methods on <see cref="T:System.Text.RegularExpressions.Regex"/>.</summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.NamePattern_0.RunnerFactory.Runner">
+            <summary>Provides the runner that contains the custom logic implementing the specified regular expression.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.NamePattern_0.RunnerFactory.Runner.Scan(System.ReadOnlySpan{System.Char})">
+            <summary>Scan the <paramref name="inputSpan"/> starting from base.runtextstart for the next match.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.NamePattern_0.RunnerFactory.Runner.TryFindNextPossibleStartingPosition(System.ReadOnlySpan{System.Char})">
+            <summary>Search <paramref name="inputSpan"/> starting from base.runtextpos for the next location a match could possibly start.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+            <returns>true if a possible match was found; false if no more matches are possible.</returns>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.NamePattern_0.RunnerFactory.Runner.TryMatchAtCurrentPosition(System.ReadOnlySpan{System.Char})">
+            <summary>Determine whether <paramref name="inputSpan"/> at base.runtextpos is a match for the regular expression.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+            <returns>true if the regular expression matches at the current position; otherwise, false.</returns>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.Utilities">
+            <summary>Helper methods used by generated <see cref="T:System.Text.RegularExpressions.Regex"/>-derived implementations.</summary>
+        </member>
+        <member name="F:System.Text.RegularExpressions.Generated.Utilities.s_defaultTimeout">
+            <summary>Default timeout value set in <see cref="T:System.AppContext"/>, or <see cref="F:System.Text.RegularExpressions.Regex.InfiniteMatchTimeout"/> if none was set.</summary>
+        </member>
+        <member name="F:System.Text.RegularExpressions.Generated.Utilities.s_hasTimeout">
+            <summary>Whether <see cref="F:System.Text.RegularExpressions.Generated.Utilities.s_defaultTimeout"/> is non-infinite.</summary>
+        </member>
+    </members>
+</doc>
