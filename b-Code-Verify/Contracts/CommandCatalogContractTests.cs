@@ -18,9 +18,10 @@ public sealed class CommandCatalogContractTests
     // 3.5.0 全部指令改为 janus.<类>.<方法> 三段式全小写命名。
     // 3.8.0 新增 GitHub 登录、注销、身份和 origin 的总线命令，31 → 35。
     // 3.9.0 新增 graph 只读 DAG 四条，35 → 39。
+    // 4.3.0 新增 proj.rename，39 → 40（DEC-022）。
     // 5.0.0 规则面收敛为一份全库共用排除清单：set/batchset/remove/sync/scan/review 六条退役，
-    // 新增 excludes 一条，39 → 34（DEC-022）。
-    private const int ExpectedCommandCount = 34;
+    // 新增 excludes 一条，40 → 35（DEC-023）。
+    private const int ExpectedCommandCount = 35;
 
     // DEC-012：janus 域内五类；新增类需同级决策。
     private static readonly string[] ExpectedClasses =
@@ -39,6 +40,7 @@ public sealed class CommandCatalogContractTests
     [
         "janus.github.login", "janus.github.logout", "janus.github.identity", "janus.github.remote",
         "janus.proj.delete", "janus.proj.commitall", "janus.proj.pushall", "janus.proj.repair",
+        "janus.proj.rename",
         "janus.history.rollback", "janus.history.reset", "janus.history.forcepush",
         "janus.gitrule.excludes",
     ];

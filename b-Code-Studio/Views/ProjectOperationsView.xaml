@@ -95,9 +95,13 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <TextBlock Grid.Row="0" Grid.ColumnSpan="3" x:Name="SelectedActionTitle"
-                       Text="当前未选择项目" FontWeight="SemiBold" Margin="0,0,0,4"
-                       TextWrapping="Wrap" />
+            <TextBlock Grid.Row="0" Grid.Column="0" Text="当前项目名称:" Margin="0,0,6,4"
+                       VerticalAlignment="Center" />
+            <TextBox Grid.Row="0" Grid.Column="1" x:Name="SelectedProjectNameBox"
+                     Margin="0,0,6,4" VerticalContentAlignment="Center"
+                     TextChanged="OnSelectedProjectNameChanged" />
+            <Button Grid.Row="0" Grid.Column="2" x:Name="RenameProjectButton" Content="改名"
+                    Padding="14,3" IsEnabled="False" Click="OnRenameClick" />
             <TextBlock Grid.Row="1" Grid.Column="0" Text="提交描述:" Margin="0,0,6,4"
                        VerticalAlignment="Center" />
             <TextBox Grid.Row="1" Grid.Column="1" x:Name="SelectedCommitMessageBox"

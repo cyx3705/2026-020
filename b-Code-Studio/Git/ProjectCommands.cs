@@ -85,6 +85,7 @@ public static partial class ProjectCommands
     {
         registry.Register(BuildList(projects), source);
         registry.Register(BuildCreate(projects, history), source);
+        registry.Register(BuildRename(projects, history), source);
         registry.Register(BuildDelete(projects, history), source);
         registry.Register(BuildTree(projects), source);
         registry.Register(BuildCommit(projects, history), source);
@@ -198,6 +199,51 @@ public static partial class ProjectCommands
             var name = ctx.RequireString("name");
             var (success, message) = await projects.CreateAsync(name, ctx.GetString("base"), ctx.Progress);
             history.Record(name, "create", ctx.GetString("base") ?? "", success ? "成功" : "失败");
+            return success ? CommandResult.Ok(message) : CommandResult.Fail(message);
+        },
+    };
+
+    // ---------------------------------------------------------------- janus.proj.rename
+
+    private static CommandDescriptor BuildRename(ProjectService projects, HistoryRecorder history) => new()
+    {
+        Name = "janus.proj.rename",
+        CommandClass = "proj",
+        Summary = "同步重命名项目分支展示名与工作树目录",
+        Example = "janus.proj.rename name=2026-018-旧项目 new=2026-018-新项目",
+        Parameters =
+        [
+            new ParameterSpec
+            {
+                Name = "name",
+                Description = "当前已登记项目名（目录名）",
+                Required = true,
+                Position = 0,
+            },
+            new ParameterSpec
+            {
+                Name = "new",
+                Description = "新的已登记项目名（目录名）",
+                Required = true,
+                Position = 1,
+            },
+        ],
+        ConfirmPrompt = ctx =>
+        {
+            var current = ctx.RequireString("name").Trim();
+            var target = ctx.RequireString("new").Trim();
+            if (projects.IsProtected(current))
+                return null;
+            return $"确定要把项目分支展示名和工作树目录改名吗?\n\n" +
+                   $"• 当前: {current}\n" +
+                   $"• 新名称: {target}";
+        },
+        Handler = async ctx =>
+        {
+            var current = ctx.RequireString("name");
+            var target = ctx.RequireString("new");
+            var (success, message) = await projects.RenameAsync(current, target, ctx.Progress);
+            history.Record(current, "rename", target, success ? "成功" : "失败");
             return success ? CommandResult.Ok(message) : CommandResult.Fail(message);
         },
     };
