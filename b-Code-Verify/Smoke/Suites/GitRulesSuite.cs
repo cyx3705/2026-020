@@ -19,6 +19,7 @@ internal static class GitRulesSuite
             await TestIgnoreBlockIsIdempotentAsync(temp);
             await TestBlockPreservesHandwrittenContentAsync(temp);
             await TestCommitAppliesRulesAutomaticallyAsync(temp);
+            await TestSnapshotFilesStayTrackedAsync(temp);
             await TestCommandsRegisteredAsync(temp);
         }
         finally
@@ -73,6 +74,50 @@ internal static class GitRulesSuite
             "a single-segment directory needs no prefix");
         True(!afterFirst.Contains("filter=lfs", StringComparison.Ordinal),
             "the managed block never emits LFS attributes");
+    }
+
+    /// <summary>
+    /// 正式消费快照豁免：z-* 下的产物由发布管线刻意入库，跨项目消费依赖它们。
+    /// 清单里写了 *.dll 之类不得把这些删出索引——这条最容易在将来被顺手删掉，
+    /// 所以用真实 git 仓库断言「排除生效但快照仍被跟踪」。
+    /// </summary>
+    private static async Task TestSnapshotFilesStayTrackedAsync(string temp)
+    {
+        var root = Path.Combine(temp, "snapshot-library");
+        var project = Path.Combine(root, "2026-241-Snapshot");
+        Directory.CreateDirectory(root);
+        await InitStandaloneRepo(project, "Rules Smoke", "rules@example.invalid");
+        await CommitFile(project, "README.md", "seed\n", "seed");
+
+        Directory.CreateDirectory(Path.Combine(project, "z-HistoryDemo", "host"));
+        Directory.CreateDirectory(Path.Combine(project, "b-Code", "bin"));
+        await File.WriteAllTextAsync(
+            Path.Combine(project, "z-HistoryDemo", "Demo.dll"), "formal snapshot");
+        await File.WriteAllTextAsync(
+            Path.Combine(project, "z-HistoryDemo", "host", "Host.dll"), "formal host");
+        await File.WriteAllTextAsync(
+            Path.Combine(project, "b-Code", "bin", "Build.dll"), "build output");
+        await File.WriteAllTextAsync(Path.Combine(project, "loose.dll"), "loose build output");
+        await File.WriteAllTextAsync(Path.Combine(project, "src.cs"), "// source");
+
+        var service = BuildService(temp, out var settings, root);
+        service.SetExcludeList("bin/, *.dll");
+        var projects = new ProjectService(settings, _ => true, temp) { ExcludeRules = service };
+        var report = await projects.CommitAsync("2026-241-Snapshot", "快照豁免", null);
+        True(report.Outcome == CommitOutcome.Success, $"commit succeeds: {report.Message}");
+
+        var tracked = Run(project, ["ls-files"]);
+        Contains(tracked, "z-HistoryDemo/Demo.dll",
+            "a formal snapshot dll stays tracked despite *.dll being excluded");
+        Contains(tracked, "z-HistoryDemo/host/Host.dll",
+            "the exemption reaches nested snapshot directories");
+        Contains(tracked, "src.cs", "ordinary source is unaffected");
+        True(!tracked.Contains("loose.dll", StringComparison.Ordinal),
+            "a dll outside the snapshot is excluded");
+        True(!tracked.Contains("Build.dll", StringComparison.Ordinal),
+            "build output under an excluded directory stays excluded");
+
+        DeleteTree(root);
     }
 
     private static async Task TestBlockPreservesHandwrittenContentAsync(string temp)
