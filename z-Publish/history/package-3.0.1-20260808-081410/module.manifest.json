@@ -1,0 +1,15 @@
+{
+    "name":  "OneHistoryStudio",
+    "version":  "3.0.1",
+    "description":  "OneHistoryStudio 项目与 Git 治理模块",
+    "artifact":  "OneHistoryStudio.dll",
+    "docs":  "OneHistoryStudio.xml",
+    "mcpExposure":  "readonly",
+    "ui":  true,
+    "channel":  "formal",
+    "sourceCommit":  "ea5af1d5b1d148a056f29db3e255a5e6c4e7636b",
+    "sourceDirty":  false,
+    "appShellVersion":  "3.1.9",
+    "appShellManifestSha256":  "9D27B06100988DE89547931201E5612487C5ADA3C14C9D7277BFFA1C1450E72A",
+    "publishedAtUtc":  "2026-08-07T16:19:50.2347879+00:00"
+}

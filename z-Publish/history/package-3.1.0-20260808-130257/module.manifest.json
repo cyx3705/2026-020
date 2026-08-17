@@ -1,0 +1,15 @@
+{
+    "name":  "HistoryJanus",
+    "version":  "3.1.0",
+    "description":  "HistoryJanus 项目与 Git 治理模块",
+    "artifact":  "HistoryJanus.dll",
+    "docs":  "HistoryJanus.xml",
+    "mcpExposure":  "readonly",
+    "ui":  true,
+    "channel":  "formal",
+    "sourceCommit":  "e0c2da955a0fc46919202f9572a9968816de175c",
+    "sourceDirty":  false,
+    "appShellVersion":  "3.1.9",
+    "appShellManifestSha256":  "237074D09D743460E30F79EB96A1594B65158C367B0A872AB01823EE4DC9B343",
+    "publishedAtUtc":  "2026-08-08T08:15:20.3151596+00:00"
+}
