@@ -126,8 +126,8 @@ public partial class ProjectOperationsView : UserControl
         var target = SelectedProjectNameBox.Text.Trim();
         if (_busAccessor() is not { } bus || current.Length == 0 || target.Length == 0)
             return;
-        if (!await SaveRulesOnPageLeaveAsync())
-            return;
+        // 改名前无需再落盘规则草稿：排除清单是全库共用的设置，与项目身份无关，
+        // 也不存在未保存的按项目草稿，因此这里没有需要先冲刷的状态。
 
         SetProjectOperationRunning(true);
         try
