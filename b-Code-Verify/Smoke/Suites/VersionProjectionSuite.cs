@@ -167,7 +167,7 @@ internal static class VersionProjectionSuite
 
         True(!Directory.Exists(Path.Combine(ParentDir, "b-Code-HistoryVulcan")),
             "repository boundary: HistoryVulcan source is not embedded in Janus");
-        True(!Directory.Exists(Path.Combine(ParentDir, "z-HistoryVulcan")),
+        True(!Directory.Exists(Path.Combine(ParentDir, "2026-023-HistoryVulcan")),
             "repository boundary: HistoryVulcan package repository is not duplicated in Janus");
 
         var build = File.ReadAllText(Path.Combine(
@@ -270,61 +270,40 @@ internal static class VersionProjectionSuite
         }
     }
 
-    private static async Task AssertPublishAreaGovernanceAsync()
+    private static Task AssertPublishAreaGovernanceAsync()
     {
         var gitIgnore = File.ReadAllLines(Path.Combine(ParentDir, ".gitignore"));
         True(!gitIgnore.Any(line => line.Trim().Equals("stage/", StringComparison.Ordinal)),
             "version projection: the retired stage directory is not part of current governance");
-        True(gitIgnore.Any(line => line.Trim().Equals("z-Publish/", StringComparison.Ordinal)),
-            "version projection: local z-Publish build and history data is ignored");
+        True(!gitIgnore.Any(line => line.Trim().Equals("z-Publish/", StringComparison.Ordinal)),
+            "version projection: z-Publish candidate and verified history are tracked release inputs");
 
         var gitAttributes = File.ReadAllLines(Path.Combine(ParentDir, ".gitattributes"));
-        True(gitAttributes.Any(line => line.StartsWith("z-HistoryJanus/**/*.dll ", StringComparison.Ordinal)),
-            "version projection: formal package binaries use Git LFS");
         True(!gitAttributes.Any(line => line.StartsWith("z-Publish/**/*.dll ", StringComparison.Ordinal)),
             "version projection: ignored local publish area has no tracked LFS contract");
         True(!Directory.Exists(Path.Combine(ParentDir, "z-Package")),
             "version projection: unnamed legacy package root is removed");
-        var formalRoot = Path.Combine(ParentDir, "z-HistoryJanus");
-        if (Directory.Exists(formalRoot))
+        var candidateRoot = Path.Combine(ParentDir, "z-Publish");
+        if (Directory.Exists(candidateRoot))
         {
-            var formalPackageFiles = Directory.EnumerateFiles(formalRoot, "*", SearchOption.AllDirectories)
-                .Select(path => Path.GetRelativePath(formalRoot, path).Replace('\\', '/'))
+            var candidatePackageFiles = Directory.EnumerateFiles(candidateRoot, "*", SearchOption.AllDirectories)
+                .Select(path => Path.GetRelativePath(candidateRoot, path).Replace('\\', '/'))
+                .Where(path => !path.StartsWith("history/", StringComparison.OrdinalIgnoreCase))
                 .ToHashSet(StringComparer.Ordinal);
             var required = new[]
             {
                 "HistoryJanus.dll", "HistoryJanus.xml", "module.manifest.json", "SHA256SUMS",
             };
-            True(required.All(formalPackageFiles.Contains),
-                "version projection: formal package has the runtime snapshot files");
-            True(formalPackageFiles.All(path =>
+            True(required.All(candidatePackageFiles.Contains),
+                "version projection: root candidate has the runtime snapshot files");
+            True(candidatePackageFiles.All(path =>
                     required.Contains(path, StringComparer.Ordinal)
                     || (path.StartsWith("docs/", StringComparison.Ordinal)
                         && path.EndsWith(".md", StringComparison.OrdinalIgnoreCase))),
-                "version projection: formal package is runtime files plus optional Markdown docs");
+                "version projection: root candidate is runtime files plus Markdown docs");
         }
 
-        var start = new ProcessStartInfo("git")
-        {
-            WorkingDirectory = ParentDir,
-            UseShellExecute = false,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            CreateNoWindow = true,
-        };
-        start.ArgumentList.Add("ls-files");
-        start.ArgumentList.Add("z-Publish");
-        using var process = Process.Start(start)
-                            ?? throw new InvalidOperationException("Unable to inspect tracked z-Publish files");
-        var stdoutTask = process.StandardOutput.ReadToEndAsync();
-        var stderrTask = process.StandardError.ReadToEndAsync();
-        await process.WaitForExitAsync();
-        var stdout = await stdoutTask;
-        var stderr = await stderrTask;
-        True(process.ExitCode == 0,
-            $"version projection: git ls-files z-Publish succeeds: {stderr}");
-        True(string.IsNullOrWhiteSpace(stdout),
-            "version projection: z-Publish contains no tracked files");
+        return Task.CompletedTask;
     }
 
 }

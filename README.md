@@ -12,7 +12,7 @@ HistoryJanus 4.0.0 是运行在 HistoryVulcan 中的项目与 Git 治理模块�
 | `b-Office/package` | 唯一跨项目模块 API 文档 |
 | `b-Office/history` | 只读版本记录，不是现行开发输入 |
 | `z-Publish` | 单槽候选、历史正式包、事务工作区，不入 Git |
-| `z-HistoryJanus` | 最新正式模块消费快照 |
+| `z-Publish` | 最新正式模块消费快照 |
 
 文档入口：[文档中心](./b-Office/文档中心.md)；跨模块入口：[模块 API](./b-Office/package/模块API.md)。
 
@@ -45,6 +45,6 @@ dotnet run --project .\b-Code-Verify\ModuleSmoke\ModuleSmoke.csproj -c Debug -- 
 
 - 当前事实以源码、测试、`b-Office/current`、`b-Office/package` 和最新 z 级正式快照为准。
 - 默认不列举、搜索或读取 `b-Office/history`；只有用户明确追溯版本时才读取指定文件。
-- HistoryVulcan 合同只从平级 `2026-023-HistoryVulcan/z-HistoryVulcan` 消费，不复制其源码或文档。
+- HistoryVulcan 合同只从平级 `2026-023-HistoryVulcan/z-Publish` 消费，不复制其源码或文档。
 - 不提交 `bin`、`obj`、`.vs` 或 `z-Publish`；z 级正式快照进入 Git。
 - 根目录 `AGENTS.md` 是仓库 AI 工作合同；本节保留 Janus 特有的事实边界。

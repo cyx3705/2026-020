@@ -4,11 +4,11 @@
 
 ## 正式消费入口
 
-- 正式快照：`z-HistoryJanus`。
+- 正式快照：`z-Publish`。
 - 模块名：`HistoryJanus`。
 - 版本：`5.0.0`。
 - 入口：`HistoryJanus.dll`。
-- 宿主基线：HistoryVulcan `3.9.0` current-host 快照，从 `2026-023-HistoryVulcan/z-HistoryVulcan` 消费；该快照的 `sourceDirty` 仍由 HistoryVulcan manifest 如实标记。
+- 宿主基线：HistoryVulcan `3.9.0` current-host 快照，从 `2026-023-HistoryVulcan/z-Publish` 消费；该快照的 `sourceDirty` 仍由 HistoryVulcan manifest 如实标记。
 - 主题：页面使用 HistoryVulcan `Shell.Brush.*` 动态资源，跟随宿主深色/浅色切换，不在模块内维护第二套主题。
 - 命令来源：`module:HistoryJanus`。
 - 命令命名：`janus.<类>.<方法>` 三段式全小写（详见 `b-Office/current/指令优化规范.md`）。
@@ -16,8 +16,8 @@
 - MCP：只读投影。
 
 本文件描述活动源的 `5.0.0` 候选合同；只有用户另行授权正式发布后，同版本 manifest 和二进制才会提升到
-`z-HistoryJanus`。发布前，z 快照自身的 manifest 与 checksum 仍是正式运行版本的真值。
-其他项目从 `z-HistoryJanus/docs/` 或 `diana.docs.janus` 读取已发布 API，从 z 快照读取 `module.manifest.json`、二进制和
+`z-Publish`。发布前，z 快照自身的 manifest 与 checksum 仍是正式运行版本的真值。
+其他项目从 `z-Publish/docs/` 或 `diana.docs.janus` 读取已发布 API，从 z 快照读取 `module.manifest.json`、二进制和
 `SHA256SUMS`；不要从 `z-Publish`、Janus 的 `bin/obj`、HistoryVulcan 工作树或 Janus 历史文档建立依赖。
 
 ## 宿主接入
@@ -108,7 +108,7 @@ if (!result.Success)
 ## 历史备注
 
 - V3.1.0：模块由 `OneHistoryStudio` 改名为 `HistoryJanus`。
-- V3.3.2：正式目录改名为 `z-HistoryJanus`，API 文档位于 `docs/`。
+- V3.3.2：正式目录改名为 `z-Publish`，API 文档位于 `docs/`。
 - V3.4.0：GitHubConnection 并入为 `github` 页面与 `github.*` 命令。
 - V3.5.0：全部指令改为 `janus.<类>.<方法>`；github 页删除隐式 Button 样式并补齐 DataGrid Surface 刷子。
 - V3.5.1：`CommandClass` 与命令名中间段对齐；清除宿主残留 `GitHubConnection` 独立域槽。

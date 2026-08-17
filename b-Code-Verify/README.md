@@ -32,7 +32,7 @@ dotnet run --project .\b-Code-Verify\ModuleSmoke\ModuleSmoke.csproj -c Release -
 ```powershell
 ```
 
-产物只覆盖 `z-Publish/current/HistoryJanus`，不保留候选历史。完整 Debug/Release Smoke、ModuleSmoke
+产物只覆盖 `z-Publish`，不保留候选历史。完整 Debug/Release Smoke、ModuleSmoke
 及正式发布校验由 Diana 集中发布脚本执行；本项目只保留候选构建入口。
 
 默认 Smoke 禁止真实鼠标、开机自启动、UAC、正式项目写入和第二台 LAN 设备。项目操作页行为使用隔离数据和 STA 测试线程执行：
