@@ -48,7 +48,7 @@ if (!result.Success)
 
 3.7.0 再次收敛指令类：`debug` 类整体退役（`janus.debug.logflood` 与宿主 `vulcan.log.flood` 重复，`janus.debug.sleep` 无调用点），`meta` 类并入 `proj`（`janus.meta.list` → `janus.proj.metas`，`janus.meta.open` → `janus.proj.metaopen`）。3.8.0 业务命令为 35 条、类为 `proj` / `gitrule` / `history` / `github` 四类；加上模块宿主投影的 `janus.status`，运行时命令总数为 36 条。
 
-3.9.0（DEC-012）新增 `graph` 类四条只读 DAG 命令；3.9.1（DEC-013）改为独立图谱窗口与编号主线/平行泳道。4.0.0（DEC-015）存储引擎改为独立仓：`name=` 是已登记项目目录名，仓内主线为 `main`。业务命令 39 条、指令类五类（`proj` / `gitrule` / `history` / `github` / `graph`）；加上 `janus.status`，运行时命令总数为 **40** 条。5.0.0（DEC-022）规则面收敛：`gitrule` 只剩 `list` / `excludes`，业务命令 39 → **34** 条，运行时总数 **35** 条。
+3.9.0（DEC-012）新增 `graph` 类四条只读 DAG 命令；3.9.1（DEC-013）改为独立图谱窗口与编号主线/平行泳道。4.0.0（DEC-015）存储引擎改为独立仓：`name=` 是已登记项目目录名，仓内主线为 `main`。4.3.0（DEC-022）增加 `janus.proj.rename`。业务命令 40 条、指令类五类（`proj` / `gitrule` / `history` / `github` / `graph`）；加上 `janus.status`，运行时命令总数为 **41** 条。5.0.0（DEC-023）规则面收敛：`gitrule` 只剩 `list` / `excludes`，业务命令 40 → **35** 条，运行时总数 **36** 条。
 
 ### 模块与读取
 
@@ -81,6 +81,7 @@ if (!result.Success)
 | 命令 | 用途 |
 | --- | --- |
 | `janus.proj.create` | 从模板仓复制工作树并 `git init` 为独立仓 |
+| `janus.proj.rename` | 经确认同步改名已登记项目展示名与工作树目录；仓内主线仍为 `main` |
 | `janus.proj.delete` | 删除项目目录 |
 | `janus.proj.commit` | 提交指定项目 |
 | `janus.proj.push` | 推送指定项目；仓库没有 origin 时先在 GitHub 上按项目编号建仓再推送（`visibility=public\|private`，默认 `public`） |
@@ -122,4 +123,5 @@ if (!result.Success)
 - V4.1.0：`push` / `pushall` 在仓库缺 `origin` 时按需创建 GitHub 同名仓库后再推送（DEC-019）。新增可选参数 `visibility`（`public` / `private`，默认 `public`）；命令数与窗口不变。令牌取自 GCM 已存的 HTTPS 凭据，模块不新增任何凭据配置项。`PushReport` 增加 `RemoteCreated` / `RemoteUrl` / `RemoteVisibility`，`BatchPushReport` 增加 `CreatedRemotes`；消费者按需投影，旧字段语义不变。
 - V4.1.1：自动建仓写入 `origin` 的 URL 改为优先 `ssh_url`（DEC-020）——HTTPS 在大包（实测约 17MB 起）上会被连接重置。推送认证因此依赖 `~/.ssh` 密钥，而建仓仍走 HTTPS token，两条凭据链路不同。建仓成功但推送失败时，结果消息也会点名新建的仓库。`PushReport.RemoteUrl` 回显的是实际写入 origin 的 URL。
 - V4.2.0：自动建仓的远端仓库名改为只取项目编号 `YYYY-NNN`（DEC-021）——GitHub 会吃掉仓库名里的非 ASCII 字符（请求 `2025-001-AGV洗轮机` 建出 `2025-001-AGV-`），而库内多数项目是中文名。本地项目目录名不变，远端与本地刻意不一致；需要对外展示的仓库由用户自行在 GitHub 改名。已按旧规则建出的仓库保持原名。
-- V5.0.0（破坏性）：Git 文件规则收敛为**一份全库共用的「不纳入仓库」清单**（设置 `proj.excludesuffixes`），只有"是否纳入仓库"一个维度（DEC-022）。`janus.gitrule.set` / `batchset` / `remove` / `sync` / `scan` / `review` 六条命令一次性退役、不留别名，新增 `janus.gitrule.excludes`；业务命令 39 → 34 条，运行时 40 → 35 条。LFS 完全退出规则面：Janus 不再按扩展名生成任何 `.gitattributes` LFS 属性，只在提交链路对超过 GitHub 100MB 硬限的**具体文件**弹确认后按精确路径 `git lfs track`。清单由提交链路自动刷进各仓 `.gitignore` 托管块，消费方不需要（也无法）手动下发。推送统一走一个出口：推显式分支名、`lfs.locksverify=false`、待推超 300MB 时按提交分批推。
+- V4.3.0：项目操作页第二行支持编辑当前项目名并确认改名；`janus.proj.rename` 同步更新项目展示名与工作树目录，保护仓内主线 `main` 不被误改。
+- V5.0.0（破坏性）：Git 文件规则收敛为**一份全库共用的「不纳入仓库」清单**（设置 `proj.excludesuffixes`），只有"是否纳入仓库"一个维度（DEC-023）。`janus.gitrule.set` / `batchset` / `remove` / `sync` / `scan` / `review` 六条命令一次性退役、不留别名，新增 `janus.gitrule.excludes`；业务命令 40 → 35 条，运行时 41 → 36 条。LFS 完全退出规则面：Janus 不再按扩展名生成任何 `.gitattributes` LFS 属性，只在提交链路对超过 GitHub 100MB 硬限的**具体文件**弹确认后按精确路径 `git lfs track`。清单由提交链路自动刷进各仓 `.gitignore` 托管块，消费方不需要（也无法）手动下发。推送统一走一个出口：推显式分支名、`lfs.locksverify=false`、待推超 300MB 时按提交分批推。
