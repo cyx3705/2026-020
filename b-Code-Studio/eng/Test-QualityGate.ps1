@@ -18,7 +18,7 @@ $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $componentRoot = Join-Path $root 'b-Code-Studio'
 $activeRoots = @('b-Code-Studio', 'b-Code-Verify')
-$excluded = '\\(bin|obj|Unused|b-Publish|z-HistoryJanus)\\'
+$excluded = '\\(bin|obj|Unused|z-Publish|z-HistoryJanus)\\'
 
 $violations = [System.Collections.Generic.List[string]]::new()
 

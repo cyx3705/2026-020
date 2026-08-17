@@ -34,11 +34,11 @@
       "b-Code-Studio/**/obj",
       "b-Code-Verify/**/bin",
       "b-Code-Verify/**/obj",
-      "b-Publish/current"
+      "z-Publish/current"
     ],
     "archiveRoots": [
       "b-Office/history",
-      "b-Publish"
+      "z-Publish"
     ],
     "releaseRoots": [
       "z-HistoryJanus"
@@ -74,7 +74,7 @@
   ],
   "contextExclusions": [
     "b-Office/history/**",
-    "b-Publish/**",
+    "z-Publish/**",
     "z-HistoryJanus/**",
     "**/bin/**",
     "**/obj/**",
