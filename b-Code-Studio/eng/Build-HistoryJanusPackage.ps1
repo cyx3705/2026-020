@@ -13,7 +13,7 @@ Set-StrictMode -Version Latest
 
 $componentRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $componentRoot '..'))
-$publishRoot = Join-Path $repoRoot 'b-Publish'
+$publishRoot = Join-Path $repoRoot 'z-Publish'
 if ([string]::IsNullOrWhiteSpace($OutputRoot)) {
     $OutputRoot = Join-Path $publishRoot 'current\HistoryJanus'
 }

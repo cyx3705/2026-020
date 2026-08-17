@@ -18,7 +18,7 @@
 本文件描述活动源的 `4.3.0` 候选合同；只有用户另行授权正式发布后，同版本 manifest 和二进制才会提升到
 `z-HistoryJanus`。发布前，z 快照自身的 manifest 与 checksum 仍是正式运行版本的真值。
 其他项目从 `z-HistoryJanus/docs/` 或 `diana.docs.janus` 读取已发布 API，从 z 快照读取 `module.manifest.json`、二进制和
-`SHA256SUMS`；不要从 `b-Publish`、Janus 的 `bin/obj`、HistoryVulcan 工作树或 Janus 历史文档建立依赖。
+`SHA256SUMS`；不要从 `z-Publish`、Janus 的 `bin/obj`、HistoryVulcan 工作树或 Janus 历史文档建立依赖。
 
 ## 宿主接入
 

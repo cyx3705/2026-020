@@ -275,13 +275,13 @@ internal static class VersionProjectionSuite
         var gitIgnore = File.ReadAllLines(Path.Combine(ParentDir, ".gitignore"));
         True(!gitIgnore.Any(line => line.Trim().Equals("stage/", StringComparison.Ordinal)),
             "version projection: the retired stage directory is not part of current governance");
-        True(gitIgnore.Any(line => line.Trim().Equals("b-Publish/", StringComparison.Ordinal)),
-            "version projection: local b-Publish build and history data is ignored");
+        True(gitIgnore.Any(line => line.Trim().Equals("z-Publish/", StringComparison.Ordinal)),
+            "version projection: local z-Publish build and history data is ignored");
 
         var gitAttributes = File.ReadAllLines(Path.Combine(ParentDir, ".gitattributes"));
         True(gitAttributes.Any(line => line.StartsWith("z-HistoryJanus/**/*.dll ", StringComparison.Ordinal)),
             "version projection: formal package binaries use Git LFS");
-        True(!gitAttributes.Any(line => line.StartsWith("b-Publish/**/*.dll ", StringComparison.Ordinal)),
+        True(!gitAttributes.Any(line => line.StartsWith("z-Publish/**/*.dll ", StringComparison.Ordinal)),
             "version projection: ignored local publish area has no tracked LFS contract");
         True(!Directory.Exists(Path.Combine(ParentDir, "z-Package")),
             "version projection: unnamed legacy package root is removed");
@@ -313,18 +313,18 @@ internal static class VersionProjectionSuite
             CreateNoWindow = true,
         };
         start.ArgumentList.Add("ls-files");
-        start.ArgumentList.Add("b-Publish");
+        start.ArgumentList.Add("z-Publish");
         using var process = Process.Start(start)
-                            ?? throw new InvalidOperationException("Unable to inspect tracked b-Publish files");
+                            ?? throw new InvalidOperationException("Unable to inspect tracked z-Publish files");
         var stdoutTask = process.StandardOutput.ReadToEndAsync();
         var stderrTask = process.StandardError.ReadToEndAsync();
         await process.WaitForExitAsync();
         var stdout = await stdoutTask;
         var stderr = await stderrTask;
         True(process.ExitCode == 0,
-            $"version projection: git ls-files b-Publish succeeds: {stderr}");
+            $"version projection: git ls-files z-Publish succeeds: {stderr}");
         True(string.IsNullOrWhiteSpace(stdout),
-            "version projection: b-Publish contains no tracked files");
+            "version projection: z-Publish contains no tracked files");
     }
 
 }
