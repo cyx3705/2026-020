@@ -31,7 +31,7 @@ internal static class VersionProjectionSuite
 
         AssertPackageConsumers();
         AssertCurrentSourceAndDocumentation();
-        await AssertPublishAreaGovernanceAsync();
+        await AssertPublishAreaGovernanceAsync(studioVersion, ReadCandidateRoot(args));
         Console.WriteLine($"version projection: Janus module {studioVersion}");
     }
 
@@ -270,7 +270,18 @@ internal static class VersionProjectionSuite
         }
     }
 
-    private static Task AssertPublishAreaGovernanceAsync()
+    private static string? ReadCandidateRoot(IReadOnlyList<string> args)
+    {
+        for (var index = 0; index < args.Count - 1; index++)
+        {
+            if (args[index].Equals("--candidate-root", StringComparison.OrdinalIgnoreCase))
+                return Path.GetFullPath(args[index + 1]);
+        }
+
+        return null;
+    }
+
+    private static Task AssertPublishAreaGovernanceAsync(string studioVersion, string? candidateRoot)
     {
         var gitIgnore = File.ReadAllLines(Path.Combine(ParentDir, ".gitignore"));
         True(!gitIgnore.Any(line => line.Trim().Equals("stage/", StringComparison.Ordinal)),
@@ -283,24 +294,77 @@ internal static class VersionProjectionSuite
             "version projection: ignored local publish area has no tracked LFS contract");
         True(!Directory.Exists(Path.Combine(ParentDir, "z-Package")),
             "version projection: unnamed legacy package root is removed");
-        var candidateRoot = Path.Combine(ParentDir, "z-Publish");
-        if (Directory.Exists(candidateRoot))
+        if (!string.IsNullOrWhiteSpace(candidateRoot))
         {
-            var candidatePackageFiles = Directory.EnumerateFiles(candidateRoot, "*", SearchOption.AllDirectories)
-                .Select(path => Path.GetRelativePath(candidateRoot, path).Replace('\\', '/'))
-                .Where(path => !path.StartsWith("history/", StringComparison.OrdinalIgnoreCase))
-                .ToHashSet(StringComparer.Ordinal);
-            var required = new[]
+            True(Directory.Exists(candidateRoot),
+                "version projection: supplied candidate root exists");
+            if (Directory.Exists(candidateRoot))
             {
-                "HistoryJanus.dll", "HistoryJanus.xml", "module.manifest.json", "SHA256SUMS",
-            };
-            True(required.All(candidatePackageFiles.Contains),
-                "version projection: root candidate has the runtime snapshot files");
-            True(candidatePackageFiles.All(path =>
-                    required.Contains(path, StringComparer.Ordinal)
-                    || (path.StartsWith("docs/", StringComparison.Ordinal)
-                        && path.EndsWith(".md", StringComparison.OrdinalIgnoreCase))),
-                "version projection: root candidate is runtime files plus Markdown docs");
+                var candidatePackageFiles = Directory.EnumerateFiles(candidateRoot, "*", SearchOption.AllDirectories)
+                    .Select(path => Path.GetRelativePath(candidateRoot, path).Replace('\\', '/'))
+                    .ToHashSet(StringComparer.Ordinal);
+                var required = new[]
+                {
+                    "HistoryJanus.dll", "HistoryJanus.xml", "module.manifest.json", "SHA256SUMS",
+                };
+                True(required.All(candidatePackageFiles.Contains),
+                    "version projection: supplied candidate has the runtime snapshot files");
+                True(candidatePackageFiles.Any(path =>
+                        path.StartsWith("docs/", StringComparison.OrdinalIgnoreCase)
+                        && path.EndsWith(".md", StringComparison.OrdinalIgnoreCase)),
+                    "version projection: supplied candidate contains Markdown docs");
+                True(candidatePackageFiles.All(path =>
+                        required.Contains(path, StringComparer.Ordinal)
+                        || (path.StartsWith("docs/", StringComparison.OrdinalIgnoreCase)
+                            && path.EndsWith(".md", StringComparison.OrdinalIgnoreCase))),
+                    "version projection: supplied candidate is runtime files plus Markdown docs");
+            }
+
+            return Task.CompletedTask;
+        }
+
+        var publishRoot = Path.Combine(ParentDir, "z-Publish");
+        if (Directory.Exists(publishRoot))
+        {
+            var rootEntries = Directory.EnumerateFileSystemEntries(publishRoot)
+                .Select(path => Path.GetFileName(path) ?? string.Empty)
+                .ToArray();
+            True(rootEntries.All(name =>
+                    string.Equals(name, "history", StringComparison.OrdinalIgnoreCase)
+                    || Regex.IsMatch(name, "^HistoryJanus-v\\d+\\.\\d+\\.\\d+$",
+                        RegexOptions.CultureInvariant)),
+                "version projection: z-Publish root contains only versioned candidate and history");
+
+            var candidates = Directory.EnumerateDirectories(publishRoot, "HistoryJanus-v*", SearchOption.TopDirectoryOnly)
+                .Where(path => Regex.IsMatch(Path.GetFileName(path) ?? string.Empty,
+                    "^HistoryJanus-v\\d+\\.\\d+\\.\\d+$", RegexOptions.CultureInvariant))
+                .ToArray();
+            True(candidates.Length <= 1,
+                "version projection: z-Publish has at most one current versioned candidate");
+            if (candidates.Length == 1)
+            {
+                var publishedCandidateRoot = candidates[0];
+                Equal($"HistoryJanus-v{studioVersion}", Path.GetFileName(publishedCandidateRoot),
+                    "version projection: current candidate directory matches the source version");
+                var candidatePackageFiles = Directory.EnumerateFiles(publishedCandidateRoot, "*", SearchOption.AllDirectories)
+                    .Select(path => Path.GetRelativePath(publishedCandidateRoot, path).Replace('\\', '/'))
+                    .ToHashSet(StringComparer.Ordinal);
+                var required = new[]
+                {
+                    "HistoryJanus.dll", "HistoryJanus.xml", "module.manifest.json", "SHA256SUMS",
+                };
+                True(required.All(candidatePackageFiles.Contains),
+                    "version projection: versioned candidate has the runtime snapshot files");
+                True(candidatePackageFiles.Any(path =>
+                        path.StartsWith("docs/", StringComparison.OrdinalIgnoreCase)
+                        && path.EndsWith(".md", StringComparison.OrdinalIgnoreCase)),
+                    "version projection: versioned candidate contains Markdown docs");
+                True(candidatePackageFiles.All(path =>
+                        required.Contains(path, StringComparer.Ordinal)
+                        || (path.StartsWith("docs/", StringComparison.OrdinalIgnoreCase)
+                            && path.EndsWith(".md", StringComparison.OrdinalIgnoreCase))),
+                    "version projection: versioned candidate is runtime files plus Markdown docs");
+            }
         }
 
         return Task.CompletedTask;

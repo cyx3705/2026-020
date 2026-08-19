@@ -207,9 +207,9 @@ internal static class BranchGraphSuite
             "GraphView.xaml exists");
 
         var graphView = File.ReadAllText(Path.Combine(RepoRoot, "Views", "GraphView.xaml"));
-        Contains(graphView, "Shell.Brush.Surface",
+        Contains(graphView, "Aurora.Brush.Surface",
             "GraphView uses host surface token");
-        Contains(graphView, "Shell.Brush.Hairline",
+        Contains(graphView, "Aurora.Brush.Hairline",
             "GraphView uses host hairline token");
 
         True(!graphView.Contains("LaneLegend", StringComparison.Ordinal),

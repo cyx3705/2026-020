@@ -1,4 +1,4 @@
-﻿using System.IO;
+using System.IO;
 using System.Reflection;
 using System.Windows;
 using System.Windows.Controls;
@@ -258,9 +258,9 @@ static IReadOnlyList<string> ConstructPages(
                 }
                 if (page is Control control)
                 {
-                    control.Resources["Shell.Brush.TextPrimary"] = Brushes.Black;
+                    control.Resources["Aurora.Brush.TextPrimary"] = Brushes.Black;
                     var lightForeground = control.Foreground;
-                    control.Resources["Shell.Brush.TextPrimary"] = Brushes.White;
+                    control.Resources["Aurora.Brush.TextPrimary"] = Brushes.White;
                     var darkForeground = control.Foreground;
                     if (lightForeground != Brushes.Black || darkForeground != Brushes.White)
                     {
@@ -352,13 +352,13 @@ static void SetTheme(
     Brush surfaceHover,
     Brush disabled)
 {
-    resources["Shell.Brush.TextPrimary"] = text;
-    resources["Shell.Brush.TextDisabled"] = disabled;
-    resources["Shell.Brush.SurfaceAlt"] = surface;
-    resources["Shell.Brush.SurfaceHover"] = surfaceHover;
-    resources["Shell.Brush.AccentSoft"] = accentSoft;
-    resources["Shell.Brush.Accent"] = Brushes.Goldenrod;
-    resources["Shell.Brush.ControlBorder"] = Brushes.Gray;
+    resources["Aurora.Brush.TextPrimary"] = text;
+    resources["Aurora.Brush.TextDisabled"] = disabled;
+    resources["Aurora.Brush.SurfaceAlt"] = surface;
+    resources["Aurora.Brush.SurfaceHover"] = surfaceHover;
+    resources["Aurora.Brush.AccentSoft"] = accentSoft;
+    resources["Aurora.Brush.Accent"] = Brushes.Goldenrod;
+    resources["Aurora.Brush.ControlBorder"] = Brushes.Gray;
 }
 
 static void AssertSegmentTheme(

@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using HistoryJanus.Git;
@@ -351,9 +351,9 @@ internal static class TestArchitectureSuite
         foreach (var name in primaryViews)
         {
             var source = File.ReadAllText(Path.Combine(viewsRoot, name));
-            Contains(source, "Background=\"{DynamicResource Shell.Brush.Surface}\"",
+            Contains(source, "Background=\"{DynamicResource Aurora.Brush.Surface}\"",
                 $"theme governance: {name} uses the HistoryVulcan surface token");
-            Contains(source, "Shell.Brush.TextPrimary",
+            Contains(source, "Aurora.Brush.TextPrimary",
                 $"theme governance: {name} uses the host primary text token");
         }
 
@@ -364,17 +364,17 @@ internal static class TestArchitectureSuite
                  })
         {
             var source = File.ReadAllText(Path.Combine(viewsRoot, name));
-            True(source.Contains("Shell.Brush.Surface}", StringComparison.Ordinal)
-                 && source.Contains("Shell.Brush.Hairline}", StringComparison.Ordinal),
+            True(source.Contains("Aurora.Brush.Surface}", StringComparison.Ordinal)
+                 && source.Contains("Aurora.Brush.Hairline}", StringComparison.Ordinal),
                 $"theme governance: {name} content controls use surface and hairline tokens");
         }
 
         var projectOperations = File.ReadAllText(Path.Combine(viewsRoot, "ProjectOperationsView.xaml"));
         foreach (var token in new[]
                   {
-                      "Shell.Brush.SurfaceAlt", "Shell.Brush.ControlBorder",
-                      "Shell.Brush.SurfaceHover", "Shell.Brush.AccentSoft", "Shell.Brush.Accent",
-                      "Shell.Brush.TextDisabled", "Shell.Brush.Hairline",
+                      "Aurora.Brush.SurfaceAlt", "Aurora.Brush.ControlBorder",
+                      "Aurora.Brush.SurfaceHover", "Aurora.Brush.AccentSoft", "Aurora.Brush.Accent",
+                      "Aurora.Brush.TextDisabled", "Aurora.Brush.Hairline",
                   })
         {
             Contains(projectOperations, token,

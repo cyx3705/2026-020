@@ -1,12 +1,12 @@
 <UserControl x:Class="HistoryJanus.Views.BranchHistoryView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             Background="{DynamicResource Shell.Brush.Surface}"
-             Foreground="{DynamicResource Shell.Brush.TextPrimary}">
+             Background="{DynamicResource Aurora.Brush.Surface}"
+             Foreground="{DynamicResource Aurora.Brush.TextPrimary}">
     <DockPanel>
         <StackPanel DockPanel.Dock="Top" Margin="0,0,0,6">
             <TextBlock x:Name="BoundaryText" Text="在项目总览或项目操作中选择项目"
-                       Foreground="{DynamicResource Shell.Brush.TextSecondary}"
+                       Foreground="{DynamicResource Aurora.Brush.TextSecondary}"
                        TextWrapping="Wrap" />
             <WrapPanel Margin="0,5,0,0">
                 <Button x:Name="RefreshButton" Content="刷新" Padding="10,3"
@@ -19,9 +19,9 @@
         </StackPanel>
 
         <ListView x:Name="HistoryList"
-                  Background="{DynamicResource Shell.Brush.Surface}"
-                  Foreground="{DynamicResource Shell.Brush.TextPrimary}"
-                  BorderBrush="{DynamicResource Shell.Brush.Hairline}"
+                  Background="{DynamicResource Aurora.Brush.Surface}"
+                  Foreground="{DynamicResource Aurora.Brush.TextPrimary}"
+                  BorderBrush="{DynamicResource Aurora.Brush.Hairline}"
                   SelectionMode="Single"
                   MouseDoubleClick="OnRowDoubleClick"
                   PreviewMouseRightButtonDown="OnHistoryPreviewMouseRightButtonDown"
@@ -41,7 +41,7 @@
                 </ContextMenu>
             </ListView.ContextMenu>
             <ListView.View>
-                <GridView ColumnHeaderContainerStyle="{DynamicResource Shell.GridHeader}">
+                <GridView ColumnHeaderContainerStyle="{DynamicResource Aurora.GridHeader}">
                     <GridViewColumn Header="节点" Width="58" DisplayMemberBinding="{Binding Marker}" />
                     <GridViewColumn Header="提交说明" Width="360" DisplayMemberBinding="{Binding Subject}" />
                     <GridViewColumn Header="时间" Width="138" DisplayMemberBinding="{Binding TimeDisplay}" />

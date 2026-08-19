@@ -2,7 +2,10 @@
 param(
     # 宿主快照根。缺省按"本仓与 2026-023-HistoryVulcan 同库根"的相对路径推导；
     # 从 AI 工作树运行时工作树在库根之外，该相对路径必然指空，由调用方显式传入。
-    [string]$HistoryVulcanPackageRoot = $env:HISTORYVULCAN_PACKAGE_ROOT
+    [string]$HistoryVulcanPackageRoot = $env:HISTORYVULCAN_PACKAGE_ROOT,
+    # Diana release.cycle 在候选写入 z-Publish 前传入事务 staging 根；
+    # 独立运行时为空，改为校验 z-Publish 下的当前版本化候选。
+    [string]$CandidateRoot
 )
 
 $ErrorActionPreference = 'Stop'
@@ -197,30 +200,198 @@ if (($expectedRuntimeCommandNames -join ',') -cne ($apiCommandNames -join ',')) 
     $violations.Add("模块API.md 命令清单与源码不一致：API $($apiCommandNames.Count)，运行时 $($expectedRuntimeCommandNames.Count)")
 }
 
-# --- 6. 根候选边界（QA-004 日常化）：运行文件 + docs/*.md + 独立 history -------------------
+# --- 6. 候选边界（QA-004 日常化）：事务候选或版本化运行包 + docs/*.md + 独立 history ---
+# Diana 的普通模块发布形状是 z-Publish/HistoryJanus-v<version>/；构建脚本的
+# -OutputRoot 只接收事务 staging 根，不能据此把正式消费根误判成平铺包。
 $packageRoot = Join-Path $root 'z-Publish'
-if (Test-Path -LiteralPath $packageRoot) {
-    $allowed = @('HistoryJanus.dll', 'HistoryJanus.xml', 'module.manifest.json', 'SHA256SUMS', 'docs', 'history')
-    $unexpected = @(
-        Get-ChildItem -LiteralPath $packageRoot |
-            Where-Object { $_.Name -notin $allowed }
-    )
-    foreach ($item in $unexpected) {
-        $violations.Add("Unexpected entry in z-Publish candidate: $($item.Name)")
+$inspectPublishedRoot = [string]::IsNullOrWhiteSpace($CandidateRoot)
+if (-not $inspectPublishedRoot) {
+    $candidatePath = [IO.Path]::GetFullPath($CandidateRoot)
+    if (-not (Test-Path -LiteralPath $candidatePath -PathType Container)) {
+        $violations.Add("CandidateRoot is missing: $candidatePath")
     }
-    $formalManifestPath = Join-Path $packageRoot 'module.manifest.json'
-    if (-not (Test-Path -LiteralPath $formalManifestPath -PathType Leaf)) {
-        $violations.Add('z-Publish/module.manifest.json is missing')
-    }
-    $docsRoot = Join-Path $packageRoot 'docs'
-    if (Test-Path -LiteralPath $docsRoot) {
-        if (-not (Test-Path -LiteralPath $docsRoot -PathType Container)) {
-            $violations.Add('z-Publish/docs must be a directory of Markdown')
+    else {
+        $candidatePrefix = $candidatePath.TrimEnd('\') + '\'
+        $candidateFiles = @(Get-ChildItem -LiteralPath $candidatePath -Recurse -File -Force |
+            ForEach-Object { $_.FullName.Substring($candidatePrefix.Length).Replace('\', '/') } |
+            Sort-Object)
+        $runtimeFiles = @('HistoryJanus.dll', 'HistoryJanus.xml', 'module.manifest.json', 'SHA256SUMS')
+        $docsRoot = Join-Path $candidatePath 'docs'
+        $docsFiles = if (Test-Path -LiteralPath $docsRoot -PathType Container) {
+            @(Get-ChildItem -LiteralPath $docsRoot -Recurse -File -Force |
+                ForEach-Object {
+                    if ([IO.Path]::GetExtension($_.Name) -ne '.md') {
+                        [void]$violations.Add("CandidateRoot/docs may contain only Markdown: $($_.Name)")
+                    }
+                    $_.FullName.Substring($candidatePrefix.Length).Replace('\', '/')
+                } | Sort-Object)
         }
         else {
-            foreach ($item in @(Get-ChildItem -LiteralPath $docsRoot -Recurse -File)) {
-                if ([IO.Path]::GetExtension($item.Name) -ne '.md') {
-                    $violations.Add("z-Publish/docs may contain only Markdown: $($item.Name)")
+            [void]$violations.Add('CandidateRoot/docs is missing')
+            @()
+        }
+        if ($docsFiles.Count -eq 0) {
+            [void]$violations.Add('CandidateRoot/docs must contain at least one Markdown document')
+        }
+        $expectedFiles = @($runtimeFiles + $docsFiles) | Sort-Object
+        if (($candidateFiles -join "`n") -cne ($expectedFiles -join "`n")) {
+            $violations.Add("CandidateRoot file set is invalid: $($candidateFiles -join ', ')")
+        }
+        foreach ($file in $runtimeFiles) {
+            if (-not (Test-Path -LiteralPath (Join-Path $candidatePath $file) -PathType Leaf)) {
+                $violations.Add("CandidateRoot/$file is missing")
+            }
+        }
+
+        $manifestPath = Join-Path $candidatePath 'module.manifest.json'
+        if (Test-Path -LiteralPath $manifestPath -PathType Leaf) {
+            try {
+                $candidateManifest = [IO.File]::ReadAllText($manifestPath) | ConvertFrom-Json
+                if ([string]$candidateManifest.name -cne 'HistoryJanus' -or
+                    [string]$candidateManifest.version -cne $sourceVersion) {
+                    $violations.Add("CandidateRoot manifest does not match HistoryJanus $sourceVersion")
+                }
+            }
+            catch {
+                $violations.Add('CandidateRoot/module.manifest.json is invalid JSON')
+            }
+        }
+
+        $sumsPath = Join-Path $candidatePath 'SHA256SUMS'
+        if (Test-Path -LiteralPath $sumsPath -PathType Leaf) {
+            $hashes = @{}
+            foreach ($line in [IO.File]::ReadAllLines($sumsPath)) {
+                if ($line -notmatch '^(?<hash>[0-9A-Fa-f]{64})  (?<file>.+)$') {
+                    $violations.Add("Invalid CandidateRoot checksum line: $line")
+                    continue
+                }
+                $hashFile = $Matches['file']
+                if ($hashes.ContainsKey($hashFile)) {
+                    $violations.Add("Duplicate CandidateRoot checksum entry: $hashFile")
+                    continue
+                }
+                $hashes[$hashFile] = $Matches['hash'].ToUpperInvariant()
+            }
+            $hashTargets = @($candidateFiles | Where-Object { $_ -ne 'SHA256SUMS' } | Sort-Object)
+            if ((($hashes.Keys | Sort-Object) -join "`n") -ne (($hashTargets | Sort-Object) -join "`n")) {
+                $violations.Add('CandidateRoot SHA256SUMS does not cover exactly the candidate files')
+            }
+            foreach ($relative in $hashTargets) {
+                $path = Join-Path $candidatePath $relative.Replace('/', '\')
+                if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { continue }
+                $actualHash = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToUpperInvariant()
+                if (-not $hashes.ContainsKey($relative) -or $hashes[$relative] -ne $actualHash) {
+                    $violations.Add("CandidateRoot checksum mismatch: $relative")
+                }
+            }
+        }
+        $assemblyPath = Join-Path $candidatePath 'HistoryJanus.dll'
+        if (Test-Path -LiteralPath $assemblyPath -PathType Leaf) {
+            try {
+                $assemblyVersion = [Reflection.AssemblyName]::GetAssemblyName($assemblyPath).Version
+                if ($assemblyVersion.ToString() -ne "$sourceVersion.0") {
+                    $violations.Add("CandidateRoot assembly version $assemblyVersion != $sourceVersion.0")
+                }
+            }
+            catch {
+                $violations.Add('CandidateRoot/HistoryJanus.dll is not a readable .NET assembly')
+            }
+        }
+    }
+}
+if ($inspectPublishedRoot -and (Test-Path -LiteralPath $packageRoot)) {
+    $candidateNamePattern = '^HistoryJanus-v\d+\.\d+\.\d+$'
+    $rootEntries = @(Get-ChildItem -LiteralPath $packageRoot -Force)
+    $unexpected = @($rootEntries | Where-Object {
+        $_.Name -ne 'history' -and
+        -not ($_.PSIsContainer -and $_.Name -match $candidateNamePattern)
+    })
+    foreach ($item in $unexpected) {
+        $violations.Add("Unexpected entry in z-Publish root: $($item.Name)")
+    }
+    $candidates = @(Get-ChildItem -LiteralPath $packageRoot -Directory -Force |
+        Where-Object { $_.Name -match $candidateNamePattern })
+    if ($candidates.Count -gt 1) {
+        $violations.Add("z-Publish must contain at most one current HistoryJanus candidate; found $($candidates.Count)")
+    }
+    if ($candidates.Count -eq 1) {
+        $candidateRoot = $candidates[0].FullName
+        $expectedCandidateName = "HistoryJanus-v$sourceVersion"
+        if ($candidates[0].Name -cne $expectedCandidateName) {
+            $violations.Add("Current Janus candidate $($candidates[0].Name) != $expectedCandidateName")
+        }
+
+        $candidatePrefix = $candidateRoot.TrimEnd('\') + '\'
+        $candidateFiles = @(Get-ChildItem -LiteralPath $candidateRoot -Recurse -File -Force |
+            ForEach-Object { $_.FullName.Substring($candidatePrefix.Length).Replace('\', '/') } |
+            Sort-Object)
+        $runtimeFiles = @('HistoryJanus.dll', 'HistoryJanus.xml', 'module.manifest.json', 'SHA256SUMS')
+        $docsRoot = Join-Path $candidateRoot 'docs'
+        if (-not (Test-Path -LiteralPath $docsRoot -PathType Container)) {
+            $violations.Add("$expectedCandidateName/docs must be a directory of Markdown")
+            $docsFiles = @()
+        }
+        else {
+            $docsFiles = @(Get-ChildItem -LiteralPath $docsRoot -Recurse -File -Force |
+                ForEach-Object {
+                    if ([IO.Path]::GetExtension($_.Name) -ne '.md') {
+                        [void]$violations.Add("$expectedCandidateName/docs may contain only Markdown: $($_.Name)")
+                    }
+                    $_.FullName.Substring($candidatePrefix.Length).Replace('\', '/')
+                } | Sort-Object)
+            if ($docsFiles.Count -eq 0) {
+                [void]$violations.Add("$expectedCandidateName/docs must contain at least one Markdown document")
+            }
+        }
+        $allowedFiles = @($runtimeFiles + $docsFiles)
+        foreach ($file in @($candidateFiles | Where-Object { $_ -notin $allowedFiles })) {
+            $violations.Add("Unexpected file in $expectedCandidateName candidate: $file")
+        }
+        foreach ($file in $runtimeFiles) {
+            if (-not (Test-Path -LiteralPath (Join-Path $candidateRoot $file) -PathType Leaf)) {
+                $violations.Add("$expectedCandidateName/$file is missing")
+            }
+        }
+
+        $candidateManifestPath = Join-Path $candidateRoot 'module.manifest.json'
+        if (Test-Path -LiteralPath $candidateManifestPath -PathType Leaf) {
+            try {
+                $candidateManifest = [IO.File]::ReadAllText($candidateManifestPath) | ConvertFrom-Json
+                if ([string]$candidateManifest.name -cne 'HistoryJanus' -or
+                    [string]$candidateManifest.version -cne $sourceVersion) {
+                    $violations.Add("$expectedCandidateName/module.manifest.json identity does not match $sourceVersion")
+                }
+            }
+            catch {
+                $violations.Add("$expectedCandidateName/module.manifest.json is invalid JSON")
+            }
+        }
+
+        $sumsPath = Join-Path $candidateRoot 'SHA256SUMS'
+        if (Test-Path -LiteralPath $sumsPath -PathType Leaf) {
+            $hashes = @{}
+            foreach ($line in [IO.File]::ReadAllLines($sumsPath)) {
+                if ($line -notmatch '^(?<hash>[0-9A-Fa-f]{64})  (?<file>.+)$') {
+                    $violations.Add("Invalid checksum line in ${expectedCandidateName}: $line")
+                    continue
+                }
+                $hashFile = $Matches['file']
+                if ($hashes.ContainsKey($hashFile)) {
+                    $violations.Add("Duplicate checksum entry in ${expectedCandidateName}: $hashFile")
+                    continue
+                }
+                $hashes[$hashFile] = $Matches['hash'].ToUpperInvariant()
+            }
+            $hashedFiles = @($candidateFiles | Where-Object { $_ -ne 'SHA256SUMS' } | Sort-Object)
+            if ((($hashes.Keys | Sort-Object) -join "`n") -ne (($hashedFiles | Sort-Object) -join "`n")) {
+                $violations.Add("$expectedCandidateName/SHA256SUMS does not cover exactly the candidate files")
+            }
+            foreach ($relative in $hashedFiles) {
+                $path = Join-Path $candidateRoot $relative.Replace('/', '\')
+                if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { continue }
+                $actualHash = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToUpperInvariant()
+                if (-not $hashes.ContainsKey($relative) -or $hashes[$relative] -ne $actualHash) {
+                    $violations.Add("$expectedCandidateName checksum mismatch: $relative")
                 }
             }
         }

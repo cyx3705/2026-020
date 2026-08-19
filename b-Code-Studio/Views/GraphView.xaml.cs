@@ -293,7 +293,7 @@ public partial class GraphView : UserControl
         };
         line.SetResourceReference(
             Shape.StrokeProperty,
-            edge.Edge.IsMergeParent ? "Shell.Brush.TextSecondary" : "Shell.Brush.Accent");
+            edge.Edge.IsMergeParent ? "Aurora.Brush.TextSecondary" : "Aurora.Brush.Accent");
         return line;
     }
 
@@ -317,10 +317,10 @@ public partial class GraphView : UserControl
         };
         border.SetResourceReference(
             Border.BackgroundProperty,
-            isHead || isOpenTip ? "Shell.Brush.AccentSoft" : "Shell.Brush.SurfaceAlt");
+            isHead || isOpenTip ? "Aurora.Brush.AccentSoft" : "Aurora.Brush.SurfaceAlt");
         border.SetResourceReference(
             Border.BorderBrushProperty,
-            isHead || isOpenTip ? "Shell.Brush.Accent" : "Shell.Brush.ControlBorder");
+            isHead || isOpenTip ? "Aurora.Brush.Accent" : "Aurora.Brush.ControlBorder");
 
         var sha = new TextBlock
         {
@@ -328,14 +328,14 @@ public partial class GraphView : UserControl
             FontWeight = FontWeights.SemiBold,
             FontSize = 11,
         };
-        sha.SetResourceReference(TextBlock.ForegroundProperty, "Shell.Brush.TextPrimary");
+        sha.SetResourceReference(TextBlock.ForegroundProperty, "Aurora.Brush.TextPrimary");
         var subject = new TextBlock
         {
             Text = Truncate(node.Subject, 18),
             FontSize = 11,
             TextTrimming = TextTrimming.CharacterEllipsis,
         };
-        subject.SetResourceReference(TextBlock.ForegroundProperty, "Shell.Brush.TextSecondary");
+        subject.SetResourceReference(TextBlock.ForegroundProperty, "Aurora.Brush.TextSecondary");
         var stack = new StackPanel();
         stack.Children.Add(sha);
         stack.Children.Add(subject);
@@ -355,7 +355,7 @@ public partial class GraphView : UserControl
             Height = size,
             IsHitTestVisible = false,
         };
-        tip.SetResourceReference(Shape.FillProperty, "Shell.Brush.Accent");
+        tip.SetResourceReference(Shape.FillProperty, "Aurora.Brush.Accent");
         Canvas.SetLeft(tip, placed.X + GraphLayout.NodeWidth + 4);
         Canvas.SetTop(tip, placed.Y + GraphLayout.NodeHeight / 2 - size / 2);
         return tip;
