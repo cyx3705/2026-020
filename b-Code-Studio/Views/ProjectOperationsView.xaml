@@ -1,43 +1,43 @@
 <UserControl x:Class="HistoryJanus.Views.ProjectOperationsView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             Background="{DynamicResource Shell.Brush.Surface}"
-             Foreground="{DynamicResource Shell.Brush.TextPrimary}">
+             Background="{DynamicResource Aurora.Brush.Surface}"
+             Foreground="{DynamicResource Aurora.Brush.TextPrimary}">
     <UserControl.Resources>
         <Style TargetType="DataGridColumnHeader">
-            <Setter Property="Background" Value="{DynamicResource Shell.Brush.SurfaceAlt}" />
-            <Setter Property="Foreground" Value="{DynamicResource Shell.Brush.TextSecondary}" />
-            <Setter Property="BorderBrush" Value="{DynamicResource Shell.Brush.Hairline}" />
+            <Setter Property="Background" Value="{DynamicResource Aurora.Brush.SurfaceAlt}" />
+            <Setter Property="Foreground" Value="{DynamicResource Aurora.Brush.TextSecondary}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Aurora.Brush.Hairline}" />
             <Setter Property="BorderThickness" Value="0,0,0,1" />
             <Setter Property="Padding" Value="6,4" />
         </Style>
         <Style TargetType="DataGridRow">
-            <Setter Property="Background" Value="{DynamicResource Shell.Brush.Surface}" />
-            <Setter Property="Foreground" Value="{DynamicResource Shell.Brush.TextPrimary}" />
-            <Setter Property="BorderBrush" Value="{DynamicResource Shell.Brush.Hairline}" />
+            <Setter Property="Background" Value="{DynamicResource Aurora.Brush.Surface}" />
+            <Setter Property="Foreground" Value="{DynamicResource Aurora.Brush.TextPrimary}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Aurora.Brush.Hairline}" />
             <Style.Triggers>
                 <Trigger Property="IsSelected" Value="True">
-                    <Setter Property="Background" Value="{DynamicResource Shell.Brush.AccentSoft}" />
-                    <Setter Property="Foreground" Value="{DynamicResource Shell.Brush.TextPrimary}" />
+                    <Setter Property="Background" Value="{DynamicResource Aurora.Brush.AccentSoft}" />
+                    <Setter Property="Foreground" Value="{DynamicResource Aurora.Brush.TextPrimary}" />
                 </Trigger>
             </Style.Triggers>
         </Style>
         <Style TargetType="DataGridCell">
             <Setter Property="Background" Value="Transparent" />
-            <Setter Property="Foreground" Value="{DynamicResource Shell.Brush.TextPrimary}" />
-            <Setter Property="BorderBrush" Value="{DynamicResource Shell.Brush.Hairline}" />
+            <Setter Property="Foreground" Value="{DynamicResource Aurora.Brush.TextPrimary}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Aurora.Brush.Hairline}" />
         </Style>
         <Style x:Key="OperationSegment" TargetType="RadioButton">
             <Setter Property="MinHeight" Value="46" />
             <Setter Property="Margin" Value="0,0,1,0" />
-            <Setter Property="Foreground" Value="{DynamicResource Shell.Brush.TextPrimary}" />
+            <Setter Property="Foreground" Value="{DynamicResource Aurora.Brush.TextPrimary}" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="RadioButton">
                         <Border x:Name="SegmentBorder"
-                                BorderBrush="{DynamicResource Shell.Brush.ControlBorder}"
+                                BorderBrush="{DynamicResource Aurora.Brush.ControlBorder}"
                                 BorderThickness="1"
-                                Background="{DynamicResource Shell.Brush.SurfaceAlt}" Padding="5,4">
+                                Background="{DynamicResource Aurora.Brush.SurfaceAlt}" Padding="5,4">
                             <TextBlock Text="{TemplateBinding Content}"
                                        Foreground="{TemplateBinding Foreground}" TextAlignment="Center"
                                        TextWrapping="Wrap" VerticalAlignment="Center" />
@@ -45,9 +45,9 @@
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsChecked" Value="True">
                                 <Setter TargetName="SegmentBorder" Property="Background"
-                                        Value="{DynamicResource Shell.Brush.AccentSoft}" />
+                                        Value="{DynamicResource Aurora.Brush.AccentSoft}" />
                                 <Setter TargetName="SegmentBorder" Property="BorderBrush"
-                                        Value="{DynamicResource Shell.Brush.Accent}" />
+                                        Value="{DynamicResource Aurora.Brush.Accent}" />
                                 <Setter Property="FontWeight" Value="SemiBold" />
                             </Trigger>
                             <MultiTrigger>
@@ -56,12 +56,12 @@
                                     <Condition Property="IsChecked" Value="False" />
                                 </MultiTrigger.Conditions>
                                 <Setter TargetName="SegmentBorder" Property="Background"
-                                        Value="{DynamicResource Shell.Brush.SurfaceHover}" />
+                                        Value="{DynamicResource Aurora.Brush.SurfaceHover}" />
                             </MultiTrigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter TargetName="SegmentBorder" Property="Opacity" Value="0.55" />
                                 <Setter Property="Foreground"
-                                        Value="{DynamicResource Shell.Brush.TextDisabled}" />
+                                        Value="{DynamicResource Aurora.Brush.TextDisabled}" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -148,7 +148,7 @@
                 <!-- 规则面只回答一个问题：这个后缀/目录要不要进仓库。
                      LFS 不在这里——它只在提交链路对超过 100MB 的具体文件征求同意。 -->
                 <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap" Margin="0,0,0,6"
-                           Foreground="{DynamicResource Shell.Brush.TextSecondary}"
+                           Foreground="{DynamicResource Aurora.Brush.TextSecondary}"
                            Text="不纳入仓库的清单（全库共用一份，逗号或换行分隔）。目录以 / 结尾，后缀写 *.xxx。保存后在各项目下次提交时自动生效，无需手动下发。" />
 
                 <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,6,0,0">
@@ -160,11 +160,11 @@
                 </StackPanel>
 
                 <Border DockPanel.Dock="Bottom"
-                        Background="{DynamicResource Shell.Brush.SurfaceAlt}"
-                        BorderBrush="{DynamicResource Shell.Brush.Hairline}" BorderThickness="1"
+                        Background="{DynamicResource Aurora.Brush.SurfaceAlt}"
+                        BorderBrush="{DynamicResource Aurora.Brush.Hairline}" BorderThickness="1"
                         Padding="6" Margin="0,6,0,0">
                     <TextBlock x:Name="RuleStatusText" TextWrapping="Wrap"
-                               Foreground="{DynamicResource Shell.Brush.TextSecondary}"
+                               Foreground="{DynamicResource Aurora.Brush.TextSecondary}"
                                Text="落地状态：点「刷新落地状态」查看各项目托管块是否已是当前清单" />
                 </Border>
 

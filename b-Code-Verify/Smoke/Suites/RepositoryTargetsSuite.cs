@@ -278,8 +278,8 @@ internal static class RepositoryTargetsSuite
         True(overviewMarkup.Contains("ItemContainerStyle", StringComparison.Ordinal),
             "overview compresses row height with an item container style");
         True(overviewMarkup.Contains("GridViewRowPresenter", StringComparison.Ordinal)
-             && overviewMarkup.Contains("Shell.Brush.AccentSoft", StringComparison.Ordinal)
-             && overviewMarkup.Contains("Shell.Brush.SurfaceHover", StringComparison.Ordinal),
+             && overviewMarkup.Contains("Aurora.Brush.AccentSoft", StringComparison.Ordinal)
+             && overviewMarkup.Contains("Aurora.Brush.SurfaceHover", StringComparison.Ordinal),
             "overview row template paints selection with the host AccentSoft token");
         True(!overview.Descendants().Any(element => element.Attribute(x + "Name")?.Value == "StatusText"),
             "overview drops the bottom status strip");

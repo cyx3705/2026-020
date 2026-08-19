@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "type": "HistoryVulcan.Module",
+  "name": "HistoryJanus",
+  "version": "5.1.0",
+  "description": "项目、Git 与 GitHub 治理",
+  "artifact": "HistoryJanus.dll",
+  "docs": "HistoryJanus.xml",
+  "mcpExposure": "readonly",
+  "ui": true
+}
