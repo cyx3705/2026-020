@@ -391,14 +391,11 @@ public partial class GraphView : UserControl
             .AppendLine()
             .AppendLine("差异摘要：")
             .AppendLine(string.IsNullOrWhiteSpace(detail.DiffSummary) ? "(无)" : detail.DiffSummary);
-        var dialog = new HistoryPreviewDialog(
+        await AuroraDialog.ShowContentAsync(
+            bus,
             $"提交 {ShortSha(node)}",
             string.IsNullOrWhiteSpace(result.Message) ? node.Subject : result.Message,
-            body.ToString())
-        {
-            Owner = Window.GetWindow(this),
-        };
-        dialog.ShowDialog();
+            body.ToString());
     }
 
     private static string ShortSha(GraphCommitNode node)

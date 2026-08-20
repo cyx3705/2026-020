@@ -56,21 +56,27 @@ public partial class GitHubConnectionView : UserControl
             var connection = await service.TestAsync("auto", 15);
             ConnectionText.Text = $"{connection.Transport} · {connection.State}";
             _diagnosticSteps = connection.Steps;
-            Notify($"检测完成：{connection.Transport} · {connection.State}");
+            await NotifyAsync($"检测完成：{connection.Transport} · {connection.State}");
         });
     }
 
-    private void OnDiagnosticsClick(object sender, RoutedEventArgs e)
+    private async void OnDiagnosticsClick(object sender, RoutedEventArgs e)
     {
         if (_diagnosticSteps.Count == 0)
         {
-            Notify("尚无诊断步骤，请先点击检测。");
+            await NotifyAsync("尚无诊断步骤，请先点击检测。");
             return;
         }
 
+        if (_busAccessor() is not { } bus)
+            return;
         var lines = _diagnosticSteps.Select(step =>
             $"{step.Step}\t{step.State}\t{step.DurationMs}ms\t{step.Detail}");
-        Notify("诊断步骤\n\n" + string.Join("\n", lines));
+        await AuroraDialog.ShowContentAsync(
+            bus,
+            "诊断步骤",
+            "GitHub 连接诊断",
+            string.Join("\n", lines));
     }
 
     private async void OnLoginClick(object sender, RoutedEventArgs e)
@@ -85,7 +91,7 @@ public partial class GitHubConnectionView : UserControl
     {
         if (AccountsBox.SelectedItem is not GitCredentialAccount account)
         {
-            Notify("请先选择要注销的 GCM 账号");
+            await NotifyAsync("请先选择要注销的 GCM 账号");
             return;
         }
         if (await ExecuteCommandAsync($"janus.github.logout account={CommandParser.QuoteArg(account.Account)}"))
@@ -146,7 +152,7 @@ public partial class GitHubConnectionView : UserControl
         }
         catch (Exception ex)
         {
-            Notify(GitHubRedactor.Redact(ex.Message), MessageBoxImage.Warning);
+            await NotifyAsync(GitHubRedactor.Redact(ex.Message));
             return false;
         }
         finally
@@ -166,7 +172,7 @@ public partial class GitHubConnectionView : UserControl
         }
         catch (Exception ex)
         {
-            Notify(GitHubRedactor.Redact(ex.Message), MessageBoxImage.Warning);
+            await NotifyAsync(GitHubRedactor.Redact(ex.Message));
         }
         finally
         {
@@ -180,7 +186,9 @@ public partial class GitHubConnectionView : UserControl
         IsEnabled = !value;
     }
 
-    private static void Notify(string message, MessageBoxImage image = MessageBoxImage.Information)
-        => MessageBox.Show(message, "github", MessageBoxButton.OK, image);
+    private Task NotifyAsync(string message)
+        => _busAccessor() is { } bus
+            ? AuroraDialog.ShowMessageAsync(bus, "github", message)
+            : Task.CompletedTask;
 
 }
