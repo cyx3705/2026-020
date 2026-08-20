@@ -1,7 +1,9 @@
 using System.Diagnostics;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
+using HistoryVulcan.Core.Commands;
 using HistoryJanus.Git;
+using HistoryJanus.Views;
 using static HistoryJanus.Smoke.SmokeKit;
 
 namespace HistoryJanus.Smoke.Suites;
@@ -36,6 +38,7 @@ internal static class TestArchitectureSuite
         VerifyMergedOverviewBoundary(separator);
         VerifyEmbeddedHistoryBoundary(separator);
         VerifyThemeBoundary();
+        VerifyAuroraDialogs();
         VerifyGitExecutionBoundary();
 
         var smokeRoot = Path.Combine(VerifyRoot, "Smoke");
@@ -383,5 +386,58 @@ internal static class TestArchitectureSuite
         Contains(projectOperations,
             "Foreground=\"{TemplateBinding Foreground}\"",
             "theme governance: operation segment text inherits the host foreground");
+    }
+
+    private static void VerifyAuroraDialogs()
+    {
+        foreach (var retired in new[]
+                 {
+                     "HistoryPreviewDialog.xaml", "HistoryPreviewDialog.xaml.cs",
+                     "RollbackMessageDialog.xaml", "RollbackMessageDialog.xaml.cs",
+                 })
+        {
+            True(!File.Exists(Path.Combine(RepoRoot, "Views", retired)),
+                $"aurora dialog: owned window is removed: {retired}");
+        }
+
+        var viewsRoot = Path.Combine(RepoRoot, "Views");
+        foreach (var path in Directory.EnumerateFiles(viewsRoot, "*.cs", SearchOption.TopDirectoryOnly))
+        {
+            var source = File.ReadAllText(path);
+            var name = Path.GetFileName(path);
+            True(!source.Contains(": Window", StringComparison.Ordinal),
+                $"aurora dialog: view does not subclass Window: {name}");
+            True(!source.Contains("ShowDialog(", StringComparison.Ordinal),
+                $"aurora dialog: view does not call ShowDialog: {name}");
+            True(!source.Contains("MessageBox.Show", StringComparison.Ordinal),
+                $"aurora dialog: view does not call MessageBox.Show: {name}");
+        }
+
+        foreach (var name in new[] { "GraphView.xaml.cs", "BranchHistoryView.xaml.cs", "GitHubConnectionView.xaml.cs" })
+        {
+            Contains(
+                File.ReadAllText(Path.Combine(viewsRoot, name)),
+                "AuroraDialog.",
+                $"aurora dialog: {name} routes popups through aurora.ui.dialog");
+        }
+
+        var content = "第一行\n第二行 \"quoted\" = x";
+        var parsed = CommandParser.Parse(AuroraDialog.Content("预览", "摘要", content));
+        Equal(AuroraDialog.CommandName, parsed.Name, "content dialog keeps the aurora command name");
+        Equal("content", parsed.Named["kind"], "content dialog kind");
+        Equal("预览", parsed.Named["title"], "content dialog title");
+        Equal("摘要", parsed.Named["body"], "content dialog body");
+        Equal(content, parsed.Named["content"], "quoted newlines and equals survive command encoding");
+
+        var prompt = CommandParser.Parse(
+            AuroraDialog.Prompt("生成恢复提交", "恢复提交说明", "恢复到 abc：subject", "继续"));
+        Equal("prompt", prompt.Named["kind"], "prompt dialog kind");
+        Equal("继续", prompt.Named["primary"], "prompt dialog primary");
+        Equal("恢复到 abc：subject", prompt.Named["value"], "prompt dialog value");
+
+        var confirm = CommandParser.Parse(
+            AuroraDialog.Build("confirm", "确认删除", "不可恢复", danger: true, defaultCancel: true));
+        Equal("true", confirm.Named["danger"], "dangerous confirm sets danger");
+        Equal("true", confirm.Named["defaultcancel"], "dangerous confirm defaults to cancel");
     }
 }

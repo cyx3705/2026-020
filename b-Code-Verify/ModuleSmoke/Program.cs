@@ -38,17 +38,20 @@ registry.Register(new CommandDescriptor
     Readonly = true,
     Handler = CommandDescriptor.Sync(_ => CommandResult.Ok("proxy")),
 }, "frontend:HistoryVulcan.Frontend");
+// Vulcan 4.0.0 的 Reload 在装新包之前会把 host.ShellUi 清掉（界面改由
+// IShellUiProvider 提供）。本烟测没有 Aurora，必须在每次 UI 编组后把注入的
+// 注册器写回去，CreateUi 才会给 Janus 登记三个窗口。
+ModuleHost? capturedHost = null;
+var uiContext = new RestoreHostShellUiContext(() => capturedHost, shellUi);
 using var host = new ModuleHost(moduleDirectory, log)
 {
     EnableCommands = true,
     EnableUiModules = true,
     EnableFileWatching = false,
-    // ModuleHost commits its snapshot through the host UI synchronization context.
-    // The real HistoryVulcan supplies WPF's DispatcherSynchronizationContext; this
-    // synchronous context keeps the smoke deterministic without creating WPF UI.
-    UiContext = new ImmediateSynchronizationContext(),
+    UiContext = uiContext,
     ShellUi = shellUi,
 };
+capturedHost = host;
 
 host.Attach(registry, bus, settings, dataDirectory);
 host.Start();
@@ -140,6 +143,8 @@ var expectedWindows = new[] { "overview", "graph", "projops" };
 var actualWindows = shellUi.Descriptors.Select(item => item.Id).ToArray();
 if (!expectedWindows.SequenceEqual(actualWindows, StringComparer.Ordinal))
 {
+    foreach (var entry in log.Snapshot())
+        Console.Error.WriteLine($"[{entry.Level}] [{entry.Category}] {entry.Message}");
     throw new InvalidOperationException(
         $"unexpected module windows: [{string.Join(", ", actualWindows)}]");
 }
@@ -384,11 +389,18 @@ static void AssertSegmentTheme(
     }
 }
 
-sealed class ImmediateSynchronizationContext : SynchronizationContext
+sealed class RestoreHostShellUiContext(
+    Func<ModuleHost?> hostAccessor,
+    IShellUiRegistrar registrar) : SynchronizationContext
 {
-    public override void Send(SendOrPostCallback callback, object? state) => callback(state);
+    public override void Send(SendOrPostCallback callback, object? state)
+    {
+        callback(state);
+        if (hostAccessor() is { } live)
+            live.ShellUi = registrar;
+    }
 
-    public override void Post(SendOrPostCallback callback, object? state) => callback(state);
+    public override void Post(SendOrPostCallback callback, object? state) => Send(callback, state);
 }
 
 sealed class RecordingShellUiRegistrar : IShellUiRegistrar
