@@ -228,6 +228,7 @@ public static partial class ProjectCommands
                 Position = 1,
             },
         ],
+        Level = CommandLevel.Ask,
         ConfirmPrompt = ctx =>
         {
             var current = ctx.RequireString("name").Trim();
@@ -267,6 +268,7 @@ public static partial class ProjectCommands
             },
         ],
         // 受保护分支返回 null 跳过确认,由 Handler 直接拒绝(不弹无意义的确认框)
+        Level = CommandLevel.Ask,
         ConfirmPrompt = ctx =>
         {
             var name = ctx.RequireString("name").Trim();
@@ -411,6 +413,7 @@ public static partial class ProjectCommands
                 Description = "全部子模块统一提交描述；空时沿用 msg",
             },
         ],
+        Level = CommandLevel.Ask,
         ConfirmPrompt = ctx =>
             "确定要对全部工作树执行 git add . & git commit 吗?\n\n" +
             "每个项目提交前将检查文件大小:\n" +
@@ -494,6 +497,7 @@ public static partial class ProjectCommands
         CommandClass = "proj",
         Summary = "逐仓诊断独立 .git 与 status；指向旧裸仓的指针只报告，不删盘",
         Example = "janus.proj.repair",
+        Level = CommandLevel.Ask,
         ConfirmPrompt = _ =>
             "将逐仓检查库根下各编号项目：独立 .git、能否 git status。" +
             "若仍是指向旧裸仓的 .git 文件则只报告，不会删除任何目录。确定要继续吗?",

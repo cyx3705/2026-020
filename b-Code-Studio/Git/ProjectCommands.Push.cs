@@ -88,6 +88,7 @@ public static partial class ProjectCommands
             },
             VisibilityParameter(),
         ],
+        Level = CommandLevel.Ask,
         ConfirmPrompt = ctx =>
             "确定要向各项目仓的 origin 推送当前 HEAD 吗?\n\n失败的仓会隔离报告，不会中止其余仓。" +
             $"\n未配置 origin 的项目会按 visibility={ResolveVisibility(ctx)} 在 GitHub 上新建同名仓库。" +
