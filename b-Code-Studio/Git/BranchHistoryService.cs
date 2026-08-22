@@ -162,30 +162,36 @@ public sealed class BranchHistoryService
         }
 
         var remote = await ReadRemoteAsync(boundary.RepoPath, boundary.HeadSha, cancellation);
+        var countResult = await GitRunner.RunAsync(boundary.RepoPath,
+            ["rev-list", "--first-parent", "--count", $"{boundary.ForkSha}..{boundary.HeadSha}"],
+            cancellation: cancellation);
+        if (!countResult.Success || !int.TryParse(countResult.Output.Trim(), out var total))
+            return (false, $"读取分支历史失败:\n{countResult.Output}", null);
+
         var ownResult = await GitRunner.RunAsync(boundary.RepoPath,
-            ["log", "--first-parent", "--reverse", $"--format={LogFormat}",
-                $"{boundary.ForkSha}..{boundary.HeadSha}"],
+            ["log", "--first-parent", $"--skip={skip}", $"--max-count={limit}",
+                $"--format={LogFormat}", $"{boundary.ForkSha}..{boundary.HeadSha}"],
             cancellation: cancellation);
         if (!ownResult.Success)
             return (false, $"读取分支历史失败:\n{ownResult.Output}", null);
 
-        var ownEntries = ParseLog(ownResult.Output);
-        var total = ownEntries.Count;
-        var pageEnd = Math.Max(0, total - Math.Min(skip, total));
-        var pageStart = Math.Max(0, pageEnd - limit);
-        var page = ownEntries.Skip(pageStart).Take(pageEnd - pageStart).ToList();
+        var page = ParseLog(ownResult.Output);
+        page.Reverse();
 
         var forkEntryResult = await ReadCommitEntryAsync(boundary.RepoPath, boundary.ForkSha, cancellation);
         if (!forkEntryResult.Success || forkEntryResult.Entry == null)
             return (false, forkEntryResult.Message, null);
 
+        var localOnly = await ReadLocalOnlyAsync(
+            boundary.RepoPath, remote.HeadSha, [forkEntryResult.Entry.Sha, .. page.Select(item => item.Sha)],
+            cancellation);
         var entries = new List<BranchHistoryEntry>(page.Count + 1)
         {
-            WithState(forkEntryResult.Entry with { IsForkPoint = true }, remote.Commits),
+            WithState(forkEntryResult.Entry with { IsForkPoint = true }, remote.Known, localOnly),
         };
         entries.AddRange(page.Select(entry => WithState(
             entry with { IsHead = entry.Sha.Equals(boundary.HeadSha, StringComparison.Ordinal) },
-            remote.Commits)));
+            remote.Known, localOnly)));
 
         var report = new BranchHistoryReport(
             name,
@@ -199,7 +205,7 @@ public sealed class BranchHistoryService
             total,
             skip,
             limit,
-            pageStart > 0,
+            skip + page.Count < total,
             remoteWarning != null,
             remoteWarning ?? remote.Message,
             entries);
@@ -517,8 +523,8 @@ public sealed class BranchHistoryService
     {
         var remoteHead = await ResolveRefAsync(repo, $"refs/remotes/origin/{ProjectService.MainlineBranch}", cancellation);
         if (remoteHead == null)
-            return new RemoteSnapshot(null, BranchRemoteState.Unknown, 0, 0,
-                new HashSet<string>(StringComparer.Ordinal), "不存在本地 origin 跟踪引用");
+            return new RemoteSnapshot(null, BranchRemoteState.Unknown, 0, 0, false,
+                "不存在本地 origin 跟踪引用");
 
         var counts = await GitRunner.RunAsync(repo,
             ["rev-list", "--left-right", "--count", $"{localHead}...{remoteHead}"],
@@ -535,17 +541,31 @@ public sealed class BranchHistoryService
             }
         }
 
-        var remoteHistory = await GitRunner.RunAsync(repo,
-            ["rev-list", remoteHead], cancellation: cancellation);
-        var commits = remoteHistory.Success
-            ? new HashSet<string>(remoteHistory.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries)
-                .Select(value => value.Trim()), StringComparer.Ordinal)
-            : new HashSet<string>(StringComparer.Ordinal);
         var state = ahead == 0 && behind == 0 ? BranchRemoteState.InSync
             : ahead > 0 && behind == 0 ? BranchRemoteState.Ahead
             : ahead == 0 && behind > 0 ? BranchRemoteState.Behind
             : BranchRemoteState.Diverged;
-        return new RemoteSnapshot(remoteHead, state, ahead, behind, commits, null);
+        return new RemoteSnapshot(remoteHead, state, ahead, behind, true, null);
+    }
+
+    private static async Task<HashSet<string>?> ReadLocalOnlyAsync(
+        string repo, string? remoteHead, IEnumerable<string> shas, CancellationToken cancellation)
+    {
+        var unique = shas
+            .Where(item => item.Length > 0)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        if (remoteHead == null || unique.Count == 0)
+            return new HashSet<string>(StringComparer.Ordinal);
+
+        var args = new List<string> { "rev-list", "--no-walk" };
+        args.AddRange(unique);
+        args.Add($"^{remoteHead}");
+        var result = await GitRunner.RunAsync(repo, args, cancellation: cancellation);
+        if (!result.Success)
+            return null;
+        return new HashSet<string>(result.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(value => value.Trim()), StringComparer.Ordinal);
     }
 
     private async Task<(bool Success, string Message, BranchHistoryEntry? Entry)> ReadCommitEntryAsync(
@@ -603,13 +623,14 @@ public sealed class BranchHistoryService
         return files;
     }
 
-    private static CommitRemoteState StateOf(string sha, HashSet<string> remoteCommits)
-        => remoteCommits.Count == 0 ? CommitRemoteState.Unknown
-            : remoteCommits.Contains(sha) ? CommitRemoteState.Pushed
-            : CommitRemoteState.LocalOnly;
+    private static CommitRemoteState StateOf(string sha, bool remoteKnown, HashSet<string>? localOnly)
+        => !remoteKnown || localOnly == null ? CommitRemoteState.Unknown
+            : localOnly.Contains(sha) ? CommitRemoteState.LocalOnly
+            : CommitRemoteState.Pushed;
 
-    private static BranchHistoryEntry WithState(BranchHistoryEntry entry, HashSet<string> remoteCommits)
-        => entry with { RemoteState = StateOf(entry.Sha, remoteCommits) };
+    private static BranchHistoryEntry WithState(
+        BranchHistoryEntry entry, bool remoteKnown, HashSet<string>? localOnly)
+        => entry with { RemoteState = StateOf(entry.Sha, remoteKnown, localOnly) };
 
     private static string Short(string? sha)
         => string.IsNullOrWhiteSpace(sha) ? "(无)" : sha.Length <= 10 ? sha : sha[..10];
@@ -651,7 +672,7 @@ public sealed class BranchHistoryService
         BranchRemoteState State,
         int Ahead,
         int Behind,
-        HashSet<string> Commits,
+        bool Known,
         string? Message);
     private sealed record ForcePushApproval(string Local, string Remote);
 }

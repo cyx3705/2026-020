@@ -40,6 +40,7 @@ internal static class TestArchitectureSuite
         VerifyThemeBoundary();
         VerifyAuroraDialogs();
         VerifyGitExecutionBoundary();
+        VerifyDirectProjectResolve();
 
         var smokeRoot = Path.Combine(VerifyRoot, "Smoke");
         var suitesRoot = Path.Combine(smokeRoot, "Suites");
@@ -169,6 +170,29 @@ internal static class TestArchitectureSuite
         var smokeRunner = File.ReadAllText(Path.Combine(VerifyRoot, "Smoke", "SmokeRunner.cs"));
         Contains(smokeRunner, "SuiteTimeout",
             "test suites retain their independent hang-detection timeout");
+    }
+
+    private static void VerifyDirectProjectResolve()
+    {
+        var projectService = File.ReadAllText(Path.Combine(RepoRoot, "Git", "ProjectService.cs"));
+        var start = projectService.IndexOf(
+            "public (bool Success, string Message, WorktreeInfo? Worktree) ResolveWorktree(",
+            StringComparison.Ordinal);
+        True(start >= 0, "single-project resolve is a dedicated method");
+        var next = projectService.IndexOf("\n    public ", start + 1, StringComparison.Ordinal);
+        True(next > start, "ResolveWorktree method body is bounded");
+        var body = projectService[start..next];
+        True(!body.Contains("ListWorktreesAsync", StringComparison.Ordinal)
+             && !body.Contains("GitRunner", StringComparison.Ordinal)
+             && body.Contains("IsIndependentGitRepo", StringComparison.Ordinal)
+             && body.Contains("Path.Combine(LibraryRoot", StringComparison.Ordinal),
+            "resolving one project does not enumerate or git-query the whole library");
+
+        var history = File.ReadAllText(Path.Combine(RepoRoot, "Git", "BranchHistoryService.cs"));
+        True(!history.Contains("[\"rev-list\", remoteHead]", StringComparison.Ordinal),
+            "history listing does not rev-list the entire origin history");
+        Contains(history, "--max-count=", "history listing pages with git --max-count");
+        Contains(history, "--no-walk", "history remote marks use --no-walk on the page");
     }
 
     private static async Task VerifyGitRunnerCancellationAsync()
