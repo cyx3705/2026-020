@@ -94,6 +94,7 @@ public static class BranchHistoryCommands
             Text("sha", "分叉点至 HEAD 范围内的提交 SHA", required: true, position: 1),
             Text("msg", "新恢复提交的说明", required: true, position: 2),
         ],
+            Level = CommandLevel.Ask,
             ConfirmPrompt = ctx => service.BuildRollbackPrompt(
                 ctx.RequireString("name"), ctx.RequireString("sha"), hardReset: false),
             Handler = async ctx =>
@@ -117,6 +118,7 @@ public static class BranchHistoryCommands
             Summary = "把非保护分支硬重置到历史节点（仅本地，不修改远端）",
             Example = "janus.history.reset name=2026-018-MyAPI sha=abc1234",
             Parameters = TargetParameters(),
+            Level = CommandLevel.Ask,
             ConfirmPrompt = ctx => service.BuildRollbackPrompt(
                 ctx.RequireString("name"), ctx.RequireString("sha"), hardReset: true),
             Handler = async ctx =>
@@ -140,6 +142,7 @@ public static class BranchHistoryCommands
             Summary = "使用 --force-with-lease 更新非保护远端分支",
             Example = "janus.history.forcepush name=2026-018-MyAPI",
             Parameters = [Text("name", "已登记项目名（目录名）", required: true, position: 0)],
+            Level = CommandLevel.Ask,
             ConfirmPrompt = ctx => service.BuildForcePushPrompt(ctx.RequireString("name")),
             Handler = async ctx =>
             {

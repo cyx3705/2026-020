@@ -144,7 +144,7 @@ public sealed class CommandCatalogContractTests
             Assert.True(
                 fixture.Registry.TryGet(name, out var descriptor), $"missing: {name}");
             Assert.True(
-                descriptor.IsDangerous,
+                descriptor.Level == CommandLevel.Ask,
                 $"{name} must expose a confirmation gate for catalog/MCP projection");
         }
     }
@@ -158,7 +158,7 @@ public sealed class CommandCatalogContractTests
         {
             Assert.True(
                 fixture.Registry.TryGet(name, out var descriptor), $"missing: {name}");
-            Assert.False(descriptor.IsDangerous, $"{name} is read-only and must stay confirmation-free");
+            Assert.NotEqual(CommandLevel.Ask, descriptor.Level);
         }
     }
 

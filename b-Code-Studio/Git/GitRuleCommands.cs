@@ -59,6 +59,7 @@ public static class GitRuleCommands
             },
         ],
         // 清单是全库共用的，一次改动影响每一个项目的下次提交，因此必须确认。
+        Level = CommandLevel.Ask,
         ConfirmPrompt = ctx =>
             "确认替换**全库共用**的不纳入仓库清单？\n\n" +
             $"新清单: {ctx.GetString("list")}\n\n" +

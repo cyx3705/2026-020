@@ -95,6 +95,7 @@ public static class GitHubCommands
         Summary = "在服务器本机启动 Git Credential Manager 登录",
         Example = "janus.github.login account=octocat",
         Parameters = [new ParameterSpec { Name = "account", Description = "可选 GitHub 账号" }],
+        Level = CommandLevel.Ask,
         ConfirmPrompt = _ => "确认在服务器本机启动 Git Credential Manager 登录？",
         Handler = async ctx =>
         {
@@ -112,6 +113,7 @@ public static class GitHubCommands
         Summary = "注销服务器本机的 GitHub HTTPS 凭据",
         Example = "janus.github.logout account=octocat",
         Parameters = [new ParameterSpec { Name = "account", Description = "GitHub 账号", Required = true }],
+        Level = CommandLevel.Ask,
         ConfirmPrompt = ctx => $"确认注销服务器 GCM 账号 {ctx.RequireString("account")}？",
         Handler = async ctx =>
         {
@@ -133,6 +135,7 @@ public static class GitHubCommands
             new ParameterSpec { Name = "scope", Description = "repository 或 global", Default = "repository", AllowedValues = ["repository", "global"] },
             new ParameterSpec { Name = "apply", Description = "true 时写入", Type = ParamType.Bool, Default = "false" },
         ],
+        Level = CommandLevel.Ask,
         ConfirmPrompt = ctx => ctx.GetBool("apply") ? "确认修改服务器 Git 提交身份？" : null,
         Handler = async ctx =>
         {
@@ -155,6 +158,7 @@ public static class GitHubCommands
             new ParameterSpec { Name = "push", Description = "push URL" },
             new ParameterSpec { Name = "apply", Description = "true 时写入", Type = ParamType.Bool, Default = "false" },
         ],
+        Level = CommandLevel.Ask,
         ConfirmPrompt = ctx => ctx.GetBool("apply") ? "确认修改服务器 origin？" : null,
         Handler = async ctx =>
         {
