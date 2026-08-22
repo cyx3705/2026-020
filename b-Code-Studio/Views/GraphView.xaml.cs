@@ -81,15 +81,10 @@ public partial class GraphView : UserControl
         try
         {
             var quoted = CommandParser.QuoteArg(project);
-            var commitsTask = bus.ExecuteAsync(
+            var commitsResult = await bus.ExecuteAsync(
                 $"janus.graph.commits name={quoted} limit={PageLimit}", "UI");
-            var summaryTask = bus.ExecuteAsync(
-                $"janus.graph.summary name={quoted}", "UI");
-            await Task.WhenAll(commitsTask, summaryTask);
             if (version != _loadVersion || !IsLoaded || !IsCurrentProject(project))
                 return;
-
-            var commitsResult = await commitsTask;
             if (IsCancelled(commitsResult))
                 return;
             if (!commitsResult.Success ||
@@ -102,21 +97,16 @@ public partial class GraphView : UserControl
                 return;
             }
 
-            GraphSummary? summary = null;
-            var summaryResult = await summaryTask;
-            if (summaryResult.Success)
-                ModuleResultData.TryRead(summaryResult.Data, out summary);
-
             if (report.Nodes == null || report.Nodes.Count == 0)
             {
-                ShowPlaceholder("该项目暂无提交节点", BuildCaption(project, report, summary));
+                ShowPlaceholder("该项目暂无提交节点", BuildCaption(project, report, null));
                 return;
             }
 
-            _summary = summary;
+            _summary = null;
             _loadedProject = project;
             _layout = GraphLayout.Arrange(report, project);
-            CaptionText.Text = BuildCaption(project, report, summary);
+            CaptionText.Text = BuildCaption(project, report, null);
             ApplyLayoutSize();
             PlaceholderText.Visibility = Visibility.Collapsed;
             Viewport.Visibility = Visibility.Visible;
@@ -391,14 +381,11 @@ public partial class GraphView : UserControl
             .AppendLine()
             .AppendLine("差异摘要：")
             .AppendLine(string.IsNullOrWhiteSpace(detail.DiffSummary) ? "(无)" : detail.DiffSummary);
-        var dialog = new HistoryPreviewDialog(
+        await AuroraDialog.ShowContentAsync(
+            bus,
             $"提交 {ShortSha(node)}",
             string.IsNullOrWhiteSpace(result.Message) ? node.Subject : result.Message,
-            body.ToString())
-        {
-            Owner = Window.GetWindow(this),
-        };
-        dialog.ShowDialog();
+            body.ToString());
     }
 
     private static string ShortSha(GraphCommitNode node)

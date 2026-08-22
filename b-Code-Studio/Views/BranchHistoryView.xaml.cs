@@ -223,7 +223,7 @@ public partial class BranchHistoryView : UserControl
         body.AppendLine().AppendLine($"变更文件（{detail.Files.Count}）：");
         foreach (var file in detail.Files)
             body.AppendLine($"{file.Status,-5} {file.DisplayPath}");
-        ShowPreview($"提交详情 {detail.ShortSha}", result.Message, body.ToString());
+        await ShowPreviewAsync($"提交详情 {detail.ShortSha}", result.Message, body.ToString());
     }
 
     private async void OnShowDiffClick(object sender, RoutedEventArgs e)
@@ -239,7 +239,7 @@ public partial class BranchHistoryView : UserControl
             return;
         var header = $"目标：{report.TargetSha}\n当前：{report.HeadSha}\n" +
                      $"提交：{report.CommitCount}  文件：{report.FileCount}\n{report.ShortStat}";
-        ShowPreview($"差异预览 {entry.ShortSha} -> HEAD", header, report.DiffText);
+        await ShowPreviewAsync($"差异预览 {entry.ShortSha} -> HEAD", header, report.DiffText);
     }
 
     private void OnCopyShaClick(object sender, RoutedEventArgs e)
@@ -253,14 +253,16 @@ public partial class BranchHistoryView : UserControl
     {
         if (!TrySelection(out var branch, out var entry) || _busAccessor() is not { } bus)
             return;
-        var dialog = new RollbackMessageDialog(entry.ShortSha, entry.Subject)
-        {
-            Owner = Window.GetWindow(this),
-        };
-        if (dialog.ShowDialog() != true)
+        var message = await AuroraDialog.PromptAsync(
+            bus,
+            "生成恢复提交",
+            $"目标节点：{entry.ShortSha}  {entry.Subject}",
+            $"恢复到 {entry.ShortSha}：{entry.Subject}",
+            "继续");
+        if (message == null)
             return;
         var command = $"janus.history.rollback name={CommandParser.QuoteArg(branch)} sha={entry.Sha} " +
-                      $"msg={CommandParser.QuoteArg(dialog.CommitMessage)}";
+                      $"msg={CommandParser.QuoteArg(message)}";
         var result = await bus.ExecuteAsync(command, "UI");
         if (result.Success)
             await LoadSelectionAsync(resetLimit: true);
@@ -284,13 +286,11 @@ public partial class BranchHistoryView : UserControl
         return branch.Length > 0 && entry != null;
     }
 
-    private void ShowPreview(string title, string summary, string content)
+    private async Task ShowPreviewAsync(string title, string summary, string content)
     {
-        var dialog = new HistoryPreviewDialog(title, summary, content)
-        {
-            Owner = Window.GetWindow(this),
-        };
-        dialog.ShowDialog();
+        if (_busAccessor() is not { } bus)
+            return;
+        await AuroraDialog.ShowContentAsync(bus, title, summary, content);
     }
 
     private static T? FindAncestor<T>(DependencyObject? source) where T : DependencyObject
