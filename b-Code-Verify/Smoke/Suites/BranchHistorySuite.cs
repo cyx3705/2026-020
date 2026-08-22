@@ -60,6 +60,8 @@ internal static class BranchHistorySuite
             BindLibrary(settings, root, baseBranch);
             settings.Set(ProjectService.KeyProtected, baseBranch);
             var projects = new ProjectService(settings, _ => true, root);
+            var missing = await projects.ResolveWorktreeAsync("2026-000-NotThere");
+            True(!missing.Success, "missing project fails by direct path, not a full-library scan");
             var service = new BranchHistoryService(projects);
 
             var history = await service.GetHistoryAsync(childBranch, refreshTree: true, refreshRemote: true);

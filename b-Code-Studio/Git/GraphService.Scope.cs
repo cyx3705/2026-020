@@ -14,12 +14,15 @@ public sealed partial class GraphService
             return (false, resolved.Message, null);
         var repo = resolved.Worktree.WorktreePath;
 
-        var head = await ResolveCommitAsync(repo, $"refs/heads/{ProjectService.MainlineBranch}", cancellation)
+        var headTask = ResolveCommitAsync(repo, $"refs/heads/{ProjectService.MainlineBranch}", cancellation);
+        var listedTask = ListRefsAsync(repo, cancellation);
+        await Task.WhenAll(headTask, listedTask);
+        var head = await headTask
                    ?? await ResolveCommitAsync(repo, "HEAD", cancellation);
         if (head == null)
             return (false, $"项目主线分支不存在: {ProjectService.MainlineBranch}", null);
 
-        var listed = await ListRefsAsync(repo, cancellation);
+        var listed = await listedTask;
         if (!listed.Success)
             return (false, listed.Message, null);
 

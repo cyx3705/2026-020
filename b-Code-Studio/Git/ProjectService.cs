@@ -274,27 +274,29 @@ public sealed partial class ProjectService
         return [.. await Task.WhenAll(tasks).ConfigureAwait(false)];
     }
 
-    public async Task<(bool Success, string Message, WorktreeInfo? Worktree)> ResolveWorktreeAsync(string name)
+    public Task<(bool Success, string Message, WorktreeInfo? Worktree)> ResolveWorktreeAsync(string name)
+        => Task.FromResult(ResolveWorktree(name));
+
+    /// <summary>
+    /// 按库根直接子目录定位单个项目仓。不得为了找一个仓去列举并 git 查询全库。
+    /// </summary>
+    public (bool Success, string Message, WorktreeInfo? Worktree) ResolveWorktree(string name)
     {
         name = name.Trim();
         if (name.Length == 0)
             return (false, "项目名称不能为空", null);
-
-        var (git, worktrees) = await ListWorktreesAsync();
-        if (!git.Success)
-            return (false, $"读取已登记项目失败:\n{git.Output}", null);
-
-        var worktree = worktrees.FirstOrDefault(item =>
-            item.BranchName.Equals(name, StringComparison.OrdinalIgnoreCase)
-            || item.FolderName.Equals(name, StringComparison.OrdinalIgnoreCase));
-        if (worktree == null)
+        if (!ProjectRepoLayout.IsRegisteredProjectName(name))
             return (false, $"未找到已登记项目: {name}", null);
-        if (!Directory.Exists(worktree.WorktreePath))
-            return (false, $"项目目录不存在: {worktree.WorktreePath}", null);
-        if (!TryValidateManagedDirectChild(worktree.WorktreePath, rejectReparsePoint: true, out var error))
-            return (false, $"项目目录越出受管边界: {error}", null);
+        if (!TryValidateWorktreeRoot(out var rootError))
+            return (false, $"读取已登记项目失败:\n{rootError}", null);
 
-        return (true, worktree.WorktreePath, worktree);
+        var path = Path.Combine(LibraryRoot, name);
+        if (!TryValidateManagedDirectChild(path, rejectReparsePoint: true, out var error))
+            return (false, $"项目目录越出受管边界: {error}", null);
+        if (!Directory.Exists(path) || !ProjectRepoLayout.IsIndependentGitRepo(path))
+            return (false, $"未找到已登记项目: {name}", null);
+
+        return (true, path, new WorktreeInfo(name, path));
     }
 
     public async Task<(bool Success, string Message)> CreateAsync(
