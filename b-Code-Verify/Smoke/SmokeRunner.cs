@@ -18,9 +18,10 @@ internal static class SmokeRunner
 {
     /// <summary>
     /// 单个套件的墙钟上限。套件并行时会争用本机 git；SubmoduleSafety 单独约 13 秒，
-    /// 与 GitRules / RepositoryTargets 同时跑会超过 20 秒，40 秒覆盖这层抖动。
+    /// 与 GitRules / RepositoryTargets 同时跑会超过 20 秒。本机并行时 RepositoryTargets
+    /// 可到约 29 秒，SubmoduleSafety 会被拖过 40 秒，90 秒覆盖这层抖动。
     /// </summary>
-    private static readonly TimeSpan SuiteTimeout = TimeSpan.FromSeconds(40);
+    private static readonly TimeSpan SuiteTimeout = TimeSpan.FromSeconds(90);
 
     internal readonly record struct SuiteOutcome(
         string Name,

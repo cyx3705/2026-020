@@ -25,7 +25,7 @@ public sealed partial class GraphService
     public async Task<(bool Success, string Message, GraphSummary? Summary)> GetSummaryAsync(
         string name, int limit = DefaultLimit, CancellationToken cancellation = default)
     {
-        var scope = await ResolveScopeAsync(name, cancellation);
+        var scope = await ResolveScopeAsync(name, cancellation, includeRelations: false);
         if (!scope.Success || scope.Scope == null)
             return (false, scope.Message, null);
 
@@ -62,7 +62,7 @@ public sealed partial class GraphService
     public async Task<(bool Success, string Message, GraphBranchesReport? Report)> GetBranchesAsync(
         string name, CancellationToken cancellation = default)
     {
-        var scope = await ResolveScopeAsync(name, cancellation);
+        var scope = await ResolveScopeAsync(name, cancellation, includeRelations: true);
         if (!scope.Success || scope.Scope == null)
             return (false, scope.Message, null);
 
@@ -88,7 +88,7 @@ public sealed partial class GraphService
     public async Task<(bool Success, string Message, GraphCommitsReport? Report)> GetCommitsAsync(
         string name, int limit = DefaultLimit, int skip = 0, CancellationToken cancellation = default)
     {
-        var scope = await ResolveScopeAsync(name, cancellation);
+        var scope = await ResolveScopeAsync(name, cancellation, includeRelations: false);
         if (!scope.Success || scope.Scope == null)
             return (false, scope.Message, null);
 
@@ -116,7 +116,7 @@ public sealed partial class GraphService
     public async Task<(bool Success, string Message, GraphNodeDetail? Detail)> GetNodeAsync(
         string name, string sha, CancellationToken cancellation = default)
     {
-        var scope = await ResolveScopeAsync(name, cancellation);
+        var scope = await ResolveScopeAsync(name, cancellation, includeRelations: false);
         if (!scope.Success || scope.Scope == null)
             return (false, scope.Message, null);
         if (string.IsNullOrWhiteSpace(sha))
@@ -184,7 +184,10 @@ public sealed partial class GraphService
             $"--format={LogFormat}",
         };
         // 引用必须放在路径分隔符 -- 之前，否则会被当成 pathspec。
-        args.AddRange(scope.AllRefs.Select(item => item.FullName).Distinct(StringComparer.Ordinal));
+        args.AddRange(scope.AllRefs
+            .Select(item => item.FullName)
+            .Where(item => item.Length > 0)
+            .Distinct(StringComparer.Ordinal));
         if (!string.IsNullOrWhiteSpace(scope.CutoffSha))
         {
             args.Add("--not");

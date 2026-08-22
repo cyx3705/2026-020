@@ -3,7 +3,7 @@ namespace HistoryJanus.Git;
 public sealed partial class GraphService
 {
     private async Task<(bool Success, string Message, GraphScope? Scope)> ResolveScopeAsync(
-        string name, CancellationToken cancellation)
+        string name, CancellationToken cancellation, bool includeRelations)
     {
         name = name.Trim();
         if (name.Length == 0)
@@ -39,23 +39,21 @@ public sealed partial class GraphService
         const string cutoffSha = "";
 
         var firstParent = await ReadFirstParentShasAsync(repo, mainline.FullName, cutoffSha, cancellation);
-        var parallels = new List<GraphRef>();
-        foreach (var candidate in SelectParallelCandidates(name, listed.Refs))
+        var candidates = SelectParallelCandidates(name, listed.Refs)
+            .Where(candidate =>
+                candidate.TargetSha.Length > 0 &&
+                !candidate.TargetSha.Equals(mainline.TargetSha, StringComparison.OrdinalIgnoreCase) &&
+                !firstParent.Contains(candidate.TargetSha))
+            .ToList();
+        var aheadByRef = await ReadAheadCountsAsync(
+            repo, mainline.FullName, candidates.Select(item => item.FullName), cancellation);
+        var parallels = candidates.Select(candidate => candidate with
         {
-            if (candidate.TargetSha.Length == 0 ||
-                candidate.TargetSha.Equals(mainline.TargetSha, StringComparison.OrdinalIgnoreCase) ||
-                firstParent.Contains(candidate.TargetSha))
-                continue;
-
-            var ahead = await CountAheadAsync(repo, mainline.FullName, candidate.FullName, cancellation);
-            parallels.Add(candidate with
-            {
-                Kind = IsAiWork(name, candidate.Name, candidate.FullName)
-                    ? BranchKind.AiWork
-                    : BranchKind.Parallel,
-                IsOpen = ahead > 0,
-            });
-        }
+            Kind = IsAiWork(name, candidate.Name, candidate.FullName)
+                ? BranchKind.AiWork
+                : BranchKind.Parallel,
+            IsOpen = aheadByRef.GetValueOrDefault(candidate.FullName) > 0,
+        }).ToList();
 
         var covered = parallels
             .Select(item => item.TargetSha)
@@ -72,7 +70,9 @@ public sealed partial class GraphService
 
         var allRefs = new List<GraphRef> { mainline };
         allRefs.AddRange(parallels.Where(item => item.FullName.Length > 0));
-        var relations = await BuildRelationsAsync(repo, name, mainline, parentName, cutoffSha, parallels, cancellation);
+        var relations = includeRelations
+            ? await BuildRelationsAsync(repo, name, mainline, parentName, cutoffSha, parallels, cancellation)
+            : [];
         return (true, "范围已解析", new GraphScope(name, mainline, parallels, allRefs, relations, cutoffSha, repo));
     }
 
@@ -95,10 +95,10 @@ public sealed partial class GraphService
                 BaselineSha = cutoffSha,
             },
         };
-        foreach (var parallel in parallels)
+        var extras = await Task.WhenAll(parallels.Select(async parallel =>
         {
             var other = parallel.FullName.Length > 0 ? parallel.FullName : parallel.TargetSha;
-            relations.Add(new GraphBranchRelation
+            return new GraphBranchRelation
             {
                 BranchName = parallel.Name,
                 Kind = parallel.Kind,
@@ -106,9 +106,9 @@ public sealed partial class GraphService
                 BaselineSha = other.Length == 0
                     ? ""
                     : await MergeBaseOrEmptyAsync(repo, mainline.FullName, other, cancellation),
-            });
-        }
-
+            };
+        }));
+        relations.AddRange(extras);
         return relations;
     }
 
@@ -151,7 +151,7 @@ public sealed partial class GraphService
         HashSet<string> alreadyCovered,
         CancellationToken cancellation)
     {
-        var args = new List<string> { "log", "--merges", "--format=%P", mainlineRef };
+        var args = new List<string> { "log", "--merges", "--max-count=400", "--format=%P", mainlineRef };
         if (!string.IsNullOrWhiteSpace(cutoffSha))
         {
             args.Add("--not");
@@ -192,7 +192,7 @@ public sealed partial class GraphService
     private async Task<HashSet<string>> ReadFirstParentShasAsync(
         string repo, string rev, string cutoffSha, CancellationToken cancellation)
     {
-        var args = new List<string> { "rev-list", "--first-parent", rev };
+        var args = new List<string> { "rev-list", "--first-parent", "--max-count=2000", rev };
         if (!string.IsNullOrWhiteSpace(cutoffSha))
         {
             args.Add("--not");
@@ -211,6 +211,58 @@ public sealed partial class GraphService
         }
 
         return set;
+    }
+
+    /// <summary>
+    /// 一次 for-each-ref 读出各平行分支相对主线的 ahead。Git 2.41+ 的
+    /// %(ahead-behind) 避免对每条 AI 分支再跑一次 rev-list --count。
+    /// </summary>
+    private async Task<Dictionary<string, int>> ReadAheadCountsAsync(
+        string repo,
+        string mainlineRef,
+        IEnumerable<string> otherRefs,
+        CancellationToken cancellation)
+    {
+        var names = otherRefs
+            .Where(item => item.Length > 0)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        var counts = new Dictionary<string, int>(StringComparer.Ordinal);
+        if (names.Count == 0)
+            return counts;
+
+        var args = new List<string>
+        {
+            "for-each-ref",
+            $"--format=%(refname)%09%(ahead-behind:{mainlineRef})",
+        };
+        args.AddRange(names);
+        var result = await GitRunner.RunAsync(repo, args, cancellation: cancellation);
+        if (result.Success)
+        {
+            foreach (var line in result.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+            {
+                var parts = line.TrimEnd('\r').Split('\t');
+                if (parts.Length < 2)
+                    continue;
+                var numbers = parts[1].Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                if (numbers.Length == 0 || !int.TryParse(numbers[0], out var ahead))
+                    continue;
+                counts[parts[0].Trim()] = ahead;
+            }
+
+            if (counts.Count > 0 || names.Count == 0)
+                return counts;
+        }
+
+        var fallback = await Task.WhenAll(names.Select(async name =>
+        {
+            var count = await CountAheadAsync(repo, mainlineRef, name, cancellation);
+            return (name, count);
+        }));
+        foreach (var item in fallback)
+            counts[item.name] = item.count;
+        return counts;
     }
 
     private async Task<int> CountAheadAsync(
