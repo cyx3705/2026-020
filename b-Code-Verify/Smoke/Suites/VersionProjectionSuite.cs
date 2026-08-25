@@ -130,11 +130,8 @@ internal static class VersionProjectionSuite
             .Select(item => (string?)item.Attribute("Include"))
             .Where(item => item is not null)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        // Extensibility 是宿主 3.7.0 引入的演进层：它与 Core 的区别是稳定性承诺而非功能领域，
-        // Core 冻结、Extensibility 随模块需要演进。Janus 目前不直接使用其中的类型，但装载时
-        // 需要它在场（Services 对其有传递依赖）。
         True(moduleReferences.SetEquals(
-                ["HistoryVulcan.Core", "HistoryVulcan.Extensibility", "HistoryVulcan.Services"]),
+                ["HistoryVulcan.Core", "HistoryVulcan.Services"]),
             "module consumption: module references only public HistoryVulcan host contracts");
         Equal(0, moduleProject.Descendants("PackageReference").Count(),
             "module consumption: module does not restore legacy HistoryVulcan packages");

@@ -19,19 +19,14 @@
       <HintPath>$(HistoryVulcanHostRoot)\HistoryVulcan.Core.dll</HintPath>
       <Private>false</Private>
     </Reference>
-    <Reference Include="HistoryVulcan.Extensibility">
-      <HintPath>$(HistoryVulcanHostRoot)\HistoryVulcan.Extensibility.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
     <Reference Include="HistoryVulcan.Services">
       <HintPath>$(HistoryVulcanHostRoot)\HistoryVulcan.Services.dll</HintPath>
       <Private>false</Private>
     </Reference>
   </ItemGroup>
 
-  <!-- The first UI migration keeps the existing pages and their domain contracts
-       in one self-contained module assembly. Host-owned process and shell code
-       remains outside this project. -->
+  <!-- The module is UI-framework agnostic. Aurora pulls the serialized page
+       description through janus.ui.describe and owns all WPF construction. -->
   <ItemGroup>
     <Compile Include="..\StudioBusinessComposition.cs" Link="StudioBusinessComposition.cs" />
     <Compile Include="..\Git\**\*.cs" Link="Git\%(RecursiveDir)%(Filename)%(Extension)" />

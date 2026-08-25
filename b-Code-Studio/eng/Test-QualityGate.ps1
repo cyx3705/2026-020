@@ -144,7 +144,7 @@ if ($gitHubRunnerText -notmatch 'timeoutSeconds' -or $smokeRunnerText -notmatch 
     $violations.Add('GitHub diagnostics and Smoke hang-detection timeouts must remain explicit')
 }
 
-# --- 5. 消费合同投影：API 版本、窗口和命令必须与当前源码事实一致 --------------------------
+# --- 5. 消费合同投影：API 版本、页面描述和命令必须与当前源码事实一致 ----------------------
 $apiPath = Join-Path $root 'b-Office\package\模块API.md'
 $apiText = [IO.File]::ReadAllText($apiPath)
 if ($apiText -notmatch "(?m)^# HistoryJanus $([regex]::Escape($sourceVersion)) 模块 API$") {
@@ -160,21 +160,23 @@ if ($apiText -notmatch "(?m)^- 宿主基线：HistoryVulcan ``\d+\.\d+\.\d+`` ")
 }
 
 $uiSource = [IO.File]::ReadAllText((Join-Path $componentRoot 'Module\HistoryJanusUiModule.cs'))
-$sourceWindows = @(
-    [regex]::Matches($uiSource, '(?m)^\s*Id\s*=\s*"(?<id>[a-z][a-z0-9]*)"') |
-        ForEach-Object { $_.Groups['id'].Value }
-)
-if ($sourceWindows.Count -ne 3) {
-    $violations.Add("HistoryJanusUiModule.cs must declare exactly 3 windows; found $($sourceWindows.Count)")
+$pageIds = @('overview', 'graph', 'projops')
+foreach ($pageId in $pageIds) {
+    if ($uiSource -notmatch ('id = "' + [regex]::Escape($pageId) + '"')) {
+        $violations.Add("HistoryJanusUiModule.cs missing descriptive page $pageId")
+    }
+    if ($apiText -notmatch ('(?m)^\|\s*`' + [regex]::Escape($pageId) + '`\s*\|')) {
+        $violations.Add("模块API.md missing descriptive page $pageId")
+    }
 }
-
-$windowSection = [regex]::Match($apiText, '(?ms)^## UI 窗口\s*(?<body>.*?)(?=^##\s|\z)')
-$apiWindows = @(
-    [regex]::Matches($windowSection.Groups['body'].Value, '(?m)^\|\s*`(?<id>[a-z][a-z0-9]*)`\s*\|') |
-        ForEach-Object { $_.Groups['id'].Value }
-)
-if (($sourceWindows -join ',') -cne ($apiWindows -join ',')) {
-    $violations.Add("模块API.md 窗口清单 [$($apiWindows -join ', ')] != 源码 [$($sourceWindows -join ', ')]")
+if ($uiSource -notmatch 'schemaVersion = 1' -or $uiSource -notmatch 'tabTarget = "console"') {
+    $violations.Add('HistoryJanusUiModule.cs must expose Aurora V1 pages and target graph at console')
+}
+foreach ($uiCommand in @('janus.ui.describe', 'janus.ui.actions', 'janus.ui.data', 'janus.ui.graphnode')) {
+    if ($uiSource -notmatch ('Name = "' + [regex]::Escape($uiCommand) + '"') -or
+        $apiText -notmatch ('(?m)^\|\s*`' + [regex]::Escape($uiCommand) + '`\s*\|')) {
+        $violations.Add("Aurora UI command missing from source or API contract: $uiCommand")
+    }
 }
 
 $businessCommandNames = @(
@@ -193,8 +195,8 @@ $apiCommandNames = @(
         ForEach-Object { $_.Groups['name'].Value } |
         Sort-Object -Unique
 )
-if ($businessCommandNames.Count -ne 35 -or $expectedRuntimeCommandNames.Count -ne 36) {
-    $violations.Add("运行时命令总数应为 36（35 条业务命令 + janus.status）；源码为 $($businessCommandNames.Count) + 1")
+if ($businessCommandNames.Count -ne 39 -or $expectedRuntimeCommandNames.Count -ne 40) {
+    $violations.Add("运行时命令总数应为 40（35 条业务命令 + 4 条 Aurora UI 投影命令 + janus.status）；源码为 $($businessCommandNames.Count) + 1")
 }
 if (($expectedRuntimeCommandNames -join ',') -cne ($apiCommandNames -join ',')) {
     $violations.Add("模块API.md 命令清单与源码不一致：API $($apiCommandNames.Count)，运行时 $($expectedRuntimeCommandNames.Count)")
@@ -427,4 +429,4 @@ if ($violations.Count -gt 0) {
     $violations | ForEach-Object { Write-Error $_ }
     exit 1
 }
-Write-Host ("Quality gate passed: suppressions 0; hotspots {0}; version {1}; windows {2}; commands {3}; host HistoryVulcan {4}." -f $hotspots.Count, $sourceVersion, $sourceWindows.Count, $expectedRuntimeCommandNames.Count, $minimumVulcan)
+Write-Host ("Quality gate passed: suppressions 0; hotspots {0}; version {1}; pages {2}; commands {3}; host HistoryVulcan {4}." -f $hotspots.Count, $sourceVersion, $pageIds.Count, $expectedRuntimeCommandNames.Count, $minimumVulcan)
