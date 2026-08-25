@@ -123,7 +123,9 @@ internal static class HistoryJanusUiCommands
 
         var command = view switch
         {
-            "projects" => "janus.proj.list status=true",
+            // 页面初次建树发生在宿主启动路径上；工作树状态由用户刷新时再取，
+            // 避免首屏同步触发 45 个仓库的 Git 状态扫描。
+            "projects" => "janus.proj.list status=false",
             "history" => "janus.history.list",
             "rules" => "janus.gitrule.list",
             "github" => "janus.github.status",
@@ -134,9 +136,12 @@ internal static class HistoryJanusUiCommands
             return CommandResult.Fail($"未知 Janus 页面视图: {view}");
 
         var result = await bus.ExecuteAsync(command, context.Source, context.Cancellation);
-        return result.Success
-            ? CommandResult.Ok(result.Message, result.Data)
-            : CommandResult.Fail(result.Message);
+        if (!result.Success)
+            return CommandResult.Fail(result.Message);
+
+        // Aurora 进程外取数时 Data 不保证跨边界保留，Message 必须携带同一份 JSON。
+        var payload = JsonSerializer.Serialize(result.Data);
+        return CommandResult.Ok(payload, payload);
     }
 
     private static async Task<CommandResult> LoadGraphAsync(CommandContext context, CommandBus bus)
@@ -184,6 +189,7 @@ internal static class HistoryJanusUiCommands
             title = $"{name} · {report.Nodes.Count} 个节点",
             lanes,
             nodes,
+            selectAction = "janus.graph.node.detail",
         };
         return CommandResult.Ok(JsonSerializer.Serialize(description), description);
     }
@@ -251,7 +257,6 @@ internal static class HistoryJanusUiCommands
                 {
                     type = "swimlane",
                     dataSource = new { command = "janus.ui.data", args = new { view = "graph" } },
-                    selectAction = "janus.graph.node.detail",
                 },
             },
             new
