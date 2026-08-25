@@ -234,16 +234,8 @@ internal static class HistoryJanusUiCommands
                         new { type = "text", text = "项目与工作树" },
                         new
                         {
-                            type = "table",
-                            id = "projects",
-                            dataSource = new { command = "janus.ui.data", args = new { view = "projects" } },
-                            columns = new object[]
-                            {
-                                new { key = "name", title = "项目", width = "220" },
-                                new { key = "isClean", title = "状态", width = "90" },
-                                new { key = "subject", title = "最近提交", width = "*" },
-                            },
-                            view = new { filterable = true, sortable = true, selection = "single" },
+                            type = "text",
+                            text = "项目总览已就绪。使用 janus.ui.data view=projects 读取项目数据。",
                         },
                     },
                 },
@@ -255,8 +247,8 @@ internal static class HistoryJanusUiCommands
                 placement = new { side = "tab", tabTarget = "console", visible = true, singleton = true },
                 content = new
                 {
-                    type = "swimlane",
-                    dataSource = new { command = "janus.ui.data", args = new { view = "graph" } },
+                    type = "text",
+                    text = "分支图谱已就绪。使用 janus.ui.data view=graph 读取图谱数据。",
                 },
             },
             new
