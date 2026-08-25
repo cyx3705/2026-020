@@ -204,10 +204,10 @@ internal static class BranchGraphSuite
     {
         var module = File.ReadAllText(Path.Combine(RepoRoot, "Module", "HistoryJanusUiModule.cs"));
         Contains(module, "schemaVersion = 1", "graph page uses Aurora page protocol V1");
-        Contains(module, "type = \"text\"", "graph page uses a startup-safe text component");
+        Contains(module, "type = \"swimlane\"", "graph page uses Aurora swimlane component");
         Contains(module, "view == \"graph\"", "graph data remains available through janus.ui.data");
-        True(!module.Contains("dataSource = new { command = \"janus.ui.data\"", StringComparison.Ordinal),
-            "graph and overview do not eagerly fetch data during host page construction");
+        Contains(module, "dataSource = new { command = \"janus.ui.data\"",
+            "graph and overview delegate component data loading to Aurora 1.8.3");
         Contains(module, "tabTarget = \"console\"", "graph joins the host console tab group");
     }
 
