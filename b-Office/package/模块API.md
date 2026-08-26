@@ -1,4 +1,4 @@
-# HistoryJanus 5.3.2 模块 API
+# HistoryJanus 5.4.5 模块 API
 
 本文件是其他模块和项目消费 HistoryJanus 的唯一人工合同。运行时命令目录是参数、确认策略和可用性的最终真值；历史文档和 Janus 内部类型不构成公开 API。
 
@@ -6,9 +6,9 @@
 
 - 正式快照：`z-Publish`。
 - 模块名：`HistoryJanus`。
-- 版本：`5.3.2`。
+- 版本：`5.4.5`。
 - 入口：`HistoryJanus.dll`。
-- 宿主基线：HistoryVulcan `3.9.0` current-host 快照，从 `2026-023-HistoryVulcan/z-Publish` 消费；该快照的 `sourceDirty` 仍由 HistoryVulcan manifest 如实标记。
+- 宿主基线：HistoryVulcan `5.1.2` current-host 快照，从 `2026-023-HistoryVulcan/z-Publish` 消费；该快照的 `sourceDirty` 仍由 HistoryVulcan manifest 如实标记。
 - 主题：页面使用 `Aurora.Brush.*` 动态资源，跟随宿主深色/浅色切换，不在模块内维护第二套主题。
 - 弹窗：模块不得 `new Window`。提交预览、差异预览、恢复提交说明、GitHub 通知与诊断走 `aurora.ui.dialog`（`message` / `prompt` / `content`）。写操作警告仍走命令 `ConfirmPrompt`，由宿主确认策略弹出，页面不得再叠一层。
 - 命令来源：`module:HistoryJanus`。
@@ -16,14 +16,14 @@
 - UI：启用。
 - MCP：只读投影。
 
-本文件描述活动源的 `5.3.2` 候选合同；只有用户另行授权正式发布后，同版本 manifest 和二进制才会提升到
+本文件描述活动源的 `5.4.5` 候选合同；只有用户另行授权正式发布后，同版本 manifest 和二进制才会提升到
 `z-Publish`。发布前，z 快照自身的 manifest 与 checksum 仍是正式运行版本的真值。
 其他项目从 `z-Publish/docs/` 或 `diana.docs.janus` 读取已发布 API，从 z 快照读取 `module.manifest.json`、二进制和
 `SHA256SUMS`；不要从 `z-Publish`、Janus 的 `bin/obj`、HistoryVulcan 工作树或 Janus 历史文档建立依赖。
 
 ## 宿主接入
 
-Janus 实现 `IUiModule`、`IShellUiAware` 和 `IModuleContextAware`。HistoryVulcan 注入 `IModuleContext` 后，Janus 使用其中的 `Bus`、`Settings`、`Log`、`DataDirectory` 与命令注册事务。消费者模块通过自己的宿主上下文取得同一个 `CommandBus`，按命令名调用 Janus；不得构造 Janus 服务、引用内部 DTO，或自行加载 Janus DLL。
+Janus 仅实现 `IModuleContextAware`。HistoryVulcan 5.1.2 注入 `IModuleContext` 后，Janus 通过 `context.RegisterCommands` 使用宿主 `CommandRegistry` 与 `CommandBus` 注册业务命令和描述化前端投影；页面不再由模块注册 WPF 窗口。消费者模块通过自己的宿主上下文取得同一个 `CommandBus`，按命令名调用 Janus；不得构造 Janus 服务、引用内部 DTO，或自行加载 Janus DLL。
 
 ```csharp
 var result = await context.Bus.ExecuteAsync("janus.proj.list", "filter=2026");
@@ -33,15 +33,21 @@ if (!result.Success)
 
 结构化结果跨宿主 HTTP 边界时可能表现为 `JsonElement`。消费者应按运行时目录说明投影为自己的 DTO，不依赖 Janus 页面内部模型。
 
-## UI 窗口
+## 描述化页面（Aurora V1）
 
 | ID | 标题 | 默认位置 | 用途 |
 | --- | --- | --- | --- |
-| `overview` | 项目总览 | 中央工作区 | 项目列表、工作树干净状态、z/Z 级元文件夹、最近提交与共享项目选择 |
-| `graph` | 分支图谱 | 并入控制台标签组 | 当前编号项目的提交 DAG；与宿主 `console` 同组，不占中央主窗口；开放分支贴近分叉点右侧，已合并历史分支贴近 merge 左侧 |
-| `projops` | 项目操作 | 左侧（宽度占比 `0.38`） | 创建、提交、推送；底部同一行分段切换 Git 文件规则、分支历史与 GitHub 连接治理 |
+| `overview` | 项目总览 | 中央工作区 | 页面描述中的项目表格、工作树状态与最近提交 |
+| `graph` | 分支图谱 | 并入控制台标签组 | 页面描述中的 `swimlane` 提交 DAG；以 `tabTarget=console` 与宿主控制台同组 |
+| `projops` | 项目操作 | 左侧（宽度占比 `0.38`） | 一块三行控制面板：项目名/改名、新项目名/新建、提交描述/提交·推送 |
+| `rules` | Git 文件规则 | 底部标签组 | 全库共用的排除清单，以及**当前选中项目**的托管块落地状态 |
+| `history` | 分支历史 | 底部标签组 | **当前选中项目**从分叉点到 HEAD 的自有提交（最多 200 条） |
+| `github` | GitHub | 底部标签组 | Git、GCM、提交身份、origin 与 SSH 的当前状态（项/值两列） |
 
-三个 ID 是布局兼容合同。**默认落位**：`overview` 占中央工作区且不声明 `DefaultTabTarget`；`graph` 以 `Tab` 并入宿主 `console`（控制台由 HistoryVulcan 注册，不依赖 Mercury）；`projops` 停靠左侧、默认宽度占比 0.38。已保存的用户布局优先于默认落位。其他模块不能重复注册这些 ID；需要联动项目选择时应通过 Janus 命令读取事实，不访问页面私有状态。3.2.0 起撤销 `tree`、`meta`；3.3.0 起撤销 `history`；3.4.0 引入的 `github` 窗口在 3.7.0 退役，其内容并入 `projops` 底部分段。3.9.1 新增 `graph`，3.9.2 改为并入控制台（DEC-013）。GitHub 写操作（登录、注销、提交身份、origin 修改）由页面通过 `janus.github.*` 命令总线执行并服从宿主确认策略；只读刷新和连接诊断可使用模块内连接服务。
+六个 ID 是布局兼容合同。**默认落位**：`overview` 占中央工作区且不声明 `DefaultTabTarget`；`graph` 以 `Tab` 并入宿主 `console`（控制台由 HistoryVulcan 注册，不依赖 Mercury）；`projops` 停靠左侧、默认宽度占比 0.38。已保存的用户布局优先于默认落位。其他模块不能重复注册这些 ID；需要联动项目选择时应通过 Janus 命令读取事实，不访问页面私有状态。3.2.0 起撤销 `tree`、`meta`；3.3.0 起撤销 `history`；3.4.0 引入的 `github` 窗口在 3.7.0 退役，其内容并入 `projops` 底部分段；
+5.4.5 起 `rules` / `history` / `github` 重新成为三个独立页面，同为 `side=bottom`，由停靠层并成一个底部标签组——
+它们**不是**回到 3.4.0 的独立窗口形态，而是「分段切换」在描述协议下的唯一可用形态：
+分段切换要的 `toggleGroup` 至今是 Aurora 的缺件，照写只会得到三块占位牌。3.9.1 新增 `graph`，3.9.2 改为并入控制台（DEC-013）。GitHub 写操作（登录、注销、提交身份、origin 修改）由页面通过 `janus.github.*` 命令总线执行并服从宿主确认策略；只读刷新和连接诊断可使用模块内连接服务。
 
 ## 命令目录
 
@@ -49,7 +55,7 @@ if (!result.Success)
 
 3.7.0 再次收敛指令类：`debug` 类整体退役（`janus.debug.logflood` 与宿主 `vulcan.log.flood` 重复，`janus.debug.sleep` 无调用点），`meta` 类并入 `proj`（`janus.meta.list` → `janus.proj.metas`，`janus.meta.open` → `janus.proj.metaopen`）。3.8.0 业务命令为 35 条、类为 `proj` / `gitrule` / `history` / `github` 四类；加上模块宿主投影的 `janus.status`，运行时命令总数为 36 条。
 
-3.9.0（DEC-012）新增 `graph` 类四条只读 DAG 命令；3.9.1（DEC-013）改为独立图谱窗口与编号主线/平行泳道。4.0.0（DEC-015）存储引擎改为独立仓：`name=` 是已登记项目目录名，仓内主线为 `main`。4.3.0（DEC-022）增加 `janus.proj.rename`。业务命令 40 条、指令类五类（`proj` / `gitrule` / `history` / `github` / `graph`）；加上 `janus.status`，运行时命令总数为 **41** 条。5.0.0（DEC-023）规则面收敛：`gitrule` 只剩 `list` / `excludes`，业务命令 40 → **35** 条，运行时总数 **36** 条。
+3.9.0（DEC-012）新增 `graph` 类四条只读 DAG 命令；3.9.1（DEC-013）改为独立图谱窗口与编号主线/平行泳道。4.0.0（DEC-015）存储引擎改为独立仓：`name=` 是已登记项目目录名，仓内主线为 `main`。4.3.0（DEC-022）增加 `janus.proj.rename`。业务命令 40 条、指令类五类（`proj` / `gitrule` / `history` / `github` / `graph`）；加上 `janus.status`，运行时命令总数为 **41** 条。5.0.0（DEC-023）规则面收敛：`gitrule` 只剩 `list` / `excludes`，业务命令 40 → **35** 条，运行时总数 **36** 条。5.4.0 增加 Aurora V1 描述化前端的 4 条只读投影命令，运行时总数为 **40** 条。
 
 ### 模块与读取
 
@@ -72,6 +78,10 @@ if (!result.Success)
 | `janus.graph.branches` | 只读 | 列出该项目仓的主线 `main` 与平行分支（含已合并历史）及基线关系 |
 | `janus.graph.commits` | 只读 | 按时间序分页读取本仓提交节点与父边（含 merge parent） |
 | `janus.graph.node` | 只读 | 读取单个提交的父边、文件差异摘要；证据槽本阶段为空 |
+| `janus.ui.describe` | 只读 | 返回 Aurora 页面描述协议 V1 |
+| `janus.ui.actions` | 只读 | 返回 Aurora 动作声明协议 V1 |
+| `janus.ui.data` | 只读 | 按 `view` 返回页面数据（`projects` / `graph` / `history` / `excludes` / `rulestate` / `github`）；`projects` 返回页面行字段 `name`、`isClean`、`subject`。`graph` / `history` / `rulestate` 另需 `name=<项目名>`，由页面从选择通道填入；缺 `name` 时**不取数**，不退化成扫全库 |
+| `janus.ui.graphnode` | 只读 | 将描述化图节点 ID 投影为提交详情 |
 | `janus.github.login` | 确认写入 | 启动服务器本机 Git Credential Manager 登录流程 |
 | `janus.github.logout` | 确认写入 | 注销指定 GitHub HTTPS 凭据账号 |
 | `janus.github.identity` | 预览/确认写入 | 预览或修改 repository/global Git 提交身份；`apply=true` 触发确认 |
@@ -102,7 +112,7 @@ if (!result.Success)
 ## 数据与生命周期
 
 - Janus 在宿主数据根下使用 `HistoryJanus` 子目录；消费者不得假设绝对 `%APPDATA%` 路径。
-- 模块卸载时宿主撤销所有来源为 `module:HistoryJanus` 的命令并移除三个窗口。
+- 模块卸载时宿主撤销所有来源为 `module:HistoryJanus` 的命令并移除六个描述化页面。
 - 热重载以完整模块快照替换旧注册；消费者不得长期缓存 Janus 服务实例或页面引用。
 - Janus 不公开旧 `OneHistoryStudio.exe`、`--service-host`、独立 Web/MCP 地址或旧进程名合同。
 
@@ -126,6 +136,9 @@ if (!result.Success)
 - V4.2.0：自动建仓的远端仓库名改为只取项目编号 `YYYY-NNN`（DEC-021）——GitHub 会吃掉仓库名里的非 ASCII 字符（请求 `2025-001-AGV洗轮机` 建出 `2025-001-AGV-`），而库内多数项目是中文名。本地项目目录名不变，远端与本地刻意不一致；需要对外展示的仓库由用户自行在 GitHub 改名。已按旧规则建出的仓库保持原名。
 - V4.3.0：项目操作页第二行支持编辑当前项目名并确认改名；`janus.proj.rename` 同步更新项目展示名与工作树目录，保护仓内主线 `main` 不被误改。
 - V5.3.2：按名字解析单个项目仓只检查库根下该直接子目录，不再为图谱/历史/提交列举全库并对其它仓发 git；分支历史用 `git log --skip/--max-count` 分页，远端标记用当前页 `--no-walk`，不再 `rev-list` 整段 origin。
+- V5.4.5：`projops` 重注册为三行控制面板；`rules` / `history` / `github` 三页回归为底部标签组；
+  项目表经**选择通道** `janus.project` 驱动它们，图谱与历史因此跟着选中走
+  （此前图谱固定画项目清单第一条，不报错，只是一直不对）。需 Aurora ≥ 1.8.16。
 - V5.2.0：页面弹窗改走 `aurora.ui.dialog`（DEC-025）。删除 `HistoryPreviewDialog` / `RollbackMessageDialog` 与 GitHub `MessageBox`；写操作确认仍经 `ConfirmPrompt`，不在页面重复弹出。
 - V5.1.0：`.gitignore` 托管块尾部固定豁免 `z-*` 正式消费快照（DEC-024），排除清单再激进也不会把跨项目消费的快照删出索引；默认清单扩充为覆盖构建产物（`packages/`、`*.dll`、`*.pdb`、`*.obj`、`*.cache` 等）。
 - V5.0.0（破坏性）：Git 文件规则收敛为**一份全库共用的「不纳入仓库」清单**（设置 `proj.excludesuffixes`），只有"是否纳入仓库"一个维度（DEC-023）。`janus.gitrule.set` / `batchset` / `remove` / `sync` / `scan` / `review` 六条命令一次性退役、不留别名，新增 `janus.gitrule.excludes`；业务命令 40 → 35 条，运行时 41 → 36 条。LFS 完全退出规则面：Janus 不再按扩展名生成任何 `.gitattributes` LFS 属性，只在提交链路对超过 GitHub 100MB 硬限的**具体文件**弹确认后按精确路径 `git lfs track`。清单由提交链路自动刷进各仓 `.gitignore` 托管块，消费方不需要（也无法）手动下发。推送统一走一个出口：推显式分支名、`lfs.locksverify=false`、待推超 300MB 时按提交分批推。
