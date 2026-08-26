@@ -207,7 +207,7 @@ internal static class BranchGraphSuite
         Contains(module, "type = \"swimlane\"", "graph page uses Aurora swimlane component");
         Contains(module, "view == \"graph\"", "graph data remains available through janus.ui.data");
         Contains(module, "dataSource = new { command = \"janus.ui.data\"",
-            "graph and overview delegate component data loading to Aurora 1.8.3");
+            "graph and overview delegate component data loading to Aurora 1.8.4");
         Contains(module, "tabTarget = \"console\"", "graph joins the host console tab group");
     }
 

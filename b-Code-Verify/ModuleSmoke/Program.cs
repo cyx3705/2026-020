@@ -69,6 +69,7 @@ foreach (var name in new[] { "janus.ui.describe", "janus.ui.actions", "janus.ui.
     }
 }
 
+string[] pageIds = [];
 var describe = await bus.ExecuteAsync("janus.ui.describe", "ModuleSmoke");
 if (!describe.Success)
     throw new InvalidOperationException(describe.Message);
@@ -82,17 +83,44 @@ using (var description = JsonDocument.Parse(describe.Message))
     var ids = root.GetProperty("pages").EnumerateArray()
         .Select(page => page.GetProperty("id").GetString())
         .ToArray();
-    if (!new[] { "overview", "graph", "projops" }.SequenceEqual(ids, StringComparer.Ordinal))
+    if (!new[] { "overview", "graph", "projops", "rules", "history", "github" }
+            .SequenceEqual(ids, StringComparer.Ordinal))
         throw new InvalidOperationException($"unexpected page ids: {string.Join(",", ids)}");
+    pageIds = ids!;
 }
 
 var actions = await bus.ExecuteAsync("janus.ui.actions", "ModuleSmoke");
-if (!actions.Success || !actions.Message.Contains("janus.rules.refresh", StringComparison.Ordinal))
+if (!actions.Success)
     throw new InvalidOperationException($"invalid action declaration: {actions.Message}");
+foreach (var action in new[]
+         {
+             "janus.project.rename",
+             "janus.project.create",
+             "janus.project.commit",
+             "janus.project.push",
+             "janus.graph.node.detail",
+         })
+{
+    if (!actions.Message.Contains(action, StringComparison.Ordinal))
+        throw new InvalidOperationException($"action declaration is missing {action}: {actions.Message}");
+}
 
 var data = await bus.ExecuteAsync("janus.ui.data view=projects", "ModuleSmoke");
 if (!data.Success)
     throw new InvalidOperationException($"page data command failed: {data.Message}");
+
+using (var projectDocument = JsonDocument.Parse(data.Message))
+{
+    var firstProject = projectDocument.RootElement.EnumerateArray().FirstOrDefault();
+    if (firstProject.ValueKind != JsonValueKind.Object
+        || !firstProject.TryGetProperty("name", out _)
+        || !firstProject.TryGetProperty("isClean", out _)
+        || !firstProject.TryGetProperty("subject", out _)
+        || firstProject.TryGetProperty("BranchName", out _))
+    {
+        throw new InvalidOperationException("project page data does not use the descriptive row shape");
+    }
+}
 
 var commandCount = registry.All().Count;
 host.Reload();
@@ -111,7 +139,7 @@ if (registry.All().Any(command => command.Name.StartsWith("janus.", StringCompar
 
 Console.WriteLine(
     $"PASS module={meta.ModuleName} version={meta.Version} commands={commandCount} " +
-    "pages=overview,graph,projops protocol=V1");
+    $"pages={string.Join(",", pageIds)} protocol=V1");
 return 0;
 
 sealed class MemorySettings : ISettingsService

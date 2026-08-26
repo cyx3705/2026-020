@@ -160,7 +160,7 @@ if ($apiText -notmatch "(?m)^- 宿主基线：HistoryVulcan ``\d+\.\d+\.\d+`` ")
 }
 
 $uiSource = [IO.File]::ReadAllText((Join-Path $componentRoot 'Module\HistoryJanusUiModule.cs'))
-$pageIds = @('overview', 'graph', 'projops')
+$pageIds = @('overview', 'graph', 'projops', 'rules', 'history', 'github')
 foreach ($pageId in $pageIds) {
     if ($uiSource -notmatch ('id = "' + [regex]::Escape($pageId) + '"')) {
         $violations.Add("HistoryJanusUiModule.cs missing descriptive page $pageId")
