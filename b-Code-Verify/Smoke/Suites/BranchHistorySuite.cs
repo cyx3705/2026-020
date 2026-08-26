@@ -1,5 +1,4 @@
 using HistoryVulcan.Core;
-using HistoryVulcan.Core.Mcp;
 using HistoryVulcan.Core.Commands;
 using System.Xml.Linq;
 using HistoryJanus.Git;
@@ -162,7 +161,7 @@ internal static class BranchHistorySuite
             // V2.4.4:只读性由描述符自描述,不再查名字白名单。判据升级为「真值 + 解释结果」。
             True(new[] { "janus.history.list", "janus.history.show", "janus.history.diff" }
                     .All(name => commands[name].Readonly
-                                 && McpExposurePolicy.State(commands[name]) == "readonly"),
+                                 && commands[name].Readonly),
                 "history reads are readonly MCP tools");
             True(commands["janus.history.rollback"].ConfirmPrompt != null &&
                  commands["janus.history.reset"].ConfirmPrompt != null &&

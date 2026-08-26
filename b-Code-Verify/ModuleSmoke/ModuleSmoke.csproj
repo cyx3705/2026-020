@@ -12,9 +12,6 @@
     <Reference Include="HistoryVulcan.Core">
       <HintPath>$(HistoryVulcanHostRoot)\HistoryVulcan.Core.dll</HintPath>
     </Reference>
-    <Reference Include="HistoryVulcan.Extensibility">
-      <HintPath>$(HistoryVulcanHostRoot)\HistoryVulcan.Extensibility.dll</HintPath>
-    </Reference>
     <Reference Include="HistoryVulcan.Services">
       <HintPath>$(HistoryVulcanHostRoot)\HistoryVulcan.Services.dll</HintPath>
     </Reference>

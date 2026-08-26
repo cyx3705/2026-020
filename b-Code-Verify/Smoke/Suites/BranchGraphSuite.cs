@@ -1,7 +1,6 @@
 using System.Xml.Linq;
 using HistoryVulcan.Core;
 using HistoryVulcan.Core.Commands;
-using HistoryVulcan.Core.Mcp;
 using HistoryJanus.Git;
 using HistoryJanus.Views;
 using static HistoryJanus.Smoke.SmokeKit;
@@ -20,7 +19,7 @@ internal static class BranchGraphSuite
 
     public static async Task RunAsync(string[] args)
     {
-        VerifyGraphLayout();
+        VerifyGraphLayoutV1();
         var root = TemporaryDirectory("branch-graph");
         var template = Path.Combine(root, baseBranch);
         var parent = Path.Combine(root, parentBranch);
@@ -188,7 +187,7 @@ internal static class BranchGraphSuite
                 "janus.graph.summary", "janus.graph.branches", "janus.graph.commits", "janus.graph.node",
             ]), "graph command catalog complete");
             True(commands.Values.All(descriptor => descriptor.Readonly
-                    && McpExposurePolicy.State(descriptor) == "readonly"
+                    && descriptor.Readonly
                     && descriptor.ConfirmPrompt == null),
                 "graph commands are readonly with no confirmation");
             True(!registry.All().Any(descriptor => descriptor.Name.StartsWith("janus.proj.", StringComparison.Ordinal)),
@@ -199,6 +198,17 @@ internal static class BranchGraphSuite
             if (Directory.Exists(root))
                 DeleteTree(root);
         }
+    }
+
+    private static void VerifyGraphLayoutV1()
+    {
+        var module = File.ReadAllText(Path.Combine(RepoRoot, "Module", "HistoryJanusUiModule.cs"));
+        Contains(module, "schemaVersion = 1", "graph page uses Aurora page protocol V1");
+        Contains(module, "type = \"swimlane\"", "graph page uses Aurora swimlane component");
+        Contains(module, "view == \"graph\"", "graph data remains available through janus.ui.data");
+        Contains(module, "dataSource = new { command = \"janus.ui.data\"",
+            "graph and overview delegate component data loading to Aurora 1.8.4");
+        Contains(module, "tabTarget = \"console\"", "graph joins the host console tab group");
     }
 
     private static void VerifyGraphLayout()

@@ -14,7 +14,8 @@ Set-StrictMode -Version Latest
 $componentRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $componentRoot '..'))
 $publishRoot = Join-Path $repoRoot 'z-Publish'
-if ([string]::IsNullOrWhiteSpace($OutputRoot)) {
+$usesDefaultPublishRoot = [string]::IsNullOrWhiteSpace($OutputRoot)
+if ($usesDefaultPublishRoot) {
     $OutputRoot = $publishRoot
 }
 $OutputRoot = [IO.Path]::GetFullPath($OutputRoot)
@@ -131,6 +132,10 @@ $minimumVulcan = [string]$versionProperties.MinimumHistoryVulcanVersion
 if ($version -notmatch '^\d+\.\d+\.\d+$' -or $minimumVulcan -notmatch '^\d+\.\d+\.\d+$') {
     throw 'JanusVersion.props must declare valid HistoryJanus and HistoryVulcan versions'
 }
+if ($usesDefaultPublishRoot) {
+    # 手工候选与质量门禁都以版本化目录为根；Diana 传入 OutputRoot 时仍保持扁平事务目录。
+    $OutputRoot = Join-Path $publishRoot "HistoryJanus-v$version"
+}
 
 $sourceManifest = [IO.File]::ReadAllText($moduleManifestSource, [Text.UTF8Encoding]::new($false)) | ConvertFrom-Json
 if ($sourceManifest.name -ne 'HistoryJanus' -or $sourceManifest.version -ne $version) {
@@ -184,6 +189,31 @@ try {
     $movedPrevious = [Collections.Generic.List[string]]::new()
     $movedCandidate = [Collections.Generic.List[string]]::new()
     try {
+        if ($usesDefaultPublishRoot) {
+            $historyRoot = Join-Path $publishRoot 'history'
+            New-Item -ItemType Directory -Force -Path $historyRoot | Out-Null
+
+            # 5.4.4 之前的脚本曾把候选平铺在 z-Publish 根。只迁移已知的包条目，
+            # 保留证据而不吞掉其他根目录内容。
+            $legacyNames = @('HistoryJanus.dll', 'HistoryJanus.xml', 'module.manifest.json', 'SHA256SUMS', 'docs')
+            $legacyEntries = @($legacyNames | ForEach-Object {
+                $path = Join-Path $publishRoot $_
+                if (Test-Path -LiteralPath $path) { Get-Item -LiteralPath $path }
+            })
+            if ($legacyEntries.Count -gt 0) {
+                $legacyArchive = Join-Path $historyRoot ("HistoryJanus-v{0}-flat-{1}" -f $version, (Get-Date -Format 'yyyyMMddHHmmss'))
+                New-Item -ItemType Directory -Force -Path $legacyArchive | Out-Null
+                foreach ($entry in $legacyEntries) {
+                    Move-Item -LiteralPath $entry.FullName -Destination $legacyArchive
+                }
+            }
+
+            foreach ($candidate in @(Get-ChildItem -LiteralPath $publishRoot -Directory -Force |
+                    Where-Object { $_.Name -match '^HistoryJanus-v\d+\.\d+\.\d+$' -and $_.FullName -ne $OutputRoot })) {
+                Move-Item -LiteralPath $candidate.FullName -Destination $historyRoot
+            }
+        }
+
         foreach ($item in @(Get-ChildItem -LiteralPath $OutputRoot -Force |
                 Where-Object { $_.Name -ne 'history' })) {
             Move-Item -LiteralPath $item.FullName -Destination $backup
