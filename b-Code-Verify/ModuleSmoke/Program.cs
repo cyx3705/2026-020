@@ -47,7 +47,8 @@ if (host.Modules.Count != 1)
 var manifestPath = Path.Combine(moduleDirectory, "module.manifest.json");
 using var manifest = JsonDocument.Parse(File.ReadAllText(manifestPath));
 var expectedVersion = manifest.RootElement.GetProperty("version").GetString();
-const int expectedRuntimeCommandCount = 40;
+// 5.4.6 增加 janus.ui.refreshrules（REQ-015）：40 → 41。
+const int expectedRuntimeCommandCount = 41;
 
 var meta = host.Modules[0];
 if (!meta.ModuleName.Equals("HistoryJanus", StringComparison.Ordinal)
@@ -59,7 +60,7 @@ if (!meta.ModuleName.Equals("HistoryJanus", StringComparison.Ordinal)
         $"(manifest declares {expectedVersion}) commands={meta.CommandCount}");
 }
 
-foreach (var name in new[] { "janus.ui.describe", "janus.ui.actions", "janus.ui.data", "janus.ui.graphnode" })
+foreach (var name in new[] { "janus.ui.describe", "janus.ui.actions", "janus.ui.data", "janus.ui.graphnode", "janus.ui.refreshrules" })
 {
     if (!registry.TryGet(name, out var descriptor)
         || !descriptor.Readonly
@@ -83,7 +84,8 @@ using (var description = JsonDocument.Parse(describe.Message))
     var ids = root.GetProperty("pages").EnumerateArray()
         .Select(page => page.GetProperty("id").GetString())
         .ToArray();
-    if (!new[] { "overview", "graph", "projops", "rules", "history", "github" }
+    // 5.4.6：rules / history / github 收进 projops 的 switch 容器，不再是页面（REQ-015）。
+    if (!new[] { "overview", "graph", "projops" }
             .SequenceEqual(ids, StringComparer.Ordinal))
         throw new InvalidOperationException($"unexpected page ids: {string.Join(",", ids)}");
     pageIds = ids!;

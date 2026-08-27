@@ -60,6 +60,23 @@ internal static class HistoryJanusUiCommands
     /// <summary>动作参数里取「当前选中项目」的写法。只写一次，改通道名不必满文件找。</summary>
     private const string SelectedProject = "{selection." + ProjectChannel + ".name}";
 
+    /// <summary>
+    /// 子页面通道（Aurora 1.8.17 起）。「项目操作」页控制面板里的轮换选项框往这里发布
+    /// 当前标题，同一页的 <c>switch</c> 容器按它决定下面显示哪一批控件。
+    ///
+    /// 5.4.5 里这三块是三个 <c>side=bottom</c> 的页面，由停靠层并成底部标签组。
+    /// 标签组是**三页**，各占一条底边，各自还顶着一段说明文字；收进一页之后，
+    /// 版面只剩一条选项框，而三块内容拿到的是同一块完整高度。
+    /// </summary>
+    private const string SectionChannel = "janus.section";
+
+    /// <summary>三个子页面的标题。它们同时是选项框的候选项和 switch 的 case，只写一处。</summary>
+    private const string SectionRules = "Git 文件规则";
+
+    private const string SectionHistory = "分支历史";
+
+    private const string SectionGitHub = "GitHub";
+
     public static void Register(
         CommandRegistry registry,
         CommandBus bus,
@@ -135,6 +152,45 @@ internal static class HistoryJanusUiCommands
             ],
             Handler = context => LoadGraphNodeAsync(context, bus),
         }, source);
+
+        registry.Register(new CommandDescriptor
+        {
+            Name = "janus.ui.refreshrules",
+            Domain = Domain,
+            CommandClass = "ui",
+            Summary = "重取排除清单与当前项目的落地状态",
+            Readonly = true,
+            HiddenReason = "界面内部协议，对模型无意义",
+            Handler = context => RefreshRulesAsync(context, bus),
+        }, source);
+    }
+
+    /// <summary>
+    /// 「刷新规则」的落点。它要刷的是**两张表**，而 <c>aurora.ui.refreshdata</c>
+    /// 一次只收一个 page 或一个 node。
+    ///
+    /// 5.4.5 之前这两张表独占一页，因此按 <c>page=rules</c> 一把刷正好。收进「项目操作」页
+    /// 之后，同一页上还挂着分支历史与 GitHub 两块——按页刷会把它们一起带上，
+    /// 而 GitHub 那条要探 SSH 与凭据助手。所以改成点名刷这两个节点。
+    /// </summary>
+    private static async Task<CommandResult> RefreshRulesAsync(CommandContext context, CommandBus bus)
+    {
+        var refreshed = 0;
+        foreach (var node in new[] { "rule-list", "rule-state" })
+        {
+            var result = await bus.ExecuteAsync(
+                "aurora.ui.refreshdata node=" + node,
+                context.Source,
+                context.Cancellation);
+
+            // 一个节点失败不拦下另一个：两张表各自独立，刷到一张也比一张都不刷强。
+            if (result.Success)
+                refreshed++;
+        }
+
+        return refreshed > 0
+            ? CommandResult.Ok($"已重取 {refreshed} 处规则数据")
+            : CommandResult.Fail("规则表没有登记取数绑定，无处可刷");
     }
 
     private static async Task<CommandResult> LoadDataAsync(
@@ -483,12 +539,6 @@ internal static class HistoryJanusUiCommands
                     {
                         new
                         {
-                            type = "text",
-                            style = "secondary",
-                            text = "先在「项目总览」里选中一个项目，下面的按钮才可用。",
-                        },
-                        new
-                        {
                             type = "panel",
                             id = "janus-projops",
                             text = "项目操作",
@@ -552,176 +602,164 @@ internal static class HistoryJanusUiCommands
                                     inline = true,
                                     enabledWhen = new { selected = ProjectChannel },
                                 },
-                            },
-                        },
-                    },
-                },
-            },
-            // 下面三页同为 side=bottom，停靠层会把它们并成一个底部标签组。
-            //
-            // 原来这三块是 projops 底部的一排「分段切换」按钮。分段切换靠的是
-            // toggleGroup，而它是 Aurora 至今未交付的缺件——照写只会得到三块占位牌。
-            // 标签组给的是同一件事：一次只显示一块，点标题切换，而且每块拿到整块高度。
-            new
-            {
-                id = "rules",
-                title = "Git 文件规则",
-                placement = new { side = "bottom", ratio = 0.32, visible = true, singleton = true },
-                content = new
-                {
-                    type = "stack",
-                    gap = "tight",
-                    children = new object[]
-                    {
-                        new
-                        {
-                            type = "text",
-                            style = "secondary",
-                            text = "不纳入仓库的清单全库共用一份。改清单用 janus.gitrule.excludes；"
-                                   + "落地状态按当前选中的项目显示，清单在各项目下次提交时自动生效。",
-                        },
-                        new
-                        {
-                            type = "panel",
-                            id = "janus-rules-ops",
-                            text = "规则",
-                            orientation = "horizontal",
-                            widgets = new object[]
-                            {
+                                // 第四行：子页面切换。放在**最后一行**是因为它管的是自己下面那块——
+                                // 隔着三行项目操作去指挥下面的内容，看的人得先建立这条联系。
+                                //
+                                // 它不写 enabledWhen：切页面与选没选中项目无关，
+                                // 而按选中启停会让"没选项目时连看一眼 GitHub 状态都不行"。
                                 new
                                 {
-                                    kind = "text",
-                                    text = "清单存在设置里，界面这边收不到它变了的信号，只能来问一次。",
+                                    kind = "textbox",
+                                    id = "section",
+                                    label = "子页面",
+                                    mode = "select",
+                                    channel = SectionChannel,
+                                    options = new[] { SectionRules, SectionHistory, SectionGitHub },
                                 },
-                                new { kind = "button", action = "janus.rules.refresh", text = "刷新规则" },
                             },
                         },
+                        // 三块子内容。case 与上面选项框的候选项是同一组常量，
+                        // 因此改标题只改常量，两处不会各说各话。
+                        //
+                        // 没被切到过的那几支不取数：Aurora 只把当前这一支挂上可视树。
+                        // 落地状态那一支每次跑两条 git ls-files，
+                        // GitHub 那一支要探 SSH 与凭据助手——没人看的时候不该付这个钱。
                         new
                         {
-                            type = "grid",
-                            min = 320,
-                            gap = "normal",
+                            type = "switch",
+                            id = "janus-sections",
+                            source = "{selection." + SectionChannel + ".value}",
                             children = new object[]
                             {
                                 new
                                 {
-                                    type = "table",
-                                    id = "rule-list",
-                                    dataSource = new
+                                    type = "stack",
+                                    @case = SectionRules,
+                                    gap = "tight",
+                                    children = new object[]
                                     {
-                                        command = "janus.ui.data",
-                                        args = new { view = "excludes" },
-                                    },
-                                    columns = new object[]
-                                    {
-                                        new { key = "kind", title = "类型", width = "60" },
-                                        new { key = "rule", title = "规则", width = "*" },
+                                        new
+                                        {
+                                            type = "panel",
+                                            id = "janus-rules-ops",
+                                            text = "规则",
+                                            orientation = "horizontal",
+                                            widgets = new object[]
+                                            {
+                                                new
+                                                {
+                                                    kind = "button",
+                                                    action = "janus.rules.refresh",
+                                                    text = "刷新规则",
+                                                },
+                                            },
+                                        },
+                                        new
+                                        {
+                                            type = "grid",
+                                            min = 320,
+                                            gap = "normal",
+                                            children = new object[]
+                                            {
+                                                new
+                                                {
+                                                    type = "table",
+                                                    id = "rule-list",
+                                                    dataSource = new
+                                                    {
+                                                        command = "janus.ui.data",
+                                                        args = new { view = "excludes" },
+                                                    },
+                                                    columns = new object[]
+                                                    {
+                                                        new { key = "kind", title = "类型", width = "60" },
+                                                        new { key = "rule", title = "规则", width = "*" },
+                                                    },
+                                                },
+                                                new
+                                                {
+                                                    type = "table",
+                                                    id = "rule-state",
+                                                    // 落地状态要跑 git ls-files，因此只看**当前选中的那一个**项目。
+                                                    // 全库跑一遍是 90 次进程启动，不该由"切到这一支"触发。
+                                                    dataSource = new
+                                                    {
+                                                        command = "janus.ui.data",
+                                                        args = new { view = "rulestate", name = SelectedProject },
+                                                    },
+                                                    columns = new object[]
+                                                    {
+                                                        new { key = "block", title = "托管块", width = "160" },
+                                                        new { key = "ignored", title = "已忽略", width = "70" },
+                                                        new { key = "tracked", title = "已跟踪却应排除", width = "110" },
+                                                        new { key = "detail", title = "说明", width = "*" },
+                                                    },
+                                                },
+                                            },
+                                        },
                                     },
                                 },
                                 new
                                 {
                                     type = "table",
-                                    id = "rule-state",
-                                    // 落地状态要跑 git ls-files，因此只看**当前选中的那一个**项目。
-                                    // 全库跑一遍是 90 次进程启动，不该由"打开一个页签"触发。
+                                    @case = SectionHistory,
+                                    id = "history-rows",
                                     dataSource = new
                                     {
                                         command = "janus.ui.data",
-                                        args = new { view = "rulestate", name = SelectedProject },
+                                        args = new { view = "history", name = SelectedProject },
                                     },
                                     columns = new object[]
                                     {
-                                        new { key = "block", title = "托管块", width = "160" },
-                                        new { key = "ignored", title = "已忽略", width = "70" },
-                                        new { key = "tracked", title = "已跟踪却应排除", width = "110" },
-                                        new { key = "detail", title = "说明", width = "*" },
+                                        new { key = "sha", title = "提交", width = "80" },
+                                        new { key = "time", title = "时间", width = "150" },
+                                        new { key = "author", title = "作者", width = "100" },
+                                        new { key = "marker", title = "标记", width = "60" },
+                                        new { key = "remote", title = "远端", width = "80" },
+                                        new { key = "subject", title = "说明", width = "*" },
                                     },
+                                    view = new { filterable = true, sortable = true, selection = "single" },
                                 },
-                            },
-                        },
-                    },
-                },
-            },
-            new
-            {
-                id = "history",
-                title = "分支历史",
-                placement = new { side = "bottom", ratio = 0.32, visible = true, singleton = true },
-                content = new
-                {
-                    type = "stack",
-                    gap = "tight",
-                    children = new object[]
-                    {
-                        new
-                        {
-                            type = "text",
-                            style = "secondary",
-                            text = "当前选中项目从父分支分叉点到 HEAD 的自有提交（最多 200 条）。",
-                        },
-                        new
-                        {
-                            type = "table",
-                            id = "history-rows",
-                            dataSource = new
-                            {
-                                command = "janus.ui.data",
-                                args = new { view = "history", name = SelectedProject },
-                            },
-                            columns = new object[]
-                            {
-                                new { key = "sha", title = "提交", width = "80" },
-                                new { key = "time", title = "时间", width = "150" },
-                                new { key = "author", title = "作者", width = "100" },
-                                new { key = "marker", title = "标记", width = "60" },
-                                new { key = "remote", title = "远端", width = "80" },
-                                new { key = "subject", title = "说明", width = "*" },
-                            },
-                            view = new { filterable = true, sortable = true, selection = "single" },
-                        },
-                    },
-                },
-            },
-            new
-            {
-                id = "github",
-                title = "GitHub",
-                placement = new { side = "bottom", ratio = 0.32, visible = true, singleton = true },
-                content = new
-                {
-                    type = "stack",
-                    gap = "tight",
-                    children = new object[]
-                    {
-                        new
-                        {
-                            type = "panel",
-                            id = "janus-github-ops",
-                            text = "GitHub",
-                            orientation = "horizontal",
-                            widgets = new object[]
-                            {
                                 new
                                 {
-                                    kind = "text",
-                                    text = "服务器 Git、GCM、提交身份、origin 与 SSH 的当前状态。",
+                                    type = "stack",
+                                    @case = SectionGitHub,
+                                    gap = "tight",
+                                    children = new object[]
+                                    {
+                                        new
+                                        {
+                                            type = "panel",
+                                            id = "janus-github-ops",
+                                            text = "GitHub",
+                                            orientation = "horizontal",
+                                            widgets = new object[]
+                                            {
+                                                new
+                                                {
+                                                    kind = "button",
+                                                    action = "janus.github.refresh",
+                                                    text = "刷新 GitHub",
+                                                },
+                                            },
+                                        },
+                                        new
+                                        {
+                                            type = "table",
+                                            id = "github-rows",
+                                            dataSource = new
+                                            {
+                                                command = "janus.ui.data",
+                                                args = new { view = "github" },
+                                            },
+                                            columns = new object[]
+                                            {
+                                                new { key = "item", title = "项", width = "120" },
+                                                new { key = "value", title = "值", width = "*" },
+                                            },
+                                        },
+                                    },
                                 },
-                                new { kind = "button", action = "janus.github.refresh", text = "刷新 GitHub" },
-                            },
-                        },
-                        new
-                        {
-                            type = "table",
-                            id = "github-rows",
-                            dataSource = new
-                            {
-                                command = "janus.ui.data",
-                                args = new { view = "github" },
-                            },
-                            columns = new object[]
-                            {
-                                new { key = "item", title = "项", width = "120" },
-                                new { key = "value", title = "值", width = "*" },
                             },
                         },
                     },
@@ -790,12 +828,15 @@ internal static class HistoryJanusUiCommands
             },
             // 刷新落到 Aurora 的取数刷新台账，而不是把 janus.gitrule.list 打到控制台。
             // 后者是这两个按钮 5.4.4 之前的样子：指令跑了，界面上那张表一动不动。
+            //
+            // 5.4.6 起两条都**按节点**刷，不再按页。三块内容收进「项目操作」一页之后，
+            // 按页刷会把没被点到的那两块一起带上，而 GitHub 那条要探 SSH 与凭据助手。
             new
             {
                 id = "janus.rules.refresh",
                 title = "刷新规则",
-                command = "aurora.ui.refreshdata",
-                args = new Dictionary<string, string> { ["page"] = "rules" },
+                // 规则那一支有两张表，而 refreshdata 一次只收一个节点，所以过一道自己的指令。
+                command = "janus.ui.refreshrules",
                 summary = "重新读取排除清单与当前项目的落地状态",
             },
             new
@@ -803,7 +844,7 @@ internal static class HistoryJanusUiCommands
                 id = "janus.github.refresh",
                 title = "刷新 GitHub",
                 command = "aurora.ui.refreshdata",
-                args = new Dictionary<string, string> { ["page"] = "github" },
+                args = new Dictionary<string, string> { ["node"] = "github-rows" },
                 summary = "重新探测 Git、GCM、提交身份、origin 与 SSH",
             },
             new

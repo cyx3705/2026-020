@@ -32,7 +32,7 @@ internal static class TestArchitectureSuite
         foreach (var command in new[] { "janus.ui.describe", "janus.ui.actions", "janus.ui.data" })
             Contains(module, command, $"descriptive frontend command is registered: {command}");
 
-        Equal("5.4.5", manifest.GetProperty("version").GetString(), "module manifest is 5.4.5");
+        Equal("5.4.6", manifest.GetProperty("version").GetString(), "module manifest is 5.4.6");
         True(manifest.GetProperty("ui").GetBoolean(), "module advertises a frontend surface");
         True(File.Exists(Path.Combine(RepoRoot, "Module", "HistoryJanus.Module.csproj")),
             "module project remains the package source");

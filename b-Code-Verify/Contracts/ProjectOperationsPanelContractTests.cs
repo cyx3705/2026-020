@@ -17,6 +17,9 @@ public sealed partial class ProjectOperationsPanelContractTests
 {
     private const string Channel = "janus.project";
 
+    /// <summary>子页面通道（5.4.6）。选项框往这里发布当前标题，switch 容器按它选分支。</summary>
+    private const string SectionChannel = "janus.section";
+
     private static JsonElement Description
         => JsonDocument.Parse(HistoryJanusUiCommands.Description).RootElement;
 
@@ -47,10 +50,11 @@ public sealed partial class ProjectOperationsPanelContractTests
     }
 
     /// <summary>
-    /// 三行「左标签 / 中控件 / 右按钮」：项目名+改名、新项目名+新建、提交描述+提交/推送。
+    /// 四行「左标签 / 中控件 / 右按钮」：项目名+改名、新项目名+新建、提交描述+提交/推送，
+    /// 外加 5.4.6 的子页面切换器。
     /// </summary>
     [Fact]
-    public void TheOperationsPanelIsThreeRowsOfLabelControlAndButtons()
+    public void TheOperationsPanelIsFourRowsOfLabelControlAndButtons()
     {
         var widgets = OperationsPanel().GetProperty("widgets").EnumerateArray().ToList();
 
@@ -58,9 +62,12 @@ public sealed partial class ProjectOperationsPanelContractTests
             .Where(w => w.GetProperty("kind").GetString() == "textbox")
             .Select(w => w.GetProperty("id").GetString())
             .ToList();
-        Assert.Equal(new[] { "project-name", "new-project", "commit-message" }, textboxes);
 
-        // 每个按钮都跟前一个控件同行，因此三个文本框正好切出三行。
+        // 切换器排在**最后**：它管的是自己下面那块内容。
+        // 排在前面的话，人得隔着三行项目操作才把「选项框」和「下面变了」联系起来。
+        Assert.Equal(new[] { "project-name", "new-project", "commit-message", "section" }, textboxes);
+
+        // 每个按钮都跟前一个控件同行，因此前三个文本框正好切出三行。
         var buttons = widgets.Where(w => w.GetProperty("kind").GetString() == "button").ToList();
         Assert.Equal(4, buttons.Count);
         Assert.All(buttons, button => Assert.True(button.GetProperty("inline").GetBoolean()));
@@ -236,24 +243,66 @@ public sealed partial class ProjectOperationsPanelContractTests
     }
 
     /// <summary>
-    /// 三块底部内容都在，且同为 <c>side=bottom</c>——停靠层据此把它们并成一个标签组。
+    /// 三块内容收进「项目操作」一页，由控制面板里的轮换选项框切换（Aurora REQ-UI-045/046）。
     ///
-    /// 原来这是 projops 底部的一排分段按钮。分段切换要的 <c>toggleGroup</c> 是 Aurora 的缺件，
-    /// 照写只会得到三块占位牌；标签组给的是同一件事：一次显示一块，点标题切换。
+    /// 5.4.5 里它们是三个 <c>side=bottom</c> 的页面，由停靠层并成底部标签组——那是**三页**，
+    /// 各占一条底边。收进一页之后版面只剩一条选项框，三块内容拿到同一块完整高度。
+    ///
+    /// **判据必须包含"选项框的候选项与分支的 case 逐字相等"**：两边对不上时不报任何错，
+    /// 界面上的表现是切到某一项后下面永远停在第一支——与"这一支没数据"长得一样。
     /// </summary>
     [Fact]
-    public void TheThreeBottomSectionsAreBackAsOneTabGroup()
+    public void TheThreeSectionsAreFoldedIntoTheOperationsPageBehindOneOptionBox()
     {
-        foreach (var id in new[] { "rules", "history", "github" })
-        {
-            var page = Page(id);
-            Assert.Equal("bottom", page.GetProperty("placement").GetProperty("side").GetString());
-            Assert.True(page.GetProperty("placement").GetProperty("visible").GetBoolean());
-        }
+        // 三页没了：整份描述里只剩总览、图谱、项目操作。
+        Assert.Equal(
+            new[] { "overview", "graph", "projops" },
+            Description.GetProperty("pages").EnumerateArray()
+                .Select(page => page.GetProperty("id").GetString())
+                .ToArray());
 
-        Assert.Equal("Git 文件规则", Page("rules").GetProperty("title").GetString());
-        Assert.Equal("分支历史", Page("history").GetProperty("title").GetString());
-        Assert.Equal("GitHub", Page("github").GetProperty("title").GetString());
+        var titles = new[] { "Git 文件规则", "分支历史", "GitHub" };
+
+        var selector = OperationsPanel().GetProperty("widgets").EnumerateArray()
+            .Single(w => w.TryGetProperty("id", out var id) && id.GetString() == "section");
+        Assert.Equal("select", selector.GetProperty("mode").GetString());
+        Assert.Equal(SectionChannel, selector.GetProperty("channel").GetString());
+        Assert.Equal(
+            titles,
+            selector.GetProperty("options").EnumerateArray().Select(o => o.GetString()).ToArray());
+
+        var container = Node("projops", "janus-sections");
+        Assert.Equal("switch", container.GetProperty("type").GetString());
+        Assert.Equal(
+            "{selection." + SectionChannel + ".value}",
+            container.GetProperty("source").GetString());
+        Assert.Equal(
+            titles,
+            container.GetProperty("children").EnumerateArray()
+                .Select(branch => branch.GetProperty("case").GetString())
+                .ToArray());
+    }
+
+    /// <summary>
+    /// 页面顶部那几段"这一页是干什么的"说明文字全部删掉。
+    ///
+    /// 它们占的是版面，给的是一次性的信息——每个打开这一页的人都要重新翻过去一次，
+    /// 而其中的内容（清单全库共用、落地状态按选中项目、历史最多 200 条）
+    /// 属于文档，不属于每次都要重新读一遍的界面。
+    /// </summary>
+    [Fact]
+    public void NoPageStillCarriesAPreambleParagraph()
+    {
+        var preambles = Description.GetProperty("pages").EnumerateArray()
+            .SelectMany(page => Descend(page.GetProperty("content")))
+            .Where(node => node.TryGetProperty("type", out var type) && type.GetString() == "text")
+            .Select(node => node.GetProperty("text").GetString() ?? "")
+            .ToList();
+
+        // 只留下短标题式的文字；说明段落一律不留。
+        Assert.All(preambles, text => Assert.True(
+            text.Length <= 12,
+            $"页面里还留着一段说明文字：{text}"));
     }
 
     /// <summary>
@@ -263,23 +312,23 @@ public sealed partial class ProjectOperationsPanelContractTests
     /// 「点了有反应」和「点了有用」在那一版里是两回事。
     /// </summary>
     [Fact]
-    public void TheRefreshButtonsActuallyRefetchTheirPage()
+    public void TheRefreshButtonsActuallyRefetchTheirOwnNodes()
     {
-        foreach (var (actionId, page) in new[]
-                 {
-                     ("janus.rules.refresh", "rules"),
-                     ("janus.github.refresh", "github"),
-                 })
-        {
-            var action = Action(actionId);
-            Assert.Equal("aurora.ui.refreshdata", action.GetProperty("command").GetString());
-            Assert.Equal(page, action.GetProperty("args").GetProperty("page").GetString());
+        // 5.4.6 起两条都**按节点**刷，不再按页：三块内容同处「项目操作」一页，
+        // 按页刷会把没被点到的那两块一起带上，而 GitHub 那条要探 SSH 与凭据助手。
+        var github = Action("janus.github.refresh");
+        Assert.Equal("aurora.ui.refreshdata", github.GetProperty("command").GetString());
+        Assert.Equal("github-rows", github.GetProperty("args").GetProperty("node").GetString());
+        Assert.False(github.GetProperty("args").TryGetProperty("page", out _));
 
-            // 按钮真的挂在那一页上，否则刷的是一页、按钮在另一页。
-            Assert.Contains(
-                Buttons(page),
-                button => button.GetProperty("action").GetString() == actionId);
-        }
+        // 规则那一支有两张表，而 refreshdata 一次只收一个节点，因此过一道自己的指令。
+        var rules = Action("janus.rules.refresh");
+        Assert.Equal("janus.ui.refreshrules", rules.GetProperty("command").GetString());
+
+        // 两个按钮都还在「项目操作」页上，否则刷的是这里、按钮在别处。
+        var actions = Buttons("projops").Select(b => b.GetProperty("action").GetString()).ToList();
+        Assert.Contains("janus.rules.refresh", actions);
+        Assert.Contains("janus.github.refresh", actions);
     }
 
     /// <summary>
@@ -291,13 +340,13 @@ public sealed partial class ProjectOperationsPanelContractTests
     [Fact]
     public void EveryGitBackedViewIsScopedToTheSelectedProject()
     {
-        foreach (var (page, node, view) in new[]
+        foreach (var (node, view) in new[]
                  {
-                     ("rules", "rule-state", "rulestate"),
-                     ("history", "history-rows", "history"),
+                     ("rule-state", "rulestate"),
+                     ("history-rows", "history"),
                  })
         {
-            var args = Node(page, node).GetProperty("dataSource").GetProperty("args");
+            var args = Node("projops", node).GetProperty("dataSource").GetProperty("args");
             Assert.Equal(view, args.GetProperty("view").GetString());
             Assert.Equal("{selection." + Channel + ".name}", args.GetProperty("name").GetString());
         }
@@ -314,7 +363,7 @@ public sealed partial class ProjectOperationsPanelContractTests
     [Fact]
     public void TheSharedExcludeListLoadsWithoutTouchingGit()
     {
-        var args = Node("rules", "rule-list").GetProperty("dataSource").GetProperty("args");
+        var args = Node("projops", "rule-list").GetProperty("dataSource").GetProperty("args");
 
         Assert.Equal("excludes", args.GetProperty("view").GetString());
         Assert.False(args.TryGetProperty("name", out _));
