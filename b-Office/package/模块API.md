@@ -1,4 +1,4 @@
-# HistoryJanus 5.4.5 模块 API
+# HistoryJanus 5.4.6 模块 API
 
 本文件是其他模块和项目消费 HistoryJanus 的唯一人工合同。运行时命令目录是参数、确认策略和可用性的最终真值；历史文档和 Janus 内部类型不构成公开 API。
 
@@ -6,7 +6,7 @@
 
 - 正式快照：`z-Publish`。
 - 模块名：`HistoryJanus`。
-- 版本：`5.4.5`。
+- 版本：`5.4.6`。
 - 入口：`HistoryJanus.dll`。
 - 宿主基线：HistoryVulcan `5.1.2` current-host 快照，从 `2026-023-HistoryVulcan/z-Publish` 消费；该快照的 `sourceDirty` 仍由 HistoryVulcan manifest 如实标记。
 - 主题：页面使用 `Aurora.Brush.*` 动态资源，跟随宿主深色/浅色切换，不在模块内维护第二套主题。
@@ -16,7 +16,7 @@
 - UI：启用。
 - MCP：只读投影。
 
-本文件描述活动源的 `5.4.5` 候选合同；只有用户另行授权正式发布后，同版本 manifest 和二进制才会提升到
+本文件描述活动源的 `5.4.6` 候选合同；只有用户另行授权正式发布后，同版本 manifest 和二进制才会提升到
 `z-Publish`。发布前，z 快照自身的 manifest 与 checksum 仍是正式运行版本的真值。
 其他项目从 `z-Publish/docs/` 或 `diana.docs.janus` 读取已发布 API，从 z 快照读取 `module.manifest.json`、二进制和
 `SHA256SUMS`；不要从 `z-Publish`、Janus 的 `bin/obj`、HistoryVulcan 工作树或 Janus 历史文档建立依赖。
@@ -39,15 +39,23 @@ if (!result.Success)
 | --- | --- | --- | --- |
 | `overview` | 项目总览 | 中央工作区 | 页面描述中的项目表格、工作树状态与最近提交 |
 | `graph` | 分支图谱 | 并入控制台标签组 | 页面描述中的 `swimlane` 提交 DAG；以 `tabTarget=console` 与宿主控制台同组 |
-| `projops` | 项目操作 | 左侧（宽度占比 `0.38`） | 一块三行控制面板：项目名/改名、新项目名/新建、提交描述/提交·推送 |
-| `rules` | Git 文件规则 | 底部标签组 | 全库共用的排除清单，以及**当前选中项目**的托管块落地状态 |
-| `history` | 分支历史 | 底部标签组 | **当前选中项目**从分叉点到 HEAD 的自有提交（最多 200 条） |
-| `github` | GitHub | 底部标签组 | Git、GCM、提交身份、origin 与 SSH 的当前状态（项/值两列） |
+| `projops` | 项目操作 | 左侧（宽度占比 `0.38`） | 一块四行控制面板（项目名/改名、新项目名/新建、提交描述/提交·推送、子页面切换），下接一个 `switch` 容器 |
 
-六个 ID 是布局兼容合同。**默认落位**：`overview` 占中央工作区且不声明 `DefaultTabTarget`；`graph` 以 `Tab` 并入宿主 `console`（控制台由 HistoryVulcan 注册，不依赖 Mercury）；`projops` 停靠左侧、默认宽度占比 0.38。已保存的用户布局优先于默认落位。其他模块不能重复注册这些 ID；需要联动项目选择时应通过 Janus 命令读取事实，不访问页面私有状态。3.2.0 起撤销 `tree`、`meta`；3.3.0 起撤销 `history`；3.4.0 引入的 `github` 窗口在 3.7.0 退役，其内容并入 `projops` 底部分段；
-5.4.5 起 `rules` / `history` / `github` 重新成为三个独立页面，同为 `side=bottom`，由停靠层并成一个底部标签组——
-它们**不是**回到 3.4.0 的独立窗口形态，而是「分段切换」在描述协议下的唯一可用形态：
-分段切换要的 `toggleGroup` 至今是 Aurora 的缺件，照写只会得到三块占位牌。3.9.1 新增 `graph`，3.9.2 改为并入控制台（DEC-013）。GitHub 写操作（登录、注销、提交身份、origin 修改）由页面通过 `janus.github.*` 命令总线执行并服从宿主确认策略；只读刷新和连接诊断可使用模块内连接服务。
+`projops` 里的 `switch` 容器 `janus-sections` 收下三块子内容，由面板第四行的轮换选项框
+经 `janus.section` 通道切换（Aurora REQ-UI-045/046）。**它们不是页面，也没有页面 ID**：
+
+| `case` | 内容 |
+| --- | --- |
+| `Git 文件规则` | 「刷新规则」按钮，加全库共用的排除清单与**当前选中项目**的托管块落地状态两张表 |
+| `分支历史` | **当前选中项目**从分叉点到 HEAD 的自有提交（最多 200 条） |
+| `GitHub` | 「刷新 GitHub」按钮，加 Git、GCM、提交身份、origin 与 SSH 的当前状态（项/值两列） |
+
+三个 ID 是布局兼容合同。**默认落位**：`overview` 占中央工作区且不声明 `DefaultTabTarget`；`graph` 以 `Tab` 并入宿主 `console`（控制台由 HistoryVulcan 注册，不依赖 Mercury）；`projops` 停靠左侧、默认宽度占比 0.38。已保存的用户布局优先于默认落位。其他模块不能重复注册这些 ID；需要联动项目选择时应通过 Janus 命令读取事实，不访问页面私有状态。3.2.0 起撤销 `tree`、`meta`；3.3.0 起撤销 `history`；3.4.0 引入的 `github` 窗口在 3.7.0 退役，其内容并入 `projops` 底部分段；
+5.4.5 曾把 `rules` / `history` / `github` 重新注册为三个 `side=bottom` 页面，由停靠层并成一个底部标签组；
+**5.4.6 又把它们撤掉**，收进 `projops` 的 `switch` 容器（REQ-015，需 Aurora ≥ 1.8.17）。
+标签组是三页、各占一条底边；收进一页之后版面只剩一条选项框，三块内容拿到同一块完整高度。
+消费方若还按 `rules` / `history` / `github` 三个页面 ID 建立依赖，5.4.6 起它们**不再存在**。
+3.9.1 新增 `graph`，3.9.2 改为并入控制台（DEC-013）。GitHub 写操作（登录、注销、提交身份、origin 修改）由页面通过 `janus.github.*` 命令总线执行并服从宿主确认策略；只读刷新和连接诊断可使用模块内连接服务。
 
 ## 命令目录
 
@@ -55,7 +63,7 @@ if (!result.Success)
 
 3.7.0 再次收敛指令类：`debug` 类整体退役（`janus.debug.logflood` 与宿主 `vulcan.log.flood` 重复，`janus.debug.sleep` 无调用点），`meta` 类并入 `proj`（`janus.meta.list` → `janus.proj.metas`，`janus.meta.open` → `janus.proj.metaopen`）。3.8.0 业务命令为 35 条、类为 `proj` / `gitrule` / `history` / `github` 四类；加上模块宿主投影的 `janus.status`，运行时命令总数为 36 条。
 
-3.9.0（DEC-012）新增 `graph` 类四条只读 DAG 命令；3.9.1（DEC-013）改为独立图谱窗口与编号主线/平行泳道。4.0.0（DEC-015）存储引擎改为独立仓：`name=` 是已登记项目目录名，仓内主线为 `main`。4.3.0（DEC-022）增加 `janus.proj.rename`。业务命令 40 条、指令类五类（`proj` / `gitrule` / `history` / `github` / `graph`）；加上 `janus.status`，运行时命令总数为 **41** 条。5.0.0（DEC-023）规则面收敛：`gitrule` 只剩 `list` / `excludes`，业务命令 40 → **35** 条，运行时总数 **36** 条。5.4.0 增加 Aurora V1 描述化前端的 4 条只读投影命令，运行时总数为 **40** 条。
+3.9.0（DEC-012）新增 `graph` 类四条只读 DAG 命令；3.9.1（DEC-013）改为独立图谱窗口与编号主线/平行泳道。4.0.0（DEC-015）存储引擎改为独立仓：`name=` 是已登记项目目录名，仓内主线为 `main`。4.3.0（DEC-022）增加 `janus.proj.rename`。业务命令 40 条、指令类五类（`proj` / `gitrule` / `history` / `github` / `graph`）；加上 `janus.status`，运行时命令总数为 **41** 条。5.0.0（DEC-023）规则面收敛：`gitrule` 只剩 `list` / `excludes`，业务命令 40 → **35** 条，运行时总数 **36** 条。5.4.0 增加 Aurora V1 描述化前端的 4 条只读投影命令，运行时总数为 **40** 条。5.4.6 增加 `janus.ui.refreshrules`（REQ-015），运行时总数为 **41** 条。
 
 ### 模块与读取
 
@@ -82,6 +90,7 @@ if (!result.Success)
 | `janus.ui.actions` | 只读 | 返回 Aurora 动作声明协议 V1 |
 | `janus.ui.data` | 只读 | 按 `view` 返回页面数据（`projects` / `graph` / `history` / `excludes` / `rulestate` / `github`）；`projects` 返回页面行字段 `name`、`isClean`、`subject`。`graph` / `history` / `rulestate` 另需 `name=<项目名>`，由页面从选择通道填入；缺 `name` 时**不取数**，不退化成扫全库 |
 | `janus.ui.graphnode` | 只读 | 将描述化图节点 ID 投影为提交详情 |
+| `janus.ui.refreshrules` | 只读 | 「刷新规则」的落点：按节点重取 `rule-list` 与 `rule-state` 两张表。5.4.6 起两张表同处 `projops` 一页，按页刷会把分支历史与 GitHub 一起带上，而 `aurora.ui.refreshdata` 一次只收一个节点 |
 | `janus.github.login` | 确认写入 | 启动服务器本机 Git Credential Manager 登录流程 |
 | `janus.github.logout` | 确认写入 | 注销指定 GitHub HTTPS 凭据账号 |
 | `janus.github.identity` | 预览/确认写入 | 预览或修改 repository/global Git 提交身份；`apply=true` 触发确认 |
@@ -136,6 +145,11 @@ if (!result.Success)
 - V4.2.0：自动建仓的远端仓库名改为只取项目编号 `YYYY-NNN`（DEC-021）——GitHub 会吃掉仓库名里的非 ASCII 字符（请求 `2025-001-AGV洗轮机` 建出 `2025-001-AGV-`），而库内多数项目是中文名。本地项目目录名不变，远端与本地刻意不一致；需要对外展示的仓库由用户自行在 GitHub 改名。已按旧规则建出的仓库保持原名。
 - V4.3.0：项目操作页第二行支持编辑当前项目名并确认改名；`janus.proj.rename` 同步更新项目展示名与工作树目录，保护仓内主线 `main` 不被误改。
 - V5.3.2：按名字解析单个项目仓只检查库根下该直接子目录，不再为图谱/历史/提交列举全库并对其它仓发 git；分支历史用 `git log --skip/--max-count` 分页，远端标记用当前页 `--no-walk`，不再 `rev-list` 整段 origin。
+- V5.4.6（对布局消费方是破坏性的）：`rules` / `history` / `github` **三个页面 ID 撤销**，
+  三块内容收进 `projops` 的 `switch` 容器 `janus-sections`，由控制面板第四行的轮换选项框
+  经 `janus.section` 通道切换（REQ-015）。新增只读命令 `janus.ui.refreshrules`，
+  运行时命令 40 → 41 条；「刷新 GitHub」改绑 `node=github-rows`。
+  四页顶部的说明段落与面板里的说明控件一并删除。需 Aurora ≥ 1.8.17。
 - V5.4.5：`projops` 重注册为三行控制面板；`rules` / `history` / `github` 三页回归为底部标签组；
   项目表经**选择通道** `janus.project` 驱动它们，图谱与历史因此跟着选中走
   （此前图谱固定画项目清单第一条，不报错，只是一直不对）。需 Aurora ≥ 1.8.16。
