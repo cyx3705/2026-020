@@ -1,12 +1,12 @@
-# HistoryJanus 5.4.7 模块 API
+# HistoryJanus 5.4.8 模块 API
 
 本文件是其他模块和项目消费 HistoryJanus 的唯一人工合同。运行时命令目录是参数、确认策略和可用性的最终真值；历史文档和 Janus 内部类型不构成公开 API。
 
 ## 正式消费入口
 
-- 正式快照：`z-Publish/HistoryJanus-v5.4.7/`。
+- 正式快照：`z-Publish/HistoryJanus-v5.4.8/`。
 - 模块名：`HistoryJanus`。
-- 版本：`5.4.7`。
+- 版本：`5.4.8`。
 - 入口：`HistoryJanus.dll`。
 - 宿主基线：HistoryVulcan `5.1.2` current-host 快照，从 `2026-023-HistoryVulcan/z-Publish` 消费；该快照的 `sourceDirty` 仍由 HistoryVulcan manifest 如实标记。
 - 主题：页面使用 `Aurora.Brush.*` 动态资源，跟随宿主深色/浅色切换，不在模块内维护第二套主题。
@@ -16,7 +16,7 @@
 - UI：启用。
 - MCP：只读投影。
 
-本文件描述活动源的 `5.4.7` 候选合同；只有用户另行授权经宿主 `vulcan.dev.submit` / `finish` 正式发布后，同版本 manifest 和二进制才会提升到
+本文件描述活动源的 `5.4.8` 候选合同；只有用户另行授权经宿主 `vulcan.dev.submit` / `finish` 正式发布后，同版本 manifest 和二进制才会提升到
 `z-Publish/HistoryJanus-vX.Y.Z/`。发布前，z 快照自身的 manifest 与 checksum 仍是正式运行版本的真值。
 其他项目从 `z-Publish/HistoryJanus-vX.Y.Z/docs/` 或 `diana.docs.read domain=janus` 读取已发布 API，从该版本化快照读取 `module.manifest.json`、二进制和
 `SHA256SUMS`；不要从 Janus 的 `bin/obj`、HistoryVulcan 工作树或 Janus 历史文档建立依赖。Diana 不发布。
@@ -145,6 +145,7 @@ if (!result.Success)
 - V4.2.0：自动建仓的远端仓库名改为只取项目编号 `YYYY-NNN`（DEC-021）——GitHub 会吃掉仓库名里的非 ASCII 字符（请求 `2025-001-AGV洗轮机` 建出 `2025-001-AGV-`），而库内多数项目是中文名。本地项目目录名不变，远端与本地刻意不一致；需要对外展示的仓库由用户自行在 GitHub 改名。已按旧规则建出的仓库保持原名。
 - V4.3.0：项目操作页第二行支持编辑当前项目名并确认改名；`janus.proj.rename` 同步更新项目展示名与工作树目录，保护仓内主线 `main` 不被误改。
 - V5.3.2：按名字解析单个项目仓只检查库根下该直接子目录，不再为图谱/历史/提交列举全库并对其它仓发 git；分支历史用 `git log --skip/--max-count` 分页，远端标记用当前页 `--no-walk`，不再 `rev-list` 整段 origin。
+- V5.4.8：同版本重建会被宿主不可变快照拒绝；命令面与页面 ID 相对 5.4.7 不变。
 - V5.4.7：把已在源码里的 Aurora 面板协议 V3（`rows`）连同 z 目录形状
   `HistoryJanus-vX.Y.Z/`、宿主 `vulcan.dev.start/submit/finish` 专属发布，写成当前候选并升版本。
   命令面与页面 ID 相对 5.4.6 不变；活宿主装到 5.4.7 后，旧 5.4.6 槽不再是运行真值。
