@@ -50,32 +50,49 @@ public sealed partial class ProjectOperationsPanelContractTests
     }
 
     /// <summary>
-    /// 四行「左标签 / 中控件 / 右按钮」：项目名+改名、新项目名+新建、提交描述+提交/推送，
-    /// 外加 5.4.6 的子页面切换器。
+    /// 四行：项目名+改名、新项目名+新建、提交描述+提交/推送，外加 5.4.6 的子页面切换器。
+    ///
+    /// **行现在是声明出来的**（Aurora 协议 V3 / REQ-UI-060），不再由 <c>inline</c> 副产。
+    /// 这条因此改判「rows 数组长什么样」——比数按钮上的 inline 标志更接近人看到的东西。
     /// </summary>
     [Fact]
-    public void TheOperationsPanelIsFourRowsOfLabelControlAndButtons()
+    public void TheOperationsPanelIsFourDeclaredRows()
     {
-        var widgets = OperationsPanel().GetProperty("widgets").EnumerateArray().ToList();
+        var rows = OperationsPanel().GetProperty("rows").EnumerateArray().ToList();
+        Assert.Equal(4, rows.Count);
 
-        var textboxes = widgets
-            .Where(w => w.GetProperty("kind").GetString() == "textbox")
-            .Select(w => w.GetProperty("id").GetString())
-            .ToList();
+        // 前三行：一个文本框加一到两个按钮，文本框吃余量。
+        Assert.Equal(
+            new[] { "project-name", "new-project", "commit-message" },
+            rows.Take(3).Select(row => Widgets(row)
+                .Single(w => w.GetProperty("kind").GetString() == "textbox")
+                .GetProperty("id").GetString()).ToArray());
 
-        // 切换器排在**最后**：它管的是自己下面那块内容。
-        // 排在前面的话，人得隔着三行项目操作才把「选项框」和「下面变了」联系起来。
-        Assert.Equal(new[] { "project-name", "new-project", "commit-message", "section" }, textboxes);
-
-        // 每个按钮都跟前一个控件同行，因此前三个文本框正好切出三行。
-        var buttons = widgets.Where(w => w.GetProperty("kind").GetString() == "button").ToList();
-        Assert.Equal(4, buttons.Count);
-        Assert.All(buttons, button => Assert.True(button.GetProperty("inline").GetBoolean()));
+        // 中间那个文本框是可变宽度元素。不写的话可变的会是**最右边**那个按钮，
+        // 于是输入框停在最窄宽度、按钮被拉成一条横杠——版面上一眼看得出，
+        // 但没有任何一处会报错。
+        Assert.All(
+            rows.Take(3),
+            row => Assert.True(
+                Widgets(row).Single(w => w.GetProperty("kind").GetString() == "textbox")
+                    .GetProperty("flex").GetBoolean(),
+                "前三行的文本框必须是可变宽度元素"));
 
         // 第三行两个按钮：提交、推送。
         Assert.Equal(
             new[] { "改名", "新建", "提交当前项目", "推送当前项目" },
-            buttons.Select(b => b.GetProperty("text").GetString()).ToArray());
+            rows.SelectMany(Widgets)
+                .Where(w => w.GetProperty("kind").GetString() == "button")
+                .Select(b => b.GetProperty("text").GetString())
+                .ToArray());
+
+        // 第四行是子页面切换器，均布。它排在**最后**：管的是自己下面那块内容，
+        // 排在前面的话，人得隔着三行项目操作才把「选项框」和「下面变了」联系起来。
+        var last = rows[3];
+        Assert.Equal("even", last.GetProperty("mode").GetString());
+        Assert.Equal(
+            "section",
+            Assert.Single(Widgets(last)).GetProperty("id").GetString());
     }
 
     /// <summary>
@@ -85,7 +102,7 @@ public sealed partial class ProjectOperationsPanelContractTests
     [Fact]
     public void OnlyTheProjectNameBoxFollowsTheSelection()
     {
-        var following = OperationsPanel().GetProperty("widgets").EnumerateArray()
+        var following = PanelWidgets(OperationsPanel())
             .Where(w => w.TryGetProperty("follows", out _))
             .Select(w => (w.GetProperty("id").GetString(), w.GetProperty("follows").GetString()))
             .ToList();
@@ -100,7 +117,7 @@ public sealed partial class ProjectOperationsPanelContractTests
     [Fact]
     public void EveryButtonIsGatedOnHavingASelectedProject()
     {
-        var buttons = OperationsPanel().GetProperty("widgets").EnumerateArray()
+        var buttons = PanelWidgets(OperationsPanel())
             .Where(w => w.GetProperty("kind").GetString() == "button")
             .ToList();
 
@@ -110,17 +127,20 @@ public sealed partial class ProjectOperationsPanelContractTests
     }
 
     /// <summary>
-    /// 面板里不得出现 <c>required</c>。面板的必填校验是**全局**的——
-    /// 任何一个必填框为空，面板上每个按钮都拒绝执行。
-    /// 把「新项目名」标成必填，就会连带把「改名」和「提交」一起锁死，
-    /// 而报出来的错说的是「新项目名为必填项」，看上去与改名毫无关系。
+    /// 面板里不得出现 <c>required</c>。
+    ///
+    /// 这条本仓先立、Aurora 后收：面板的必填校验当年是**全局**的——任何一个必填框为空，
+    /// 面板上每个按钮都拒绝执行，而报出来的错说的是「新项目名为必填项」，
+    /// 看上去与改名毫无关系。这份声明因此一直不敢用它，理由写在注释里。
+    /// Aurora 协议 V3（REQ-UI-060）把这个字段整个退役了，断言留着当**回归闸**：
+    /// 写了不会报错，只会被静默忽略，那正是最难发现的一类不一致。
     /// </summary>
     [Fact]
-    public void NoWidgetIsMarkedRequiredBecauseThatValidationIsPanelWide()
+    public void NoWidgetIsMarkedRequiredBecauseThatFieldIsRetired()
     {
         Assert.DoesNotContain(
-            OperationsPanel().GetProperty("widgets").EnumerateArray(),
-            widget => widget.TryGetProperty("required", out var required) && required.GetBoolean());
+            PanelWidgets(OperationsPanel()),
+            widget => widget.TryGetProperty("required", out _));
     }
 
     /// <summary>
@@ -186,7 +206,7 @@ public sealed partial class ProjectOperationsPanelContractTests
             .Select(action => action.GetProperty("id").GetString()!)
             .ToHashSet(StringComparer.Ordinal);
 
-        var widgets = OperationsPanel().GetProperty("widgets").EnumerateArray().ToList();
+        var widgets = PanelWidgets(OperationsPanel()).ToList();
         var controls = widgets
             .Where(w => w.GetProperty("kind").GetString() == "textbox")
             .Select(w => w.GetProperty("id").GetString()!)
@@ -240,6 +260,22 @@ public sealed partial class ProjectOperationsPanelContractTests
 
         foreach (var retired in new[] { "\"type\":\"button\"", "\"type\":\"input\"", "\"type\":\"select\"" })
             Assert.DoesNotContain(retired, raw, StringComparison.Ordinal);
+
+        // 面板的 orientation 与 inline 随协议 V3 一同退役（Aurora REQ-UI-060）。
+        // 它们不会报错，只会被静默忽略——版面因此悄悄变样，而声明看上去毫无问题。
+        var panels = Description.GetProperty("pages").EnumerateArray()
+            .SelectMany(page => Descend(page.GetProperty("content")))
+            .Where(node => node.TryGetProperty("type", out var type) && type.GetString() == "panel")
+            .ToList();
+
+        Assert.NotEmpty(panels);
+        foreach (var panel in panels)
+        {
+            Assert.False(panel.TryGetProperty("orientation", out _), "面板还写着已退役的 orientation");
+            Assert.DoesNotContain(
+                PanelWidgets(panel),
+                widget => widget.TryGetProperty("inline", out _));
+        }
     }
 
     /// <summary>
@@ -263,7 +299,7 @@ public sealed partial class ProjectOperationsPanelContractTests
 
         var titles = new[] { "Git 文件规则", "分支历史", "GitHub" };
 
-        var selector = OperationsPanel().GetProperty("widgets").EnumerateArray()
+        var selector = PanelWidgets(OperationsPanel())
             .Single(w => w.TryGetProperty("id", out var id) && id.GetString() == "section");
         Assert.Equal("select", selector.GetProperty("mode").GetString());
         Assert.Equal(SectionChannel, selector.GetProperty("channel").GetString());
@@ -371,9 +407,17 @@ public sealed partial class ProjectOperationsPanelContractTests
 
     private static IEnumerable<JsonElement> Buttons(string pageId)
         => Descend(Page(pageId).GetProperty("content"))
-            .Where(node => node.TryGetProperty("widgets", out _))
-            .SelectMany(node => node.GetProperty("widgets").EnumerateArray())
+            .Where(node => node.TryGetProperty("rows", out _))
+            .SelectMany(PanelWidgets)
             .Where(widget => widget.GetProperty("kind").GetString() == "button");
+
+    /// <summary>一个面板里的全部小组件，按行内顺序摊平。</summary>
+    private static List<JsonElement> PanelWidgets(JsonElement panel)
+        => panel.GetProperty("rows").EnumerateArray().SelectMany(Widgets).ToList();
+
+    /// <summary>一行里的小组件。</summary>
+    private static IEnumerable<JsonElement> Widgets(JsonElement row)
+        => row.GetProperty("widgets").EnumerateArray();
 
     private static JsonElement Node(string pageId, string nodeId)
         => Descend(Page(pageId).GetProperty("content"))

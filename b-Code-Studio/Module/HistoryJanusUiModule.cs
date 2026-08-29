@@ -542,79 +542,110 @@ internal static class HistoryJanusUiCommands
                             type = "panel",
                             id = "janus-projops",
                             text = "项目操作",
-                            // 三行，每行「左标签 / 中控件 / 右按钮」；inline 的按钮跟前一个控件同行。
+                            // 四行，行是**声明出来的**（Aurora 协议 V3 / REQ-UI-060），
+                            // 不再是 inline 的副产品。
                             //
-                            // 三个文本框都**不写 required**：面板的必填校验是全局的——
-                            // 任何一个必填框为空，面板上**每个**按钮都拒绝执行。
-                            // 把「新项目名」标成必填，就会连带把「改名」和「提交」一起锁死。
-                            // 参数缺失交给各条指令自己的 Required 去报，报出来的还是那条指令的话。
-                            widgets = new object[]
+                            // 前三行走可变宽度：标签与按钮各自停在自己的最窄宽度，
+                            // 中间那个文本框吃掉全部余量。1.9.2 之前这里是一个三列共享的
+                            // Grid，三行的标签列、控件列、按钮列互相对齐得像张表——
+                            // 而这三行本来就没有对齐的理由，对齐的代价是最长的那个按钮
+                            // 把另外两行的输入框一起挤窄。
+                            //
+                            // 三个文本框都**不写必填**：Aurora 的 required 已在 V3 退役，
+                            // 理由与这里当年不敢用它是同一条——它是全局的，
+                            // 一个空框会把面板上每个按钮一起锁死。
+                            rows = new object[]
                             {
                                 new
                                 {
-                                    kind = "textbox",
-                                    id = "project-name",
-                                    label = "项目名",
-                                    // 跟着选中行走；人可以就地改成新名字，再点「改名」。
-                                    follows = ProjectChannel + ".name",
+                                    widgets = new object[]
+                                    {
+                                        new
+                                        {
+                                            kind = "textbox",
+                                            id = "project-name",
+                                            label = "项目名",
+                                            flex = true,
+                                            // 跟着选中行走；人可以就地改成新名字，再点「改名」。
+                                            follows = ProjectChannel + ".name",
+                                        },
+                                        new
+                                        {
+                                            kind = "button",
+                                            action = "janus.project.rename",
+                                            text = "改名",
+                                            enabledWhen = new { selected = ProjectChannel },
+                                        },
+                                    },
                                 },
                                 new
                                 {
-                                    kind = "button",
-                                    action = "janus.project.rename",
-                                    text = "改名",
-                                    inline = true,
-                                    enabledWhen = new { selected = ProjectChannel },
+                                    widgets = new object[]
+                                    {
+                                        new
+                                        {
+                                            kind = "textbox",
+                                            id = "new-project",
+                                            label = "新项目名",
+                                            flex = true,
+                                        },
+                                        new
+                                        {
+                                            kind = "button",
+                                            action = "janus.project.create",
+                                            text = "新建",
+                                            enabledWhen = new { selected = ProjectChannel },
+                                        },
+                                    },
                                 },
                                 new
                                 {
-                                    kind = "textbox",
-                                    id = "new-project",
-                                    label = "新项目名",
+                                    widgets = new object[]
+                                    {
+                                        new
+                                        {
+                                            kind = "textbox",
+                                            id = "commit-message",
+                                            label = "提交描述",
+                                            flex = true,
+                                        },
+                                        new
+                                        {
+                                            kind = "button",
+                                            action = "janus.project.commit",
+                                            text = "提交当前项目",
+                                            enabledWhen = new { selected = ProjectChannel },
+                                        },
+                                        new
+                                        {
+                                            kind = "button",
+                                            action = "janus.project.push",
+                                            text = "推送当前项目",
+                                            enabledWhen = new { selected = ProjectChannel },
+                                        },
+                                    },
                                 },
-                                new
-                                {
-                                    kind = "button",
-                                    action = "janus.project.create",
-                                    text = "新建",
-                                    inline = true,
-                                    enabledWhen = new { selected = ProjectChannel },
-                                },
-                                new
-                                {
-                                    kind = "textbox",
-                                    id = "commit-message",
-                                    label = "提交描述",
-                                },
-                                new
-                                {
-                                    kind = "button",
-                                    action = "janus.project.commit",
-                                    text = "提交当前项目",
-                                    inline = true,
-                                    enabledWhen = new { selected = ProjectChannel },
-                                },
-                                new
-                                {
-                                    kind = "button",
-                                    action = "janus.project.push",
-                                    text = "推送当前项目",
-                                    inline = true,
-                                    enabledWhen = new { selected = ProjectChannel },
-                                },
-                                // 第四行：子页面切换。放在**最后一行**是因为它管的是自己下面那块——
-                                // 隔着三行项目操作去指挥下面的内容，看的人得先建立这条联系。
+                                // 第四行：子页面切换，**均布**。放在最后一行是因为它管的是
+                                // 自己下面那块——隔着三行项目操作去指挥下面的内容，
+                                // 看的人得先建立这条联系。
                                 //
                                 // 它不写 enabledWhen：切页面与选没选中项目无关，
                                 // 而按选中启停会让"没选项目时连看一眼 GitHub 状态都不行"。
                                 new
                                 {
-                                    kind = "textbox",
-                                    id = "section",
-                                    label = "子页面",
-                                    mode = "select",
-                                    channel = SectionChannel,
-                                    options = new[] { SectionRules, SectionHistory, SectionGitHub },
+                                    mode = "even",
+                                    widgets = new object[]
+                                    {
+                                        new
+                                        {
+                                            kind = "textbox",
+                                            id = "section",
+                                            label = "子页面",
+                                            mode = "select",
+                                            channel = SectionChannel,
+                                            options = new[] { SectionRules, SectionHistory, SectionGitHub },
+                                        },
+                                    },
                                 },
                             },
                         },
@@ -643,14 +674,20 @@ internal static class HistoryJanusUiCommands
                                             type = "panel",
                                             id = "janus-rules-ops",
                                             text = "规则",
-                                            orientation = "horizontal",
-                                            widgets = new object[]
+                                            rows = new object[]
                                             {
                                                 new
                                                 {
-                                                    kind = "button",
-                                                    action = "janus.rules.refresh",
-                                                    text = "刷新规则",
+                                                    mode = "even",
+                                                    widgets = new object[]
+                                                    {
+                                                        new
+                                                        {
+                                                            kind = "button",
+                                                            action = "janus.rules.refresh",
+                                                            text = "刷新规则",
+                                                        },
+                                                    },
                                                 },
                                             },
                                         },
@@ -732,14 +769,20 @@ internal static class HistoryJanusUiCommands
                                             type = "panel",
                                             id = "janus-github-ops",
                                             text = "GitHub",
-                                            orientation = "horizontal",
-                                            widgets = new object[]
+                                            rows = new object[]
                                             {
                                                 new
                                                 {
-                                                    kind = "button",
-                                                    action = "janus.github.refresh",
-                                                    text = "刷新 GitHub",
+                                                    mode = "even",
+                                                    widgets = new object[]
+                                                    {
+                                                        new
+                                                        {
+                                                            kind = "button",
+                                                            action = "janus.github.refresh",
+                                                            text = "刷新 GitHub",
+                                                        },
+                                                    },
                                                 },
                                             },
                                         },
