@@ -3,7 +3,7 @@ param(
     # 宿主快照根。缺省按"本仓与 2026-023-HistoryVulcan 同库根"的相对路径推导；
     # 从 AI 工作树运行时工作树在库根之外，该相对路径必然指空，由调用方显式传入。
     [string]$HistoryVulcanPackageRoot = $env:HISTORYVULCAN_PACKAGE_ROOT,
-    # Diana release.cycle 在候选写入 z-Publish 前传入事务 staging 根；
+    # 宿主 vulcan.dev.submit 在候选写入 z 前可传入事务 staging 根；
     # 独立运行时为空，改为校验 z-Publish 下的当前版本化候选。
     [string]$CandidateRoot
 )
@@ -144,7 +144,7 @@ if ($gitHubRunnerText -notmatch 'timeoutSeconds' -or $smokeRunnerText -notmatch 
     $violations.Add('GitHub diagnostics and Smoke hang-detection timeouts must remain explicit')
 }
 
-# --- 5. 消费合同投影：API 版本、窗口和命令必须与当前源码事实一致 --------------------------
+# --- 5. 消费合同投影：API 版本、页面描述和命令必须与当前源码事实一致 ----------------------
 $apiPath = Join-Path $root 'b-Office\package\模块API.md'
 $apiText = [IO.File]::ReadAllText($apiPath)
 if ($apiText -notmatch "(?m)^# HistoryJanus $([regex]::Escape($sourceVersion)) 模块 API$") {
@@ -160,21 +160,25 @@ if ($apiText -notmatch "(?m)^- 宿主基线：HistoryVulcan ``\d+\.\d+\.\d+`` ")
 }
 
 $uiSource = [IO.File]::ReadAllText((Join-Path $componentRoot 'Module\HistoryJanusUiModule.cs'))
-$sourceWindows = @(
-    [regex]::Matches($uiSource, '(?m)^\s*Id\s*=\s*"(?<id>[a-z][a-z0-9]*)"') |
-        ForEach-Object { $_.Groups['id'].Value }
-)
-if ($sourceWindows.Count -ne 3) {
-    $violations.Add("HistoryJanusUiModule.cs must declare exactly 3 windows; found $($sourceWindows.Count)")
+# 5.4.6：rules / history / github 不再是页面——它们收进 projops 的 switch 容器，
+# 由控制面板里的轮换选项框切换（REQ-015）。页面因此从六个回到三个。
+$pageIds = @('overview', 'graph', 'projops')
+foreach ($pageId in $pageIds) {
+    if ($uiSource -notmatch ('id = "' + [regex]::Escape($pageId) + '"')) {
+        $violations.Add("HistoryJanusUiModule.cs missing descriptive page $pageId")
+    }
+    if ($apiText -notmatch ('(?m)^\|\s*`' + [regex]::Escape($pageId) + '`\s*\|')) {
+        $violations.Add("模块API.md missing descriptive page $pageId")
+    }
 }
-
-$windowSection = [regex]::Match($apiText, '(?ms)^## UI 窗口\s*(?<body>.*?)(?=^##\s|\z)')
-$apiWindows = @(
-    [regex]::Matches($windowSection.Groups['body'].Value, '(?m)^\|\s*`(?<id>[a-z][a-z0-9]*)`\s*\|') |
-        ForEach-Object { $_.Groups['id'].Value }
-)
-if (($sourceWindows -join ',') -cne ($apiWindows -join ',')) {
-    $violations.Add("模块API.md 窗口清单 [$($apiWindows -join ', ')] != 源码 [$($sourceWindows -join ', ')]")
+if ($uiSource -notmatch 'schemaVersion = 1' -or $uiSource -notmatch 'tabTarget = "console"') {
+    $violations.Add('HistoryJanusUiModule.cs must expose Aurora V1 pages and target graph at console')
+}
+foreach ($uiCommand in @('janus.ui.describe', 'janus.ui.actions', 'janus.ui.data', 'janus.ui.graphnode', 'janus.ui.refreshrules')) {
+    if ($uiSource -notmatch ('Name = "' + [regex]::Escape($uiCommand) + '"') -or
+        $apiText -notmatch ('(?m)^\|\s*`' + [regex]::Escape($uiCommand) + '`\s*\|')) {
+        $violations.Add("Aurora UI command missing from source or API contract: $uiCommand")
+    }
 }
 
 $businessCommandNames = @(
@@ -193,15 +197,16 @@ $apiCommandNames = @(
         ForEach-Object { $_.Groups['name'].Value } |
         Sort-Object -Unique
 )
-if ($businessCommandNames.Count -ne 35 -or $expectedRuntimeCommandNames.Count -ne 36) {
-    $violations.Add("运行时命令总数应为 36（35 条业务命令 + janus.status）；源码为 $($businessCommandNames.Count) + 1")
+# 5.4.6 增加 janus.ui.refreshrules（REQ-015）：40 → 41。
+if ($businessCommandNames.Count -ne 40 -or $expectedRuntimeCommandNames.Count -ne 41) {
+    $violations.Add("运行时命令总数应为 41（35 条业务命令 + 5 条 Aurora UI 投影命令 + janus.status）；源码为 $($businessCommandNames.Count) + 1")
 }
 if (($expectedRuntimeCommandNames -join ',') -cne ($apiCommandNames -join ',')) {
     $violations.Add("模块API.md 命令清单与源码不一致：API $($apiCommandNames.Count)，运行时 $($expectedRuntimeCommandNames.Count)")
 }
 
 # --- 6. 候选边界（QA-004 日常化）：事务候选或版本化运行包 + docs/*.md + 独立 history ---
-# Diana 的普通模块发布形状是 z-Publish/HistoryJanus-v<version>/；构建脚本的
+# 普通模块发布形状是 z-Publish/HistoryJanus-v<version>/；构建脚本的
 # -OutputRoot 只接收事务 staging 根，不能据此把正式消费根误判成平铺包。
 $packageRoot = Join-Path $root 'z-Publish'
 $inspectPublishedRoot = [string]::IsNullOrWhiteSpace($CandidateRoot)
@@ -427,4 +432,4 @@ if ($violations.Count -gt 0) {
     $violations | ForEach-Object { Write-Error $_ }
     exit 1
 }
-Write-Host ("Quality gate passed: suppressions 0; hotspots {0}; version {1}; windows {2}; commands {3}; host HistoryVulcan {4}." -f $hotspots.Count, $sourceVersion, $sourceWindows.Count, $expectedRuntimeCommandNames.Count, $minimumVulcan)
+Write-Host ("Quality gate passed: suppressions 0; hotspots {0}; version {1}; pages {2}; commands {3}; host HistoryVulcan {4}." -f $hotspots.Count, $sourceVersion, $pageIds.Count, $expectedRuntimeCommandNames.Count, $minimumVulcan)

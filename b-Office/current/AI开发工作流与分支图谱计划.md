@@ -6,10 +6,10 @@
 
 本计划把 HistoryJanus 从“项目与 Git 治理模块”扩展为 OneHistory 的 AI 开发工作台：
 在 Janus 中统一查看项目集合的 Git 分支图、编号项目主线、AI 工作分支、提交、合并和验证状态，
-并把 Diana 的发布管线接入同一条可审计工作流。
+并把宿主开发管线的状态接到同一条可审计工作流。
 
 本计划只增加 Janus 的编排、图谱和界面能力；各模块仍拥有自己的源码、测试、合同和版本源。
-HistoryDiana 继续作为跨项目发布引擎，不把发布实现复制到 Janus。
+发布与工作区由宿主 `vulcan.dev.*` 拥有；Diana 只提供文档通道，不发布。
 
 ## 目标与非目标
 
@@ -18,13 +18,13 @@ HistoryDiana 继续作为跨项目发布引擎，不把发布实现复制到 Jan
 1. 在项目集合中打开任一编号项目，显示从左到右展开的 Git 有向无环图（DAG）。
 2. 把项目仓内的 `main` 作为主线，把本仓普通分支和 `ai/...` 工作分支显示为平行支线；项目继承关系保留在继承树，不混入提交泳道。
 3. 把提交、分叉、合并、远端引用移动和 Diana 验证证据绑定到具体提交 SHA。
-4. 以 Janus 作为可视入口查看 AI 工作区和验证状态，并通过 Diana 的公开命令请求创建、候选验证、
-   人工审批后的合并编排和清理；工作区与发布状态的写入真值仍由 Diana 拥有。
+4. 以 Janus 作为可视入口查看 AI 工作区和验证状态；创建、提交、并回走宿主 `vulcan.dev.*`。
+   工作区与发布状态的写入真值在宿主，不在 Diana，也不在 Janus。
 5. 保持 Janus、Diana、Vulcan、Mercury、Minerva 的模块边界和独立发布节奏。
 
 ### 非目标
 
-- 不在 Janus 内复制 Diana 的构建、测试、快照提升、文档镜像和回滚实现。
+- 不在 Janus 内复制宿主开发管线的构建、测试、快照提升和回滚实现。
 - 不新建第二套 GitRunner、命令总线、MCP 网关、服务宿主或跨模块 CLR API。
 - 不把 `fetch`、`push` 等引用移动伪装成提交；只有真实 commit 才是提交节点。
 - 不自动批准、强制合并、强制删除或绕过宿主确认。
@@ -40,7 +40,7 @@ HistoryDiana 继续作为跨项目发布引擎，不把发布实现复制到 Jan
 | `BranchTreeService` | 只复用项目继承关系；提交图谱由 `GraphService` 从当前项目仓的 refs 与父边构建 |
 | `BranchHistoryService` / `HistoryRecorder` | 复用分支提交历史、操作留痕和说明覆盖，不另建审计格式 |
 | 宿主 `CommandBus` | 所有页面动作和跨模块调用均通过稳定命令名执行 |
-| HistoryDiana 开发管线 | Diana 拥有 AI 工作区、候选、试用、正式提升和证据；Janus 只请求公开命令并展示结果 |
+| HistoryVulcan 开发管线 | 宿主拥有 AI 工作区、候选、装机和正式并回；Janus 只展示结果 |
 | HistoryVulcan MCP/确认层 | MCP 投影、危险操作确认、模块生命周期和 Web/HTTP 边界继续由宿主拥有 |
 
 Janus 页面不得直接加载 Diana DLL、读取 Diana 私有类型或拼接任意 PowerShell；跨模块只调用公开命令。
@@ -122,15 +122,14 @@ Git 真值是 DAG，不是线性日志。界面可以按时间从左到右布局
 - `janus.aiworktree.cleanup`：仅在合并或明确放弃后请求 Diana 清理 worktree；分支保留/删除规则以 Diana 合同为准。
 
 以上命令仍是后续 Janus 可视编排面的计划，不属于 4.0.0 运行时命令。读取命令优先开放为只读 MCP；
-创建、ready、approve、merge、cleanup 必须保留宿主确认或 MCP 隐藏策略，并且不得绕开 Diana 直接执行
+创建、ready、approve、merge、cleanup 必须保留宿主确认，并且不得绕开宿主开发管线直接执行
 工作区或发布写操作。
 
-### Diana 协作面（等待新管线合同冻结）
+### 宿主协作面
 
-Diana 继续拥有 AI 工作树、候选构建、测试、试用、正式提升、文档镜像和回滚。Janus 只消费 Diana
-正式发布的命令及其结构化结果，不在本计划中替 Diana 预先命名尚未冻结的命令，也不拼接发布脚本。
-具体入口和证据字段必须在 Diana 新测试管线的 `moduleDevelopment` 合同发布后，通过
-`diana.docs.catalog` 和对应正式文档通道读取，再同步到 Janus 技术合同与验证合同。
+工作区、候选构建、测试、装机和正式并回由宿主 `vulcan.dev.start` / `submit` / `finish` 拥有。
+Janus 只展示结果，不复制管线，不调用已删除的 Diana 发布器。跨项目说明书仍经
+`diana.docs.catalog` / `diana.docs.read` 读取。
 
 ## 分阶段实施
 
@@ -163,14 +162,14 @@ Diana 继续拥有 AI 工作树、候选构建、测试、试用、正式提升�
 
 - 实现人工审批、合并前再检查、合并后重新验证和 worktree 清理。
 - 合并冲突、审批过期、验证失败、删除失败都进入可恢复状态，不自动强推或强删。
-- 验收：成功路径与每个失败路径均保留审计记录，合并后主线和 Diana 正式证据 SHA 一致。
+- 验收：成功路径与每个失败路径均保留审计记录，合并后主线和宿主正式候选 SHA 一致。
 
 ## 独立发布与兼容策略
 
-- Janus 先以独立版本交付图谱/工作树能力；Diana 以独立版本交付 release 协作接口。
-- 未升级 Diana 时，Janus 保留只读图谱和 AI worktree 能力，不加载不存在的 release 命令。
-- 未升级 Janus 时，Diana 现有集中发布脚本继续可独立运行。
-- Vulcan 只需提供稳定 CommandBus、确认、MCP 和模块生命周期；不为此功能增加项目专用宿主分支。
+- Janus 先以独立版本交付图谱/工作树展示；工作区与发布由宿主 `vulcan.dev.*` 拥有。
+- 未接入宿主管线时，Janus 保留只读图谱，不假装自己能发布。
+- Diana 不发布；不得再调用已删除的集中发布脚本。
+- Vulcan 只需提供稳定 CommandBus、确认、CLI 开发管线和模块生命周期；不为此功能增加项目专用宿主分支。
 - Mercury、Minerva 不增加对 Janus 内部程序集的引用；需要联动时只消费公开命令或文档中心。
 
 ## 风险与门禁
