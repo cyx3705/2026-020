@@ -3,7 +3,7 @@ param(
     # 宿主快照根。缺省按"本仓与 2026-023-HistoryVulcan 同库根"的相对路径推导；
     # 从 AI 工作树运行时工作树在库根之外，该相对路径必然指空，由调用方显式传入。
     [string]$HistoryVulcanPackageRoot = $env:HISTORYVULCAN_PACKAGE_ROOT,
-    # Diana release.cycle 在候选写入 z-Publish 前传入事务 staging 根；
+    # 宿主 vulcan.dev.submit 在候选写入 z 前可传入事务 staging 根；
     # 独立运行时为空，改为校验 z-Publish 下的当前版本化候选。
     [string]$CandidateRoot
 )
@@ -206,7 +206,7 @@ if (($expectedRuntimeCommandNames -join ',') -cne ($apiCommandNames -join ',')) 
 }
 
 # --- 6. 候选边界（QA-004 日常化）：事务候选或版本化运行包 + docs/*.md + 独立 history ---
-# Diana 的普通模块发布形状是 z-Publish/HistoryJanus-v<version>/；构建脚本的
+# 普通模块发布形状是 z-Publish/HistoryJanus-v<version>/；构建脚本的
 # -OutputRoot 只接收事务 staging 根，不能据此把正式消费根误判成平铺包。
 $packageRoot = Join-Path $root 'z-Publish'
 $inspectPublishedRoot = [string]::IsNullOrWhiteSpace($CandidateRoot)

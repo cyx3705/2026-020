@@ -133,8 +133,13 @@ if ($version -notmatch '^\d+\.\d+\.\d+$' -or $minimumVulcan -notmatch '^\d+\.\d+
     throw 'JanusVersion.props must declare valid HistoryJanus and HistoryVulcan versions'
 }
 if ($usesDefaultPublishRoot) {
-    # 手工候选与质量门禁都以版本化目录为根；Diana 传入 OutputRoot 时仍保持扁平事务目录。
+    # 本地候选与质量门禁都以版本化目录为根。传入 z-Publish 根也改写为版本化目录，
+    # 不再为已删除的 Diana 发布器保留扁平事务目录。
     $OutputRoot = Join-Path $publishRoot "HistoryJanus-v$version"
+}
+elseif ([IO.Path]::GetFullPath($OutputRoot).TrimEnd('\') -eq [IO.Path]::GetFullPath($publishRoot).TrimEnd('\')) {
+    $OutputRoot = Join-Path $publishRoot "HistoryJanus-v$version"
+    $usesDefaultPublishRoot = $true
 }
 
 $sourceManifest = [IO.File]::ReadAllText($moduleManifestSource, [Text.UTF8Encoding]::new($false)) | ConvertFrom-Json

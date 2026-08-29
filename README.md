@@ -11,8 +11,7 @@ HistoryJanus 4.0.0 是运行在 HistoryVulcan 中的项目与 Git 治理模块�
 | `b-Office/current` | 四份核心元文档、指令规范与 AI/图谱专题计划 |
 | `b-Office/package` | 唯一跨项目模块 API 文档 |
 | `b-Office/history` | 只读版本记录，不是现行开发输入 |
-| `z-Publish` | 单槽候选、历史正式包、事务工作区，不入 Git |
-| `z-Publish` | 最新正式模块消费快照 |
+| `z-Publish` | 当前 `HistoryJanus-vX.Y.Z/` 候选与 `history/` 历史包 |
 
 文档入口：[文档中心](./b-Office/文档中心.md)；跨模块入口：[模块 API](./b-Office/package/模块API.md)。
 
@@ -30,15 +29,14 @@ dotnet run --project .\b-Code-Verify\ModuleSmoke\ModuleSmoke.csproj -c Debug -- 
 把抑制标记、千行文件、版本链一致性、Git/规则交互、模块 API 投影、正式树边界和宿主合同七项漂移检查日常化（代码管道化条件 4：
 漂移由检查自动阻断，不积累到发布）。推送到 `2026-020-HistoryJanus` 分支时，GitHub Actions 门禁
 （`.github/workflows/historyjanus-gate.yml`）并行复验锁定还原、双配置构建、Contracts、格式与同一门禁脚本。
-候选验证和正式提升由 HistoryDiana 统一编排。Diana 测试管线调整期间，Janus 不固定外部脚本路径或
-尚未发布的工具参数；入口以 Diana 正式发布的 `moduleDevelopment` 文档和运行时命令目录为准。
+候选验证和正式提升只走宿主 `vulcan.dev.submit` / `finish`。Diana 不发布。
 
 ```powershell
 .\b-Code-Studio\eng\Build-HistoryJanusPackage.ps1
 ```
 
 正式快照含 `HistoryJanus.dll`、XML、module manifest、checksum 与 `docs/` 中已发布 Markdown；
-模块 API 的编辑源是 `b-Office/package`，跨项目读取走 `diana.docs.janus`。正式包不含 Janus EXE
+模块 API 的编辑源是 `b-Office/package`，跨项目读取走 `diana.docs.read domain=janus`。正式包不含 Janus EXE
 或 HistoryVulcan 运行库。Janus 本地构建脚本不测试开机自启动，也不启动 HistoryVulcan。
 
 ## AI 工作边界

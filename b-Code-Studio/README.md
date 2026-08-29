@@ -8,15 +8,15 @@
 - `Module/module.manifest.json`：模块装载 manifest，版本必须与版本源一致。
 - `Module/HistoryJanusUiModule.cs`：宿主上下文、命令与两个页面的组合入口（分支历史内嵌于项目操作）。
 - `StudioBusinessComposition.cs`：项目、Git 规则、历史和诊断命令组合。
-- `eng/Build-HistoryJanusPackage.ps1`：Debug/Release 构建并生成校验候选；正式提升由 Diana 编排。
+- `eng/Build-HistoryJanusPackage.ps1`：本地写出 `z-Publish/HistoryJanus-vX.Y.Z/` 供门禁核对。正式写入 z、提交、装机只走宿主开发管线。
 
 ## 发布边界
 
-`z-Publish` 保存当前模块候选，`z-Publish/history` 只保存被替换的正式包，`z-Publish` 只保存最新正式消费快照。正式包不得包含 EXE、PDB、HistoryVulcan DLL、deps/runtimeconfig 或旧综合 Help。
+`z-Publish/HistoryJanus-vX.Y.Z/` 是当前模块候选；`z-Publish/history` 只保存被替换的正式包。正式包不得包含 EXE、PDB、HistoryVulcan DLL、deps/runtimeconfig 或旧综合 Help。Diana 不发布。
 
 ```powershell
 .\b-Code-Studio\eng\Build-HistoryJanusPackage.ps1
-powershell -NoProfile -ExecutionPolicy Bypass -File ..\2026-019-HistoryDiana\b-Code\Publish-OneHistoryModule.ps1 -Module HistoryJanus -Publish
+HistoryVulcan.Cli.exe --cli vulcan.dev.submit name=HistoryJanus msg=<说明> worktree=<工作区>
 ```
 
 发布和部署不启动 HistoryVulcan，不修改或测试开机自启动。

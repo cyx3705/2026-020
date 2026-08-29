@@ -542,7 +542,7 @@ internal static class HistoryJanusUiCommands
                             type = "panel",
                             id = "janus-projops",
                             text = "项目操作",
-                            // 四行，行是**声明出来的**（Aurora 协议 V3 / REQ-UI-060），
+                            // 四行，行是**声明出来的**（Aurora 面板协议第三版），
                             // 不再是 inline 的副产品。
                             //
                             // 前三行走可变宽度：标签与按钮各自停在自己的最窄宽度，
