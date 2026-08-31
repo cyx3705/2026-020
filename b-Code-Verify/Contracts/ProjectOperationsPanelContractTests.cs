@@ -279,6 +279,28 @@ public sealed partial class ProjectOperationsPanelContractTests
         Assert.Equal("janus.project.action", columns[3].GetProperty("cellAction").GetString());
     }
 
+    [Fact]
+    public void EveryPageCommandArgumentUsesTheAuroraStringMapContract()
+    {
+        var dataSources = Description.GetProperty("pages").EnumerateArray()
+            .SelectMany(page => Descend(page.GetProperty("content")))
+            .Where(node => node.TryGetProperty("dataSource", out _))
+            .Select(node => node.GetProperty("dataSource"));
+
+        foreach (var dataSource in dataSources)
+        {
+            if (!dataSource.TryGetProperty("args", out var args))
+                continue;
+
+            foreach (var argument in args.EnumerateObject())
+            {
+                Assert.Equal(
+                    JsonValueKind.String,
+                    argument.Value.ValueKind);
+            }
+        }
+    }
+
     /// <summary>
     /// 退役的页面节点一个都不许再出现。1.8.14 起 <c>button</c> / <c>input</c> / <c>select</c>
     /// 不再是页面节点，写了会渲染成一块写着原因的牌子——而牌子是能用的界面的反面。

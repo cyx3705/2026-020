@@ -545,10 +545,10 @@ internal static partial class HistoryJanusUiCommands
                         {
                             type = "table",
                             id = "projects",
-                            // 选中行发上界面级通道，左侧「项目操作」页的控制面板按它取值。
-                            // 页内节点 id 到不了对面那一页，通道名可以。
+                            // 选中行发上界面级通道；页内节点 id 到不了另一页，通道名可以。
                             channel = ProjectChannel,
-                            dataSource = new { command = "janus.ui.data", args = new { view = "projects", refresh = true } },
+                            // args 必须是字符串映射；JSON 布尔值会让 Aurora 拒绝整份 Janus 页面描述。
+                            dataSource = new { command = "janus.ui.data", args = new { view = "projects", refresh = "true" } },
                             columns = new object[]
                             {
                                 new { key = "name", title = "项目", width = "220" },
