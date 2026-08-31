@@ -80,7 +80,7 @@ public sealed partial class ProjectOperationsPanelContractTests
 
         // 第三行两个按钮：提交、推送。
         Assert.Equal(
-            new[] { "改名", "新建", "提交当前项目", "推送当前项目" },
+            new[] { "改名", "新建", "提交", "推送" },
             rows.SelectMany(Widgets)
                 .Where(w => w.GetProperty("kind").GetString() == "button")
                 .Select(b => b.GetProperty("text").GetString())
@@ -211,6 +211,12 @@ public sealed partial class ProjectOperationsPanelContractTests
             .Where(w => w.GetProperty("kind").GetString() == "textbox")
             .Select(w => w.GetProperty("id").GetString()!)
             .ToHashSet(StringComparer.Ordinal);
+        var rowFields = Page("overview").GetProperty("content").GetProperty("children")
+            .EnumerateArray().Single(node => node.GetProperty("type").GetString() == "table")
+            .GetProperty("columns").EnumerateArray()
+            .Select(column => column.GetProperty("key").GetString()!)
+            .Append("lifecycleAction")
+            .ToHashSet(StringComparer.Ordinal);
 
         foreach (var button in widgets.Where(w => w.GetProperty("kind").GetString() == "button"))
         {
@@ -241,12 +247,36 @@ public sealed partial class ProjectOperationsPanelContractTests
                     if (name == "node")
                         continue;
 
+                    if (rowFields.Contains(name))
+                        continue;
+
                     Assert.True(
                         controls.Contains(name),
                         $"动作 {action.GetProperty("id").GetString()} 引用了面板里没有的控件 {{{name}}}");
                 }
             }
         }
+    }
+
+    [Fact]
+    public void OverviewUsesTheV55ControlPanelAndClickableColumns()
+    {
+        var children = Page("overview").GetProperty("content").GetProperty("children")
+            .EnumerateArray().ToList();
+        Assert.DoesNotContain(children, node => node.GetProperty("type").GetString() == "text");
+
+        var panel = children.Single(node => node.GetProperty("type").GetString() == "panel");
+        var refresh = Assert.Single(PanelWidgets(panel));
+        Assert.Equal("刷新", refresh.GetProperty("text").GetString());
+        Assert.Equal("refresh-cw", refresh.GetProperty("icon").GetString());
+        Assert.Equal("janus.projects.refresh", refresh.GetProperty("action").GetString());
+
+        var columns = children.Single(node => node.GetProperty("type").GetString() == "table")
+            .GetProperty("columns").EnumerateArray().ToList();
+        Assert.Equal(new[] { "项目", "z 级文件夹", "最近提交", "状态" },
+            columns.Select(column => column.GetProperty("title").GetString()).ToArray());
+        Assert.Equal("janus.project.openmeta", columns[1].GetProperty("cellAction").GetString());
+        Assert.Equal("janus.project.action", columns[3].GetProperty("cellAction").GetString());
     }
 
     /// <summary>

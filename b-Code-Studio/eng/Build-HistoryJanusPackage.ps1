@@ -215,7 +215,22 @@ try {
 
             foreach ($candidate in @(Get-ChildItem -LiteralPath $publishRoot -Directory -Force |
                     Where-Object { $_.Name -match '^HistoryJanus-v\d+\.\d+\.\d+$' -and $_.FullName -ne $OutputRoot })) {
-                Move-Item -LiteralPath $candidate.FullName -Destination $historyRoot
+                $historyCandidate = Join-Path $historyRoot $candidate.Name
+                if (Test-Path -LiteralPath $historyCandidate -PathType Container) {
+                    $currentSums = Join-Path $candidate.FullName 'SHA256SUMS'
+                    $historySums = Join-Path $historyCandidate 'SHA256SUMS'
+                    if (-not (Test-Path -LiteralPath $currentSums -PathType Leaf) -or
+                        -not (Test-Path -LiteralPath $historySums -PathType Leaf) -or
+                        [IO.File]::ReadAllText($currentSums) -cne [IO.File]::ReadAllText($historySums)) {
+                        $datedHistory = Join-Path $historyRoot ("{0}-{1}" -f $candidate.Name, (Get-Date -Format 'yyyyMMddHHmmss'))
+                        Move-Item -LiteralPath $candidate.FullName -Destination $datedHistory
+                        continue
+                    }
+                    Remove-Item -LiteralPath $candidate.FullName -Recurse -Force
+                }
+                else {
+                    Move-Item -LiteralPath $candidate.FullName -Destination $historyRoot
+                }
             }
         }
 

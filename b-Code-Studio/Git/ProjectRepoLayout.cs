@@ -141,6 +141,29 @@ internal static class ProjectRepoLayout
         }
     }
 
+    public static void CopyDirectory(string source, string destination)
+    {
+        if (!Directory.Exists(source))
+            return;
+        Directory.CreateDirectory(destination);
+        var pending = new Stack<(string Source, string Destination)>();
+        pending.Push((source, destination));
+        while (pending.Count > 0)
+        {
+            var current = pending.Pop();
+            foreach (var file in Directory.EnumerateFiles(current.Source))
+                File.Copy(file, Path.Combine(current.Destination, Path.GetFileName(file)), overwrite: true);
+            foreach (var directory in Directory.EnumerateDirectories(current.Source))
+            {
+                if ((File.GetAttributes(directory) & FileAttributes.ReparsePoint) != 0)
+                    continue;
+                var target = Path.Combine(current.Destination, Path.GetFileName(directory));
+                Directory.CreateDirectory(target);
+                pending.Push((directory, target));
+            }
+        }
+    }
+
     public static void DeleteTree(string path)
     {
         if (!Directory.Exists(path))

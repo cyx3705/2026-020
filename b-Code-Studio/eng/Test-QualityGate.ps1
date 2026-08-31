@@ -159,7 +159,9 @@ if ($apiText -notmatch "(?m)^- 宿主基线：HistoryVulcan ``\d+\.\d+\.\d+`` ")
     $violations.Add("模块API.md 未声明宿主基线版本")
 }
 
-$uiSource = [IO.File]::ReadAllText((Join-Path $componentRoot 'Module\HistoryJanusUiModule.cs'))
+$uiSource = (Get-ChildItem -LiteralPath (Join-Path $componentRoot 'Module') -Filter 'HistoryJanusUi*.cs' -File |
+    Sort-Object Name |
+    ForEach-Object { [IO.File]::ReadAllText($_.FullName) }) -join "`n"
 # 5.4.6：rules / history / github 不再是页面——它们收进 projops 的 switch 容器，
 # 由控制面板里的轮换选项框切换（REQ-015）。页面因此从六个回到三个。
 $pageIds = @('overview', 'graph', 'projops')
@@ -174,7 +176,7 @@ foreach ($pageId in $pageIds) {
 if ($uiSource -notmatch 'schemaVersion = 1' -or $uiSource -notmatch 'tabTarget = "console"') {
     $violations.Add('HistoryJanusUiModule.cs must expose Aurora V1 pages and target graph at console')
 }
-foreach ($uiCommand in @('janus.ui.describe', 'janus.ui.actions', 'janus.ui.data', 'janus.ui.graphnode', 'janus.ui.refreshrules')) {
+foreach ($uiCommand in @('janus.ui.describe', 'janus.ui.actions', 'janus.ui.data', 'janus.ui.graphnode', 'janus.ui.refreshrules', 'janus.ui.refreshprojects', 'janus.ui.projectaction', 'janus.ui.openmeta')) {
     if ($uiSource -notmatch ('Name = "' + [regex]::Escape($uiCommand) + '"') -or
         $apiText -notmatch ('(?m)^\|\s*`' + [regex]::Escape($uiCommand) + '`\s*\|')) {
         $violations.Add("Aurora UI command missing from source or API contract: $uiCommand")
@@ -198,8 +200,8 @@ $apiCommandNames = @(
         Sort-Object -Unique
 )
 # 5.4.6 增加 janus.ui.refreshrules（REQ-015）：40 → 41。
-if ($businessCommandNames.Count -ne 40 -or $expectedRuntimeCommandNames.Count -ne 41) {
-    $violations.Add("运行时命令总数应为 41（35 条业务命令 + 5 条 Aurora UI 投影命令 + janus.status）；源码为 $($businessCommandNames.Count) + 1")
+if ($businessCommandNames.Count -ne 47 -or $expectedRuntimeCommandNames.Count -ne 48) {
+    $violations.Add("运行时命令总数应为 48（39 条业务命令 + 8 条 Aurora UI 投影命令 + janus.status）；源码为 $($businessCommandNames.Count) + 1")
 }
 if (($expectedRuntimeCommandNames -join ',') -cne ($apiCommandNames -join ',')) {
     $violations.Add("模块API.md 命令清单与源码不一致：API $($apiCommandNames.Count)，运行时 $($expectedRuntimeCommandNames.Count)")

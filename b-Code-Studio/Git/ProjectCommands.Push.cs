@@ -54,6 +54,8 @@ public static partial class ProjectCommands
             var name = ctx.RequireString("name");
             var report = await projects.PushAsync(name, ResolveTarget(ctx),
                 ctx.GetString("visibility"), ctx.Cancellation);
+            if (report.Success)
+                projects.InvalidateVerification(name);
             history.Record(name, "push",
                 $"target={report.Target}; 子模块={report.Submodules?.Count ?? 0}; " +
                 $"parentPushed={report.ParentPushed}; pointerPending={report.ParentPointerPending}" +
