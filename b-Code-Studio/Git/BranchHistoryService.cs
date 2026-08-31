@@ -1,4 +1,6 @@
 using System.Globalization;
+using System.IO;
+using HistoryJanus.GitHub;
 
 namespace HistoryJanus.Git;
 
@@ -122,13 +124,15 @@ public sealed class BranchHistoryService
     private const string LogFormat = "%H%x1f%h%x1f%an%x1f%aI%x1f%s%x1f%P%x1e";
 
     private readonly ProjectService _projects;
+    private readonly GitHubRemoteHistoryReader _remoteHistory;
     private readonly object _approvalGate = new();
     private readonly Dictionary<string, string> _rollbackApprovals = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, ForcePushApproval> _forcePushApprovals = new(StringComparer.OrdinalIgnoreCase);
 
-    public BranchHistoryService(ProjectService projects)
+    public BranchHistoryService(ProjectService projects, GitHubRemoteHistoryReader? remoteHistory = null)
     {
         _projects = projects;
+        _remoteHistory = remoteHistory ?? new GitHubRemoteHistoryReader();
     }
 
     public async Task<(bool Success, string Message, BranchHistoryReport? Report)> GetHistoryAsync(
@@ -143,6 +147,13 @@ public sealed class BranchHistoryService
         name = name.Trim();
         limit = Math.Clamp(limit, 1, MaxLimit);
         skip = Math.Max(0, skip);
+
+        var lifecycle = _projects.GetLifecycleRecord(name);
+        if (lifecycle?.ArchivedAt != null)
+        {
+            return await _remoteHistory.ReadAsync(lifecycle,
+                Path.Combine(_projects.LibraryRoot, name), limit, skip, cancellation);
+        }
 
         var boundaryResult = await ResolveBoundaryAsync(name, refreshTree, progress, cancellation);
         if (!boundaryResult.Success || boundaryResult.Boundary == null)

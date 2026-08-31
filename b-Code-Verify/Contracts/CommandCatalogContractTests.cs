@@ -21,7 +21,7 @@ public sealed class CommandCatalogContractTests
     // 4.3.0 新增 proj.rename，39 → 40（DEC-022）。
     // 5.0.0 规则面收敛为一份全库共用排除清单：set/batchset/remove/sync/scan/review 六条退役，
     // 新增 excludes 一条，40 → 35（DEC-023）。
-    private const int ExpectedCommandCount = 35;
+    private const int ExpectedCommandCount = 39;
 
     // DEC-012：janus 域内五类；新增类需同级决策。
     private static readonly string[] ExpectedClasses =
@@ -41,6 +41,7 @@ public sealed class CommandCatalogContractTests
         "janus.github.login", "janus.github.logout", "janus.github.identity", "janus.github.remote",
         "janus.proj.delete", "janus.proj.commitall", "janus.proj.pushall", "janus.proj.repair",
         "janus.proj.rename",
+        "janus.proj.archive",
         "janus.history.rollback", "janus.history.reset", "janus.history.forcepush",
         "janus.gitrule.excludes",
     ];

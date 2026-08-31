@@ -45,7 +45,7 @@ public sealed class HistoryJanusUiModule : IModuleContextAware
     }
 }
 
-internal static class HistoryJanusUiCommands
+internal static partial class HistoryJanusUiCommands
 {
     private const string Domain = "janus";
     private const string Owner = "HistoryJanus";
@@ -128,6 +128,13 @@ internal static class HistoryJanusUiCommands
                     Description = "项目名；history / rulestate / graph 需要，由页面按当前选中行填入",
                     Position = 1,
                 },
+                new ParameterSpec
+                {
+                    Name = "refresh",
+                    Description = "projects 视图是否查询远端",
+                    Type = ParamType.Bool,
+                    Default = "false",
+                },
             ],
             Handler = context => LoadDataAsync(context, bus, business),
         }, source);
@@ -163,6 +170,8 @@ internal static class HistoryJanusUiCommands
             HiddenReason = "界面内部协议，对模型无意义",
             Handler = context => RefreshRulesAsync(context, bus),
         }, source);
+
+        RegisterLifecycleCommands(registry, bus, source, business);
     }
 
     /// <summary>
@@ -211,7 +220,9 @@ internal static class HistoryJanusUiCommands
         {
             // 页面初次建树发生在宿主启动路径上；工作树状态由用户刷新时再取，
             // 避免首屏同步触发 45 个仓库的 Git 状态扫描。
-            "projects" => "janus.proj.list status=false",
+            "projects" => context.GetBool("refresh")
+                ? "janus.proj.list status=true refresh=true"
+                : "janus.proj.list status=false",
             // 这三条都按**单个项目**取，项目名由页面从选中通道填入。
             // 不带项目名就不取——全库扫描不该由"打开一个页签"触发。
             "history" => Scoped(context, "janus.history.list", " limit=200"),
@@ -399,7 +410,15 @@ internal static class HistoryJanusUiCommands
         }
     }
 
-    internal sealed record UiProjectRow(string Name, string IsClean, string Subject);
+    internal sealed record UiProjectRow(
+        string Name,
+        string ZFolders,
+        string Subject,
+        string Status,
+        string LifecycleAction,
+        string IsClean,
+        string Archived,
+        string LifecycleState);
 
     internal static class UiProjectProjection
     {
@@ -439,13 +458,23 @@ internal static class HistoryJanusUiCommands
         private static UiProjectRow Project(WorktreeInfo project)
             => new(
                 project.BranchName,
+                project.ZFolderCount switch
+                {
+                    0 => "无目录",
+                    1 => "1 个",
+                    _ => $"{project.ZFolderCount} 个",
+                },
+                project.LastCommitMessage,
+                project.LifecycleAction.Length > 0 ? project.LifecycleAction : "同步",
+                project.LifecycleAction.Length > 0 ? project.LifecycleAction : "同步",
                 project.IsClean switch
                 {
                     true => "干净",
                     false => "有修改",
                     null => "未知",
                 },
-                project.LastCommitMessage);
+                project.IsArchived ? "true" : "false",
+                project.LifecycleState);
     }
 
     private static async Task<CommandResult> LoadGraphNodeAsync(CommandContext context, CommandBus bus)
@@ -491,7 +520,27 @@ internal static class HistoryJanusUiCommands
                     gap = "normal",
                     children = new object[]
                     {
-                        new { type = "text", text = "项目与工作树" },
+                        new
+                        {
+                            type = "panel",
+                            id = "janus-overview-controls",
+                            rows = new object[]
+                            {
+                                new
+                                {
+                                    widgets = new object[]
+                                    {
+                                        new
+                                        {
+                                            kind = "button",
+                                            action = "janus.projects.refresh",
+                                            text = "刷新",
+                                            icon = "refresh-cw",
+                                        },
+                                    },
+                                },
+                            },
+                        },
                         new
                         {
                             type = "table",
@@ -499,12 +548,13 @@ internal static class HistoryJanusUiCommands
                             // 选中行发上界面级通道，左侧「项目操作」页的控制面板按它取值。
                             // 页内节点 id 到不了对面那一页，通道名可以。
                             channel = ProjectChannel,
-                            dataSource = new { command = "janus.ui.data", args = new { view = "projects" } },
+                            dataSource = new { command = "janus.ui.data", args = new { view = "projects", refresh = true } },
                             columns = new object[]
                             {
                                 new { key = "name", title = "项目", width = "220" },
-                                new { key = "isClean", title = "状态", width = "90" },
+                                new { key = "zFolders", title = "z 级文件夹", width = "110", cellAction = "janus.project.openmeta" },
                                 new { key = "subject", title = "最近提交", width = "*" },
+                                new { key = "status", title = "状态", width = "90", cellAction = "janus.project.action" },
                             },
                             view = new { filterable = true, sortable = true, selection = "single" },
                         },
@@ -613,14 +663,14 @@ internal static class HistoryJanusUiCommands
                                         {
                                             kind = "button",
                                             action = "janus.project.commit",
-                                            text = "提交当前项目",
+                                            text = "提交",
                                             enabledWhen = new { selected = ProjectChannel },
                                         },
                                         new
                                         {
                                             kind = "button",
                                             action = "janus.project.push",
-                                            text = "推送当前项目",
+                                            text = "推送",
                                             enabledWhen = new { selected = ProjectChannel },
                                         },
                                     },
@@ -820,6 +870,33 @@ internal static class HistoryJanusUiCommands
             // 「改谁」取选中行、「改成什么」取输入框——两者必须分开取。
             // 跟随框一开始等于选中行，但人改过之后就不再相等；两边都从输入框取的话，
             // 改名只能把项目改成它自己。
+            new
+            {
+                id = "janus.projects.refresh",
+                title = "刷新",
+                command = "janus.ui.refreshprojects",
+                summary = "查询远端并刷新项目总览",
+            },
+            new
+            {
+                id = "janus.project.openmeta",
+                title = "打开 z 级文件夹",
+                command = "janus.ui.openmeta",
+                args = new Dictionary<string, string> { ["name"] = "{name}" },
+                summary = "打开项目直属 z/Z 文件夹",
+            },
+            new
+            {
+                id = "janus.project.action",
+                title = "项目状态操作",
+                command = "janus.ui.projectaction",
+                args = new Dictionary<string, string>
+                {
+                    ["name"] = "{name}",
+                    ["action"] = "{lifecycleAction}",
+                },
+                summary = "按重新校验后的项目状态执行提交、推送、同步、归档或拉取",
+            },
             new
             {
                 id = "janus.project.rename",

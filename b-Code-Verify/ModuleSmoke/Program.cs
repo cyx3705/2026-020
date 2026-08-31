@@ -47,8 +47,8 @@ if (host.Modules.Count != 1)
 var manifestPath = Path.Combine(moduleDirectory, "module.manifest.json");
 using var manifest = JsonDocument.Parse(File.ReadAllText(manifestPath));
 var expectedVersion = manifest.RootElement.GetProperty("version").GetString();
-// 5.4.6 增加 janus.ui.refreshrules（REQ-015）：40 → 41。
-const int expectedRuntimeCommandCount = 41;
+// 5.5.0：39 条业务命令 + 8 条 UI 命令 + janus.status = 48。
+const int expectedRuntimeCommandCount = 48;
 
 var meta = host.Modules[0];
 if (!meta.ModuleName.Equals("HistoryJanus", StringComparison.Ordinal)
@@ -67,6 +67,16 @@ foreach (var name in new[] { "janus.ui.describe", "janus.ui.actions", "janus.ui.
         || !descriptor.HiddenReason!.Contains("界面", StringComparison.Ordinal))
     {
         throw new InvalidOperationException($"descriptive UI command contract is invalid: {name}");
+    }
+}
+
+foreach (var name in new[] { "janus.ui.refreshprojects", "janus.ui.projectaction", "janus.ui.openmeta" })
+{
+    if (!registry.TryGet(name, out var descriptor)
+        || descriptor.Readonly
+        || !descriptor.HiddenReason!.Contains("界面", StringComparison.Ordinal))
+    {
+        throw new InvalidOperationException($"local UI command contract is invalid: {name}");
     }
 }
 
@@ -100,6 +110,9 @@ foreach (var action in new[]
              "janus.project.create",
              "janus.project.commit",
              "janus.project.push",
+             "janus.projects.refresh",
+             "janus.project.openmeta",
+             "janus.project.action",
              "janus.graph.node.detail",
          })
 {

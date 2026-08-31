@@ -99,6 +99,10 @@ public static partial class ProjectCommands
         registry.Register(BuildNote(projects, history), source);
         registry.Register(BuildMetaList(projects), source);
         registry.Register(BuildMetaOpen(projects), source);
+        registry.Register(BuildRefresh(projects), source);
+        registry.Register(BuildSync(projects, history), source);
+        registry.Register(BuildArchive(projects, history), source);
+        registry.Register(BuildPull(projects, history), source);
     }
 
     // ---------------------------------------------------------------- janus.proj.list
@@ -125,6 +129,13 @@ public static partial class ProjectCommands
                 Type = ParamType.Bool,
                 Default = "false",
             },
+            new ParameterSpec
+            {
+                Name = "refresh",
+                Description = "true 时 fetch 远端并投影完整生命周期状态",
+                Type = ParamType.Bool,
+                Default = "false",
+            },
         ],
         Handler = async ctx =>
         {
@@ -141,7 +152,10 @@ public static partial class ProjectCommands
             }
 
             var includeStatus = ctx.GetBool("status");
-            if (includeStatus)
+            var refresh = ctx.GetBool("refresh");
+            if (refresh)
+                worktrees = await projects.ReadLifecycleStatusesAsync(worktrees, true, ctx.Cancellation);
+            else if (includeStatus)
                 worktrees = await projects.ReadWorktreeStatusesAsync(worktrees, ctx.Cancellation);
 
             if (worktrees.Count == 0)

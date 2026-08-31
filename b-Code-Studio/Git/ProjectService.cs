@@ -12,7 +12,13 @@ public sealed record WorktreeInfo(
     string LastCommitMessage = "",
     bool? IsClean = null,
     string WorktreeStatusMessage = "",
-    string HeadBranch = "")
+    string HeadBranch = "",
+    bool IsArchived = false,
+    int ZFolderCount = 0,
+    IReadOnlyList<string>? ZFolders = null,
+    string LifecycleState = "",
+    string LifecycleAction = "",
+    string LifecycleMessage = "")
 {
     /// <summary>项目目录名（与已登记项目名相同）。</summary>
     public string FolderName
@@ -78,6 +84,7 @@ public sealed partial class ProjectService
     private readonly GitlinkService _gitlinks = new();
     private readonly BranchTreeService _tree;
     private readonly Func<string, bool> _confirm;
+    private readonly ProjectLifecycleStore _lifecycle;
 
     /// <summary>
     /// GitHub 的单文件硬限，超过即被服务端拒收。这不是可配置偏好，所以不进设置：
@@ -112,6 +119,7 @@ public sealed partial class ProjectService
         _settings = settings;
         _confirm = confirm;
         _dataDir = dataDir;
+        _lifecycle = new ProjectLifecycleStore(dataDir);
         _tree = new BranchTreeService(() => LibraryRoot, () => BaseBranch, ListWorktreesAsync, dataDir);
     }
 
@@ -209,9 +217,24 @@ public sealed partial class ProjectService
             list.Add(new WorktreeInfo(name, dir));
         }
 
+        foreach (var record in _lifecycle.All().Where(item => item.ArchivedAt != null))
+        {
+            var path = Path.Combine(LibraryRoot, record.ProjectName);
+            if (list.Any(item => item.BranchName.Equals(record.ProjectName, StringComparison.OrdinalIgnoreCase))
+                || !Directory.Exists(path))
+                continue;
+            var zFolders = ReadZFolderNames(path);
+            list.Add(new WorktreeInfo(record.ProjectName, path, IsArchived: true,
+                ZFolderCount: zFolders.Count, ZFolders: zFolders,
+                LifecycleState: ProjectLifecycleState.Archived.ToString(),
+                LifecycleAction: "拉取", LifecycleMessage: "项目已归档"));
+        }
+
         list.Sort((a, b) => string.Compare(a.BranchName, b.BranchName, StringComparison.OrdinalIgnoreCase));
         var enriched = await Task.WhenAll(list.Select(async worktree =>
         {
+            if (worktree.IsArchived)
+                return worktree;
             var head = await GitRunner.RunAsync(worktree.WorktreePath, ["rev-parse", "--abbrev-ref", "HEAD"]);
             var log = await GitRunner.RunAsync(worktree.WorktreePath, ["log", "-1", "--format=%cI%x1f%s"]);
             var time = "";
@@ -228,6 +251,8 @@ public sealed partial class ProjectService
                 HeadBranch = head.Success ? head.Output.Trim() : "",
                 LastCommitTime = time,
                 LastCommitMessage = subject,
+                ZFolderCount = ReadZFolderNames(worktree.WorktreePath).Count,
+                ZFolders = ReadZFolderNames(worktree.WorktreePath),
             };
         }));
         return (new GitResult(0, ""), [.. enriched]);
@@ -385,9 +410,14 @@ public sealed partial class ProjectService
         if (!TryValidateWorktreeRoot(out var rootError))
             return (false, $"库根不安全: {rootError}");
 
+        var lifecycle = _lifecycle.Get(currentName);
+        var archived = lifecycle?.ArchivedAt != null;
         var (resolved, message, worktree) = await ResolveWorktreeAsync(currentName);
-        if (!resolved || worktree == null)
+        if ((!resolved || worktree == null) && !archived)
             return (false, message);
+        var sourcePath = archived ? Path.Combine(LibraryRoot, currentName) : worktree!.WorktreePath;
+        if (!Directory.Exists(sourcePath))
+            return (false, $"项目目录不存在: {sourcePath}");
 
         var targetPath = Path.Combine(LibraryRoot, newName);
         if (!TryValidateManagedDirectChild(targetPath, rejectReparsePoint: true, out var targetError))
@@ -398,7 +428,7 @@ public sealed partial class ProjectService
         progress?.Report($"改名项目 {currentName} -> {newName} ...");
         try
         {
-            Directory.Move(worktree.WorktreePath, targetPath);
+            Directory.Move(sourcePath, targetPath);
         }
         catch (IOException ex)
         {
@@ -410,6 +440,7 @@ public sealed partial class ProjectService
         }
 
         _tree.InvalidateCache();
+        _lifecycle.Rename(currentName, newName);
         return (true, $"项目已改名: {currentName} -> {newName}");
     }
 
@@ -436,6 +467,8 @@ public sealed partial class ProjectService
         {
             return (false, $"删除项目目录失败: {ex.Message}");
         }
+
+        _lifecycle.Remove(name);
 
         return (true, $"项目目录已删除: {targetPath}");
     }
