@@ -410,73 +410,6 @@ internal static partial class HistoryJanusUiCommands
         }
     }
 
-    internal sealed record UiProjectRow(
-        string Name,
-        string ZFolders,
-        string Subject,
-        string Status,
-        string LifecycleAction,
-        string IsClean,
-        string Archived,
-        string LifecycleState);
-
-    internal static class UiProjectProjection
-    {
-        private static readonly JsonSerializerOptions Options = new()
-        {
-            PropertyNameCaseInsensitive = true,
-            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        };
-
-        public static string Serialize(object? data)
-            => JsonSerializer.Serialize(Read(data), Options);
-
-        public static IReadOnlyList<UiProjectRow> Read(object? data)
-        {
-            if (data == null)
-                return [];
-
-            var json = data switch
-            {
-                string text => text,
-                JsonElement element => element.GetRawText(),
-                JsonDocument document => document.RootElement.GetRawText(),
-                _ => JsonSerializer.Serialize(data, Options),
-            };
-
-            try
-            {
-                var projects = JsonSerializer.Deserialize<List<WorktreeInfo>>(json, Options) ?? [];
-                return projects.Select(Project).ToList();
-            }
-            catch (JsonException ex)
-            {
-                throw new InvalidOperationException("Janus 项目数据不是合法 WorktreeInfo 数组。", ex);
-            }
-        }
-
-        private static UiProjectRow Project(WorktreeInfo project)
-            => new(
-                project.BranchName,
-                project.ZFolderCount switch
-                {
-                    0 => "无目录",
-                    1 => "1 个",
-                    _ => $"{project.ZFolderCount} 个",
-                },
-                project.LastCommitMessage,
-                project.LifecycleAction.Length > 0 ? project.LifecycleAction : "同步",
-                project.LifecycleAction.Length > 0 ? project.LifecycleAction : "同步",
-                project.IsClean switch
-                {
-                    true => "干净",
-                    false => "有修改",
-                    null => "未知",
-                },
-                project.IsArchived ? "true" : "false",
-                project.LifecycleState);
-    }
-
     private static async Task<CommandResult> LoadGraphNodeAsync(CommandContext context, CommandBus bus)
     {
         var node = context.GetString("node")?.Trim();
@@ -553,8 +486,9 @@ internal static partial class HistoryJanusUiCommands
                             {
                                 new { key = "name", title = "项目", width = "220" },
                                 new { key = "zFolders", title = "z 级文件夹", width = "110", cellAction = "janus.project.openmeta" },
+                                new { key = "status", title = "状态", width = "72" },
+                                new { key = "statusSymbol", title = "动作", width = "48", cellAction = "janus.project.action" },
                                 new { key = "subject", title = "最近提交", width = "*" },
-                                new { key = "status", title = "状态", width = "90", cellAction = "janus.project.action" },
                             },
                             view = new { filterable = true, sortable = true, selection = "single" },
                         },

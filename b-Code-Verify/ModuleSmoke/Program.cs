@@ -47,7 +47,7 @@ if (host.Modules.Count != 1)
 var manifestPath = Path.Combine(moduleDirectory, "module.manifest.json");
 using var manifest = JsonDocument.Parse(File.ReadAllText(manifestPath));
 var expectedVersion = manifest.RootElement.GetProperty("version").GetString();
-// 5.5.0：39 条业务命令 + 8 条 UI 命令 + janus.status = 48。
+// 5.5.1：39 条业务命令 + 8 条 UI 命令 + janus.status = 48。
 const int expectedRuntimeCommandCount = 48;
 
 var meta = host.Modules[0];

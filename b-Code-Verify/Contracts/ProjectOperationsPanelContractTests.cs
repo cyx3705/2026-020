@@ -273,10 +273,13 @@ public sealed partial class ProjectOperationsPanelContractTests
 
         var columns = children.Single(node => node.GetProperty("type").GetString() == "table")
             .GetProperty("columns").EnumerateArray().ToList();
-        Assert.Equal(new[] { "项目", "z 级文件夹", "最近提交", "状态" },
+        Assert.Equal(new[] { "项目", "z 级文件夹", "状态", "动作", "最近提交" },
             columns.Select(column => column.GetProperty("title").GetString()).ToArray());
         Assert.Equal("janus.project.openmeta", columns[1].GetProperty("cellAction").GetString());
+        Assert.False(columns[2].TryGetProperty("cellAction", out _));
         Assert.Equal("janus.project.action", columns[3].GetProperty("cellAction").GetString());
+        Assert.Equal("statusSymbol", columns[3].GetProperty("key").GetString());
+        Assert.Equal("48", columns[3].GetProperty("width").GetString());
     }
 
     [Fact]

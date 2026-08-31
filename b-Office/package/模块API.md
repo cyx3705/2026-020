@@ -1,12 +1,12 @@
-# HistoryJanus 5.5.0 模块 API
+# HistoryJanus 5.5.1 模块 API
 
 本文件是其他模块和项目消费 HistoryJanus 的唯一人工合同。运行时命令目录是参数、确认策略和可用性的最终真值；历史文档和 Janus 内部类型不构成公开 API。
 
 ## 正式消费入口
 
-- 正式快照：`z-Publish/HistoryJanus-v5.5.0/`。
+- 正式快照：`z-Publish/HistoryJanus-v5.5.1/`。
 - 模块名：`HistoryJanus`。
-- 版本：`5.5.0`。
+- 版本：`5.5.1`。
 - 入口：`HistoryJanus.dll`。
 - 宿主基线：HistoryVulcan `5.1.2` current-host 快照，从 `2026-023-HistoryVulcan/z-Publish` 消费；该快照的 `sourceDirty` 仍由 HistoryVulcan manifest 如实标记。
 - 主题：页面使用 `Aurora.Brush.*` 动态资源，跟随宿主深色/浅色切换，不在模块内维护第二套主题。
@@ -16,7 +16,7 @@
 - UI：启用。
 - MCP：只读投影。
 
-本文件描述活动源的 `5.5.0` 候选合同；只有用户另行授权经宿主 `vulcan.dev.submit` / `finish` 正式发布后，同版本 manifest 和二进制才会提升到
+本文件描述活动源的 `5.5.1` 候选合同；只有用户另行授权经宿主 `vulcan.dev.submit` / `finish` 正式发布后，同版本 manifest 和二进制才会提升到
 `z-Publish/HistoryJanus-vX.Y.Z/`。发布前，z 快照自身的 manifest 与 checksum 仍是正式运行版本的真值。
 其他项目从 `z-Publish/HistoryJanus-vX.Y.Z/docs/` 或 `diana.docs.read domain=janus` 读取已发布 API，从该版本化快照读取 `module.manifest.json`、二进制和
 `SHA256SUMS`；不要从 Janus 的 `bin/obj`、HistoryVulcan 工作树或 Janus 历史文档建立依赖。Diana 不发布。
@@ -37,7 +37,7 @@ if (!result.Success)
 
 | ID | 标题 | 默认位置 | 用途 |
 | --- | --- | --- | --- |
-| `overview` | 项目总览 | 中央工作区 | “刷新”控制面板及“项目 / z 级文件夹 / 最近提交 / 状态”四列表格 |
+| `overview` | 项目总览 | 中央工作区 | “刷新”控制面板及“项目 / z 级文件夹 / 状态 / 动作 / 最近提交”五列表格；状态为普通文本，动作列为黄色可点击符号 |
 | `graph` | 分支图谱 | 并入控制台标签组 | 页面描述中的 `swimlane` 提交 DAG；以 `tabTarget=console` 与宿主控制台同组 |
 | `projops` | 项目操作 | 左侧（宽度占比 `0.38`） | 一块四行控制面板（项目名/改名、新项目名/新建、提交描述/提交/推送、子页面切换），下接一个 `switch` 容器 |
 
@@ -92,7 +92,7 @@ if (!result.Success)
 | `janus.graph.node` | 只读 | 读取单个提交的父边、文件差异摘要；证据槽本阶段为空 |
 | `janus.ui.describe` | 只读 | 返回 Aurora 页面描述协议 V1 |
 | `janus.ui.actions` | 只读 | 返回 Aurora 动作声明协议 V1 |
-| `janus.ui.data` | 只读 | 按 `view` 返回页面数据；`projects` 保留 `name`、`isClean`、`subject` 并增加 `zFolders`、`status`、`lifecycleAction`、`archived`、`lifecycleState`。`graph` / `history` / `rulestate` 缺 `name` 时不取数 |
+| `janus.ui.data` | 只读 | 按 `view` 返回页面数据；`projects` 保留 `name`、`isClean`、`subject` 并增加 `zFolders`、`status`、`statusSymbol`、`lifecycleAction`、`archived`、`lifecycleState`。单个 z/Z 文件夹的 `zFolders` 为真实名称；状态符号固定映射提交 `●`、推送 `↑`、同步 `↔`、归档 `□`、拉取 `↓`。`graph` / `history` / `rulestate` 缺 `name` 时不取数 |
 | `janus.ui.graphnode` | 只读 | 将描述化图节点 ID 投影为提交详情 |
 | `janus.ui.refreshrules` | 只读 | 「刷新规则」的落点：按节点重取 `rule-list` 与 `rule-state` 两张表。5.4.6 起两张表同处 `projops` 一页，按页刷会把分支历史与 GitHub 一起带上，而 `aurora.ui.refreshdata` 一次只收一个节点 |
 | `janus.ui.refreshprojects` | 本机 UI | 重新查询远端并刷新项目表 |
@@ -134,6 +134,7 @@ if (!result.Success)
 
 ## 历史备注
 
+- V5.5.1：`projects` 数据行新增内部字段 `statusSymbol`；单个 z/Z 文件夹的 `zFolders` 从 `"1 个"` 改为真实目录名。状态文字改为普通文本，相邻动作列以固定黄色符号触发原 `janus.project.action`；命令、确认策略和页面 ID 不变。
 - V3.1.0：模块由 `OneHistoryStudio` 改名为 `HistoryJanus`。
 - V3.3.2：正式目录改名为 `z-Publish`，API 文档位于 `docs/`。
 - V3.4.0：GitHubConnection 并入为 `github` 页面与 `github.*` 命令。
