@@ -1,12 +1,12 @@
-# HistoryJanus 5.5.1 模块 API
+﻿# HistoryJanus 5.6.0 模块 API
 
 本文件是其他模块和项目消费 HistoryJanus 的唯一人工合同。运行时命令目录是参数、确认策略和可用性的最终真值；历史文档和 Janus 内部类型不构成公开 API。
 
 ## 正式消费入口
 
-- 正式快照：`z-Publish/HistoryJanus-v5.5.1/`。
+- 正式快照：`z-Publish/HistoryJanus-v5.6.0/`。
 - 模块名：`HistoryJanus`。
-- 版本：`5.5.1`。
+- 版本：`5.6.0`。
 - 入口：`HistoryJanus.dll`。
 - 宿主基线：HistoryVulcan `5.1.2` current-host 快照，从 `2026-023-HistoryVulcan/z-Publish` 消费；该快照的 `sourceDirty` 仍由 HistoryVulcan manifest 如实标记。
 - 主题：页面使用 `Aurora.Brush.*` 动态资源，跟随宿主深色/浅色切换，不在模块内维护第二套主题。
@@ -16,7 +16,7 @@
 - UI：启用。
 - MCP：只读投影。
 
-本文件描述活动源的 `5.5.1` 候选合同；只有用户另行授权经宿主 `vulcan.dev.submit` / `finish` 正式发布后，同版本 manifest 和二进制才会提升到
+本文件描述活动源的 `5.6.0` 候选合同；只有用户另行授权经宿主 `vulcan.dev.submit` / `finish` 正式发布后，同版本 manifest 和二进制才会提升到
 `z-Publish/HistoryJanus-vX.Y.Z/`。发布前，z 快照自身的 manifest 与 checksum 仍是正式运行版本的真值。
 其他项目从 `z-Publish/HistoryJanus-vX.Y.Z/docs/` 或 `diana.docs.read domain=janus` 读取已发布 API，从该版本化快照读取 `module.manifest.json`、二进制和
 `SHA256SUMS`；不要从 Janus 的 `bin/obj`、HistoryVulcan 工作树或 Janus 历史文档建立依赖。Diana 不发布。
@@ -134,6 +134,12 @@ if (!result.Success)
 
 ## 历史备注
 
+- V5.6.0：`overview` 页标题改为 `Janus`；`janus.ui.data` 增加 `query` / `year` 两个参数与
+  `view=years` 候选视图（返回只有 `value` 一列的行集，首项 `全部`）。搜索匹配项目名或任一
+  z 级文件夹名，年份匹配项目名开头四位；总览与分支历史一律最新优先；分支历史列去掉
+  `sha` 与 `author`（**字段仍在行里**，只是不再有列）。`view=projects` 的取数不再接受
+  页面侧的 `refresh`——查询远端由 `janus.projects.refresh` 动作发起。命令名、确认策略与
+  页面 ID 不变。中央区落位语义由 Aurora 1.18.0 提供（工具页组），Janus 声明不变。
 - V5.5.1：`projects` 数据行新增内部字段 `statusSymbol`；单个 z/Z 文件夹的 `zFolders` 从 `"1 个"` 改为真实目录名。状态文字改为普通文本，相邻动作列以固定黄色符号触发原 `janus.project.action`；命令、确认策略和页面 ID 不变。
 - V3.1.0：模块由 `OneHistoryStudio` 改名为 `HistoryJanus`。
 - V3.3.2：正式目录改名为 `z-Publish`，API 文档位于 `docs/`。

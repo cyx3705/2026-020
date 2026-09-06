@@ -1,4 +1,4 @@
-using System.Xml.Linq;
+﻿using System.Xml.Linq;
 using HistoryVulcan.Core;
 using HistoryVulcan.Core.Commands;
 using HistoryJanus.Git;
@@ -202,12 +202,21 @@ internal static class BranchGraphSuite
 
     private static void VerifyGraphLayoutV1()
     {
-        var module = File.ReadAllText(Path.Combine(RepoRoot, "Module", "HistoryJanusUiModule.cs"));
+        // 页面描述与取数已拆成两个文件（HistoryJanusUiPages.cs / HistoryJanusUiModule.cs），
+        // 本条要断言的东西横跨两边，因此读的是「模块目录里的全部源码」，不是某一个文件名。
+        var module = string.Concat(Directory
+            .EnumerateFiles(Path.Combine(RepoRoot, "Module"), "*.cs", SearchOption.TopDirectoryOnly)
+            .OrderBy(path => path, StringComparer.Ordinal)
+            .Select(File.ReadAllText));
         Contains(module, "schemaVersion = 1", "graph page uses Aurora page protocol V1");
         Contains(module, "type = \"swimlane\"", "graph page uses Aurora swimlane component");
         Contains(module, "view == \"graph\"", "graph data remains available through janus.ui.data");
-        Contains(module, "dataSource = new { command = \"janus.ui.data\"",
-            "graph and overview delegate component data loading to Aurora 1.8.4");
+        // 取数一律经 Aurora 的 dataSource 绑定，不在页面里另起一条路。
+        // 断言拆成两半：总览的 dataSource 自带筛选参数，已经不是单行写法了。
+        Contains(module, "dataSource = new",
+            "graph and overview delegate component data loading to Aurora");
+        Contains(module, "command = \"janus.ui.data\"",
+            "component data sources point at janus.ui.data");
         Contains(module, "tabTarget = \"console\"", "graph joins the host console tab group");
     }
 
