@@ -1,6 +1,6 @@
-# HistoryJanus
+﻿# HistoryJanus
 
-HistoryJanus 5.5.1 是运行在 HistoryVulcan 中的项目与 Git 治理模块。HistoryVulcan 独立负责 Shell、命令总线、模块生命周期、ServiceHost 和 MCP/Web 基础设施；Janus 只注册业务命令和页面。
+HistoryJanus 5.6.0 是运行在 HistoryVulcan 中的项目与 Git 治理模块。HistoryVulcan 独立负责 Shell、命令总线、模块生命周期、ServiceHost 和 MCP/Web 基础设施；Janus 只注册业务命令和页面。
 
 ## 结构
 
@@ -22,7 +22,7 @@ dotnet restore .\HistoryJanus.sln --locked-mode -p:NuGetAudit=false
 dotnet build .\HistoryJanus.sln -c Debug --no-restore -p:NuGetAudit=false
 dotnet test .\b-Code-Verify\Contracts\Contracts.csproj -c Debug --no-build --no-restore -p:NuGetAudit=false
 .\b-Code-Studio\eng\Test-QualityGate.ps1
-dotnet run --project .\b-Code-Verify\ModuleSmoke\ModuleSmoke.csproj -c Debug -- .\b-Code-Studio\Module\bin\Debug\net8.0-windows
+dotnet run --project .\b-Code-Verify\ModuleSmoke\ModuleSmoke.csproj -c Release -- .\z-Publish
 ```
 
 日常开发执行质量门禁、相关 Contracts、Debug 构建、定向功能 Smoke 与 ModuleSmoke；`Test-QualityGate.ps1`

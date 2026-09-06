@@ -1,4 +1,4 @@
-{
+﻿{
   "schemaVersion": 1,
   "template": {
     "isTemplate": false,
@@ -15,7 +15,7 @@
       "appshell-module"
     ],
     "status": "active",
-    "version": "5.5.1",
+    "version": "5.6.0",
     "branch": "main"
   },
   "paths": {
@@ -69,7 +69,7 @@
   },
   "externalDependencies": [
     "HistoryVulcan >= 5.1.2 host snapshot from ../2026-023-HistoryVulcan/z-Publish/host",
-    "HistoryAurora >= 1.13.0 at runtime: table cellAction, choice dialog and panel refresh-cw icon; not a compile-time reference",
+    "HistoryAurora >= 1.18.0 at runtime: center pages dock into the center tool pane so they can be dragged, plus panel optionsSource, table cellAction, choice dialog and refresh-cw icon; not a compile-time reference",
     ".NET 8 SDK and Windows Desktop Runtime",
     "Git command-line client"
   ],

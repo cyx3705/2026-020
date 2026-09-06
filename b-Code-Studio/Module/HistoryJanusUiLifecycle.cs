@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Text.Json;
 using HistoryJanus.Git;
 using HistoryVulcan.Core.Commands;
@@ -20,8 +20,15 @@ internal static partial class HistoryJanusUiCommands
             CommandClass = "ui",
             Summary = "查询远端并重取项目总览",
             HiddenReason = "本机界面动作，不进入 MCP",
-            Handler = context => bus.ExecuteAsync(
-                "aurora.ui.refreshdata node=projects", context.Source, context.Cancellation),
+            // 先立「这一次要付全价」的旗，再让表格重取。
+            // 表格的取数参数里不能写 refresh：那一格现在由搜索词与年份占着，
+            // 而它们一变就重取——每敲一个字符 fetch 一轮远端是不能接受的。
+            Handler = context =>
+            {
+                RequestProjectRefresh();
+                return bus.ExecuteAsync(
+                    "aurora.ui.refreshdata node=projects", context.Source, context.Cancellation);
+            },
         }, source);
         registry.Register(new CommandDescriptor
         {

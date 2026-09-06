@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using static HistoryJanus.Smoke.SmokeKit;
 
 namespace HistoryJanus.Smoke.Suites;
@@ -32,7 +32,7 @@ internal static class TestArchitectureSuite
         foreach (var command in new[] { "janus.ui.describe", "janus.ui.actions", "janus.ui.data" })
             Contains(module, command, $"descriptive frontend command is registered: {command}");
 
-        Equal("5.5.1", manifest.GetProperty("version").GetString(), "module manifest is 5.5.1");
+        Equal("5.6.0", manifest.GetProperty("version").GetString(), "module manifest is 5.6.0");
         True(manifest.GetProperty("ui").GetBoolean(), "module advertises a frontend surface");
         True(File.Exists(Path.Combine(RepoRoot, "Module", "HistoryJanus.Module.csproj")),
             "module project remains the package source");
