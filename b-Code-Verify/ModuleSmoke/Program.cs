@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Text.Json;
 using HistoryVulcan.Core;
 using HistoryVulcan.Core.Commands;
@@ -7,16 +7,18 @@ using HistoryVulcan.Core.Modules;
 using HistoryVulcan.Core.Storage;
 using HistoryVulcan.Services.Modules;
 
+// 5.7.0：同时接受运行区根目录、单包和管线传入的 bin 输出。
+// bin 经 SmokePackageRoot 包装为带校验和的隔离运行区，仍走正式发现器与装载器。
 if (args.Length != 1)
 {
-    Console.Error.WriteLine("usage: ModuleSmoke <module-directory>");
+    Console.Error.WriteLine("usage: ModuleSmoke <runtime-package-root|package|build-output>");
     return 2;
 }
 
-var moduleDirectory = Path.GetFullPath(args[0]);
-if (!Directory.Exists(moduleDirectory))
+var packageRoot = Path.GetFullPath(args[0]);
+if (!Directory.Exists(packageRoot))
 {
-    Console.Error.WriteLine($"module directory not found: {moduleDirectory}");
+    Console.Error.WriteLine($"runtime package root not found: {packageRoot}");
     return 2;
 }
 
@@ -27,9 +29,9 @@ var bus = new CommandBus(registry, log);
 var settings = new MemorySettings();
 var dataDirectory = Path.Combine(Path.GetTempPath(), "HistoryJanus-ModuleSmoke", Guid.NewGuid().ToString("N"));
 
-using var host = new ModuleHost(moduleDirectory, log)
+using var smokePackages = new SmokePackageRoot(packageRoot);
+using var host = new ModuleHost(new RuntimeModuleDiscoverySource(smokePackages.Root), log)
 {
-    EnableCommands = true,
     EnableUiModules = true,
     EnableFileWatching = false,
 };
@@ -41,13 +43,16 @@ if (host.Modules.Count != 1)
 {
     foreach (var entry in log.Snapshot())
         Console.Error.WriteLine($"[{entry.Level}] [{entry.Category}] {entry.Message}");
+    foreach (var diagnostic in host.DiscoveryDiagnostics)
+        Console.Error.WriteLine($"[discovery] {diagnostic.Code} {diagnostic.Path}: {diagnostic.Message}");
     throw new InvalidOperationException($"expected one module, got {host.Modules.Count}");
 }
 
-var manifestPath = Path.Combine(moduleDirectory, "module.manifest.json");
+var manifestPath = host.Modules[0].ManifestPath
+                   ?? throw new InvalidOperationException("discovered module carries no manifest path");
 using var manifest = JsonDocument.Parse(File.ReadAllText(manifestPath));
 var expectedVersion = manifest.RootElement.GetProperty("version").GetString();
-// 5.5.1：39 条业务命令 + 8 条 UI 命令 + janus.status = 48。
+// 5.6.0：39 条业务命令 + 8 条 UI 命令 + janus.status = 48（命令面与 5.5.1 相同）。
 const int expectedRuntimeCommandCount = 48;
 
 var meta = host.Modules[0];
@@ -146,9 +151,10 @@ if (registry.All().Count != commandCount
     throw new InvalidOperationException("module reload did not replace the command snapshot cleanly");
 }
 
-var emptyModuleDirectory = Path.Combine(dataDirectory, "empty-modules");
-Directory.CreateDirectory(emptyModuleDirectory);
-host.ChangeDirectory(emptyModuleDirectory);
+// 卸载走 ModuleHost.Unload：5.1.x 拿掉了 ChangeDirectory，运行区根目录在构造时定死，
+// 「换一个空目录再看命令还在不在」这条老写法没有对应面了，而它要证的事没变——
+// 模块下去之后登记表里不许留 janus.*。
+host.Unload("HistoryJanus");
 if (registry.All().Any(command => command.Name.StartsWith("janus.", StringComparison.Ordinal)))
     throw new InvalidOperationException("module unload left Janus commands in the host registry");
 
