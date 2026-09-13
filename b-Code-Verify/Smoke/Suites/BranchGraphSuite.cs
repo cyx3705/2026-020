@@ -217,7 +217,10 @@ internal static class BranchGraphSuite
             "graph and overview delegate component data loading to Aurora");
         Contains(module, "command = \"janus.ui.data\"",
             "component data sources point at janus.ui.data");
-        Contains(module, "tabTarget = \"console\"", "graph joins the host console tab group");
+        Contains(module, "id = \"graph\"", "graph page is explicitly declared");
+        Contains(module, "scene = \"HistoryJanus\"", "graph is scoped to the HistoryJanus scene");
+        Contains(module, "placement = new { side = \"bottom\", ratio = 0.33, visible = true",
+            "graph defaults to a visible bottom pane in the Janus scene");
     }
 
     private static void VerifyGraphLayout()

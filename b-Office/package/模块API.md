@@ -1,4 +1,4 @@
-# HistoryJanus 5.7.0 模块 API
+# HistoryJanus 5.7.1 模块 API
 
 本文件是其他模块和项目消费 HistoryJanus 的唯一人工合同。运行时命令目录是参数、确认策略和可用性的最终真值；历史文档和 Janus 内部类型不构成公开 API。
 
@@ -6,7 +6,7 @@
 
 - 正式快照：`z-Publish/HistoryJanus-v5.7.0/`。
 - 模块名：`HistoryJanus`。
-- 版本：`5.7.0`。
+- 版本：`5.7.1`。
 - 入口：`HistoryJanus.dll`。
 - 宿主基线：HistoryVulcan `5.1.2` current-host 快照，从 `2026-023-HistoryVulcan/z-Publish` 消费；该快照的 `sourceDirty` 仍由 HistoryVulcan manifest 如实标记。
 - 主题：页面使用 `Aurora.Brush.*` 动态资源，跟随宿主深色/浅色切换，不在模块内维护第二套主题。
@@ -16,7 +16,7 @@
 - UI：启用。
 - MCP：只读投影。
 
-本文件描述活动源的 `5.7.0` 候选合同；只有用户另行授权经宿主 `vulcan.dev.submit` / `finish` 正式发布后，同版本 manifest 和二进制才会提升到
+本文件描述活动源的 `5.7.1` 候选合同；只有用户另行授权经宿主 `vulcan.dev.submit` / `finish` 正式发布后，同版本 manifest 和二进制才会提升到
 `z-Publish/HistoryJanus-vX.Y.Z/`。发布前，z 快照自身的 manifest 与 checksum 仍是正式运行版本的真值。
 其他项目从 `z-Publish/HistoryJanus-vX.Y.Z/docs/` 或 `diana.docs.read domain=janus` 读取已发布 API，从该版本化快照读取 `module.manifest.json`、二进制和
 `SHA256SUMS`；不要从 Janus 的 `bin/obj`、HistoryVulcan 工作树或 Janus 历史文档建立依赖。Diana 不发布。
@@ -144,3 +144,8 @@ GitHub 写操作（登录、注销、提交身份、origin 修改）由页面通
 - 模块卸载时宿主撤销所有来源为 `module:HistoryJanus` 的命令并移除六个描述化页面。
 - 热重载以完整模块快照替换旧注册；消费者不得长期缓存 Janus 服务实例或页面引用。
 - Janus 不公开旧 `OneHistoryStudio.exe`、`--service-host`、独立 Web/MCP 地址或旧进程名合同。
+
+
+## 场景页面注册（5.7.1）
+
+REQ-SCENE-REG：页面显式声明 `scene=HistoryJanus`，注册初值只用于本模块场景。用户保存的各场景完整布局（包括分栏、位置、比例和隐藏状态）优先；模块刷新不得主动打开其他场景的页面。需要 Aurora 1.21.1 的场景注册隔离。

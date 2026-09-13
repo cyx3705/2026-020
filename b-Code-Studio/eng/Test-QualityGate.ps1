@@ -173,8 +173,22 @@ foreach ($pageId in $pageIds) {
         $violations.Add("模块API.md missing descriptive page $pageId")
     }
 }
-if ($uiSource -notmatch 'schemaVersion = 1' -or $uiSource -notmatch 'tabTarget = "console"') {
-    $violations.Add('HistoryJanusUiModule.cs must expose Aurora V1 pages and target graph at console')
+if ($uiSource -notmatch 'schemaVersion = 1') {
+    $violations.Add('HistoryJanusUiModule.cs must expose Aurora V1 pages')
+}
+
+# 页面初始位置只在 HistoryJanus 场景没有保存布局时生效。三个场景声明仍须固定，
+# 这样模块热重载不会把图谱重新塞进 console，也不会影响其他场景的页面状态。
+$expectedScenePlacements = @{
+    overview = 'center'
+    graph = 'bottom'
+    projops = 'left'
+}
+foreach ($page in $expectedScenePlacements.GetEnumerator()) {
+    $pagePattern = '(?s)id = "' + [regex]::Escape($page.Key) + '".*?scene = "HistoryJanus".*?placement = new \{ side = "' + $page.Value + '",.*?visible = true'
+    if ($uiSource -notmatch $pagePattern) {
+        $violations.Add("HistoryJanusUiModule.cs must declare $($page.Key) for HistoryJanus at $($page.Value) and visible by default")
+    }
 }
 foreach ($uiCommand in @('janus.ui.describe', 'janus.ui.actions', 'janus.ui.data', 'janus.ui.graphnode', 'janus.ui.refreshrules', 'janus.ui.refreshprojects', 'janus.ui.projectaction', 'janus.ui.openmeta')) {
     if ($uiSource -notmatch ('Name = "' + [regex]::Escape($uiCommand) + '"') -or

@@ -30,6 +30,7 @@ internal static partial class HistoryJanusUiCommands
                 // 页签就叫 Janus：这一页是这个模块的门面，页签上再写「项目总览」
                 // 只是把「哪个模块」这条信息让给了一句功能描述。
                 title = "Janus",
+                scene = "HistoryJanus",
                 placement = new { side = "center", visible = true, singleton = true },
                 content = new
                 {
@@ -120,7 +121,8 @@ internal static partial class HistoryJanusUiCommands
             {
                 id = "graph",
                 title = "分支图谱",
-                placement = new { side = "tab", tabTarget = "console", visible = true, singleton = true },
+                scene = "HistoryJanus",
+                placement = new { side = "bottom", ratio = 0.33, visible = true, singleton = true },
                 content = new
                 {
                     type = "swimlane",
@@ -135,7 +137,8 @@ internal static partial class HistoryJanusUiCommands
             {
                 id = "projops",
                 title = "项目操作",
-                placement = new { side = "left", ratio = 0.38, visible = true, singleton = true },
+                scene = "HistoryJanus",
+                placement = new { side = "left", ratio = 0.36, visible = true, singleton = true },
                 content = new
                 {
                     type = "stack",
