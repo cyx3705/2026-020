@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using HistoryJanus.Module;
 using Xunit;
@@ -179,14 +179,16 @@ public sealed partial class ProjectOperationsPanelContractTests
     public void CommitAndPushActOnTheSelectedProject()
     {
         var commit = Action("janus.project.commit");
-        Assert.Equal("janus.proj.commit", commit.GetProperty("command").GetString());
+        Assert.Equal("janus.ui.projectaction", commit.GetProperty("command").GetString());
+        Assert.Equal("提交", commit.GetProperty("args").GetProperty("action").GetString());
         Assert.Equal(
             "{selection." + Channel + ".name}",
             commit.GetProperty("args").GetProperty("name").GetString());
         Assert.Equal("{commit-message}", commit.GetProperty("args").GetProperty("msg").GetString());
 
         var push = Action("janus.project.push");
-        Assert.Equal("janus.proj.push", push.GetProperty("command").GetString());
+        Assert.Equal("janus.ui.projectaction", push.GetProperty("command").GetString());
+        Assert.Equal("推送", push.GetProperty("args").GetProperty("action").GetString());
         Assert.Equal(
             "{selection." + Channel + ".name}",
             push.GetProperty("args").GetProperty("name").GetString());
@@ -259,27 +261,53 @@ public sealed partial class ProjectOperationsPanelContractTests
     }
 
     [Fact]
-    public void OverviewUsesTheV55ControlPanelAndClickableColumns()
+    public void OverviewUsesTheV56ControlPanelAndClickableColumns()
     {
+        // V5.6：页签叫 Janus，顶栏是「刷新 + 搜索 + 年份」三件。
+        Assert.Equal("Janus", Page("overview").GetProperty("title").GetString());
         var children = Page("overview").GetProperty("content").GetProperty("children")
             .EnumerateArray().ToList();
         Assert.DoesNotContain(children, node => node.GetProperty("type").GetString() == "text");
 
         var panel = children.Single(node => node.GetProperty("type").GetString() == "panel");
-        var refresh = Assert.Single(PanelWidgets(panel));
+        var widgets = PanelWidgets(panel).ToList();
+        Assert.Equal(3, widgets.Count);
+
+        var refresh = widgets[0];
         Assert.Equal("刷新", refresh.GetProperty("text").GetString());
         Assert.Equal("refresh-cw", refresh.GetProperty("icon").GetString());
         Assert.Equal("janus.projects.refresh", refresh.GetProperty("action").GetString());
 
+        var query = widgets[1];
+        Assert.Equal("搜索", query.GetProperty("label").GetString());
+        Assert.Equal("janus.overview.query", query.GetProperty("channel").GetString());
+        Assert.True(query.GetProperty("flex").GetBoolean());
+
+        var year = widgets[2];
+        Assert.Equal("年份", year.GetProperty("label").GetString());
+        Assert.Equal("select", year.GetProperty("mode").GetString());
+        Assert.Equal("janus.overview.year", year.GetProperty("channel").GetString());
+        Assert.Equal(
+            "years",
+            year.GetProperty("optionsSource").GetProperty("args").GetProperty("view").GetString());
+
+        // 表格按两个通道取数：通道一变 Aurora 就重取，过滤不必自己写刷新。
+        // refresh 不在参数里——它由「刷新」按钮显式立旗，见 janus.ui.refreshprojects。
+        var args = children.Single(node => node.GetProperty("type").GetString() == "table")
+            .GetProperty("dataSource").GetProperty("args");
+        Assert.Equal("{selection.janus.overview.query.value}", args.GetProperty("query").GetString());
+        Assert.Equal("{selection.janus.overview.year.value}", args.GetProperty("year").GetString());
+        Assert.False(args.TryGetProperty("refresh", out _));
+
         var columns = children.Single(node => node.GetProperty("type").GetString() == "table")
             .GetProperty("columns").EnumerateArray().ToList();
-        Assert.Equal(new[] { "项目", "z 级文件夹", "状态", "动作", "最近提交" },
+        Assert.Equal(new[] { "项目", "z 级文件夹", "状态 / 动作", "最近提交" },
             columns.Select(column => column.GetProperty("title").GetString()).ToArray());
         Assert.Equal("janus.project.openmeta", columns[1].GetProperty("cellAction").GetString());
-        Assert.False(columns[2].TryGetProperty("cellAction", out _));
-        Assert.Equal("janus.project.action", columns[3].GetProperty("cellAction").GetString());
-        Assert.Equal("statusSymbol", columns[3].GetProperty("key").GetString());
-        Assert.Equal("48", columns[3].GetProperty("width").GetString());
+
+        Assert.Equal("janus.project.action", columns[2].GetProperty("cellAction").GetString());
+        Assert.Equal("status", columns[2].GetProperty("key").GetString());
+        Assert.Equal("120", columns[2].GetProperty("width").GetString());
     }
 
     [Fact]
