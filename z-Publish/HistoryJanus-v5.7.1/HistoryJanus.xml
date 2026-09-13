@@ -1,0 +1,1404 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>HistoryJanus</name>
+    </assembly>
+    <members>
+        <member name="T:HistoryJanus.Module.HistoryJanusCommands">
+            <summary>Reports the loaded Janus module identity and registered business surfaces.</summary>
+        </member>
+        <member name="T:HistoryJanus.Module.HistoryJanusUiCommands">
+             <summary>
+             Janus 的**页面描述与动作声明**。两份 JSON 常量加起来占这个类型一半篇幅，
+             而它们与取数、投影是两件事：这里回答「页面长什么样、有哪些动作」，
+             <see cref="T:HistoryJanus.Module.HistoryJanusUiModule"/> 那一半回答「数据从哪来、怎么摊成行」。
+            
+             分开还有一条现实理由：改一次列宽会让整份取数代码进同一个差分，
+             评审时看不出哪几行是真正的行为改动。
+             </summary>
+        </member>
+        <member name="F:HistoryJanus.Module.HistoryJanusUiCommands.ProjectChannel">
+            <summary>
+            项目选择通道（Aurora 1.8.16 起）。「项目总览」页的表格往这里发布选中行，
+            「项目操作」页的控制面板按它取值——两页各渲染一次，页内节点 id 跨不过去，
+            通道名跨得过去。名字以自己的域起头；同名通道只认第一个声明方。
+            </summary>
+        </member>
+        <member name="F:HistoryJanus.Module.HistoryJanusUiCommands.SelectedProject">
+            <summary>动作参数里取「当前选中项目」的写法。只写一次，改通道名不必满文件找。</summary>
+        </member>
+        <member name="F:HistoryJanus.Module.HistoryJanusUiCommands.SectionChannel">
+             <summary>
+             子页面通道（Aurora 1.8.17 起）。「项目操作」页控制面板里的轮换选项框往这里发布
+             当前标题，同一页的 <c>switch</c> 容器按它决定下面显示哪一批控件。
+            
+             5.4.5 里这三块是三个 <c>side=bottom</c> 的页面，由停靠层并成底部标签组。
+             标签组是**三页**，各占一条底边，各自还顶着一段说明文字；收进一页之后，
+             版面只剩一条选项框，而三块内容拿到的是同一块完整高度。
+             </summary>
+        </member>
+        <member name="F:HistoryJanus.Module.HistoryJanusUiCommands.SectionRules">
+            <summary>三个子页面的标题。它们同时是选项框的候选项和 switch 的 case，只写一处。</summary>
+        </member>
+        <member name="F:HistoryJanus.Module.HistoryJanusUiCommands.OverviewQueryChannel">
+            <summary>
+            总览页顶栏的两个筛选通道。搜索框与年份框各占一个；
+            表格的取数参数按通道取值，通道一变 Aurora 就重取，不必自己写刷新。
+            </summary>
+        </member>
+        <member name="F:HistoryJanus.Module.HistoryJanusUiCommands.AllYears">
+            <summary>年份下拉里「不过滤」那一项。它同时是候选表的第一行和过滤器的短路值。</summary>
+        </member>
+        <member name="M:HistoryJanus.Module.HistoryJanusUiCommands.RefreshRulesAsync(HistoryVulcan.Core.Commands.CommandContext,HistoryVulcan.Core.Commands.CommandBus)">
+             <summary>
+             「刷新规则」的落点。它要刷的是**两张表**，而 <c>aurora.ui.refreshdata</c>
+             一次只收一个 page 或一个 node。
+            
+             5.4.5 之前这两张表独占一页，因此按 <c>page=rules</c> 一把刷正好。收进「项目操作」页
+             之后，同一页上还挂着分支历史与 GitHub 两块——按页刷会把它们一起带上，
+             而 GitHub 那条要探 SSH 与凭据助手。所以改成点名刷这两个节点。
+             </summary>
+        </member>
+        <member name="M:HistoryJanus.Module.HistoryJanusUiCommands.LoadProjectsAsync(HistoryVulcan.Core.Commands.CommandContext,HistoryVulcan.Core.Commands.CommandBus,System.Boolean)">
+             <summary>
+             项目清单的**唯一**读点：总览表格与年份候选都从这里出去。
+            
+             为什么要缓存：搜索框与年份框一动，Aurora 就按新的参数重取一次表格——
+             而「取项目清单」这件事最贵的一版要 fetch 全部远端。每敲一个字符 fetch 一轮
+             是不能接受的，所以过滤只在**已经拿到的那份清单**上做，
+             真正的重取由「刷新」按钮显式发起（<see cref="F:HistoryJanus.Module.HistoryJanusUiCommands._forceProjectRefresh"/>）。
+             </summary>
+        </member>
+        <member name="F:HistoryJanus.Module.HistoryJanusUiCommands._forceProjectRefresh">
+             <summary>
+             「重取一次远端」的一次性开关。
+            
+             它不能做成取数参数：取数参数由页面描述写死，而「刷新」是一个**动作**，
+             动作能做的只有让某个节点重取（<c>aurora.ui.refreshdata</c>）。
+             于是刷新按钮先立这面旗，再让表格重取；重取时旗被取走，
+             后续因为搜索词变化而发生的重取一律走缓存。
+             </summary>
+        </member>
+        <member name="M:HistoryJanus.Module.HistoryJanusUiCommands.Scoped(HistoryVulcan.Core.Commands.CommandContext,System.String,System.String)">
+            <summary>按项目取数：没给项目名就返回 null，调用方据此拒绝，而不是去扫全库。</summary>
+        </member>
+        <member name="M:HistoryJanus.Module.HistoryJanusUiCommands.Payload(System.String)">
+            <summary>Aurora 进程外取数时 Data 不保证跨边界保留，Message 必须携带同一份 JSON。</summary>
+        </member>
+        <member name="M:HistoryJanus.Module.HistoryJanusUiCommands.Row(System.ValueTuple{System.String,System.String}[])">
+            <summary>
+            页面行的通用构造。**Aurora 的表格只吃「字符串到字符串」的行**——
+            业务记录直接 `JsonSerializer.Serialize` 出来的是帕斯卡命名加布尔/数字/嵌套对象，
+            那种载荷在表格侧解析会整条失败，症状是一张空表加一条 Warn，
+            而空表看上去和"这个项目确实没有数据"一模一样。
+            </summary>
+        </member>
+        <member name="T:HistoryJanus.Module.HistoryJanusUiCommands.UiRuleProjection">
+            <summary>Git 文件规则：全库共用的清单，以及某个项目的落地状态。</summary>
+        </member>
+        <member name="M:HistoryJanus.Module.HistoryJanusUiCommands.UiRuleProjection.Excludes(HistoryJanus.StudioBusinessComposition)">
+            <summary>清单只读设置，不碰 Git——它要在打开页签时立刻出来。</summary>
+        </member>
+        <member name="M:HistoryJanus.Module.HistoryJanusUiCommands.UiRuleProjection.States(System.Object)">
+            <summary>落地状态按项目取；每个项目两条 git ls-files，因此绝不整库跑。</summary>
+        </member>
+        <member name="T:HistoryJanus.Module.HistoryJanusUiCommands.UiHistoryProjection">
+            <summary>分支历史：从分叉点到 HEAD 的自有提交。</summary>
+        </member>
+        <member name="M:HistoryJanus.Module.HistoryJanusUiCommands.UiHistoryProjection.Read(System.Object)">
+             <summary>
+             **HEAD 在最上面**。业务侧 <c>janus.history.list</c> 按「分叉点在前、
+             时间往后」返回——那是给人顺着读一条分支用的次序；页面上要先看见的是
+             最近几次提交，因此在投影这一层倒过来，业务命令的输出次序不动。
+            
+             短 sha 与作者仍然带在行里：列表不显示它们（见页面描述），
+             但行数据是选中通道的载荷，别处按字段名取值，去掉会连带断掉。
+             </summary>
+        </member>
+        <member name="T:HistoryJanus.Module.HistoryJanusUiCommands.UiGitHubProjection">
+            <summary>
+            GitHub 连接状态。它不是一个列表而是一个对象，因此摊成「项 / 值」两列——
+            表格是本协议里唯一的展示组件，把对象硬塞成一行会得到一张只有一行、
+            列名全是英文字段名的表。
+            </summary>
+        </member>
+        <member name="P:HistoryJanus.Module.HistoryJanusUiCommands.Description">
+            <summary>门禁用：页面描述与动作声明必须能被逐条核对，不能只在真机上看。</summary>
+        </member>
+        <member name="P:HistoryJanus.Module.HistoryJanusUiCommands.ActionDeclarations">
+            <summary>门禁用：同上。</summary>
+        </member>
+        <member name="M:HistoryJanus.Module.HistoryJanusUiCommands.UiProjectProjection.Newest(System.Collections.Generic.IEnumerable{HistoryJanus.Git.WorktreeInfo})">
+             <summary>
+             总览表格的行序：**最新的项目在最上面**。
+            
+             项目名以「年份-序号」开头，因此按名字倒序就是按登记时间倒序；
+             业务侧 <c>janus.proj.list</c> 仍按名字正序返回——那是给人读清单用的，
+             与页面上「先看见最近在做的那几个」不是同一件事，两处各自成立。
+             </summary>
+        </member>
+        <member name="M:HistoryJanus.Module.HistoryJanusUiCommands.UiProjectProjection.Filter(System.Collections.Generic.IEnumerable{HistoryJanus.Git.WorktreeInfo},System.String,System.String,System.String)">
+            <summary>
+            顶栏两个筛选器：搜索词匹配**项目名或任一 z 级文件夹名**，
+            年份匹配项目名开头的四位年份。两者求交；空搜索词与「全部」都表示不过滤。
+            </summary>
+        </member>
+        <member name="M:HistoryJanus.Module.HistoryJanusUiCommands.UiProjectProjection.YearOptions(System.Collections.Generic.IEnumerable{HistoryJanus.Git.WorktreeInfo},System.String)">
+            <summary>年份候选：「全部」加上现有项目里出现过的年份，新的在前。</summary>
+        </member>
+        <member name="M:HistoryJanus.Module.HistoryJanusUiCommands.UiProjectProjection.YearOf(HistoryJanus.Git.WorktreeInfo)">
+            <summary>项目名开头的四位年份；不是这个形状就返回空串，交给「全部」兜住。</summary>
+        </member>
+        <member name="T:HistoryJanus.Module.HistoryJanusUiModule">
+            <summary>
+            HistoryVulcan 5.0+ 的模块入口。Janus 只登记业务命令和可序列化的页面协议，
+            不再实现宿主 UI 生命周期，也不把 WPF 对象带过宿主边界。
+            </summary>
+        </member>
+        <member name="T:HistoryJanus.StudioBusinessComposition">
+            <summary>
+            Janus business services registered into a host-owned command bus.
+            This boundary deliberately owns no process, window, module loader, MCP, Web, or LAN lifetime.
+            </summary>
+        </member>
+        <member name="T:HistoryJanus.StudioBusinessCompositionFactory">
+            <summary>
+            Builds the Janus domain graph inside infrastructure supplied by the AppShell host.
+            </summary>
+        </member>
+        <member name="T:HistoryJanus.Git.AiWorktreeStatus">
+            <summary>AI 工作树任务状态。JSON 线名见 <see cref="M:HistoryJanus.Git.AiWorktreeStateMachine.FormatStatus(HistoryJanus.Git.AiWorktreeStatus)"/>。</summary>
+        </member>
+        <member name="T:HistoryJanus.Git.AiWorktreeBranchName">
+            <summary>已解析的 AI 分支名：<c>ai/&lt;项目&gt;/&lt;短SHA&gt;-&lt;序号&gt;-&lt;slug&gt;</c>。</summary>
+        </member>
+        <member name="M:HistoryJanus.Git.AiWorktreeBranchName.#ctor(System.String,System.String,System.Int32,System.String)">
+            <summary>已解析的 AI 分支名：<c>ai/&lt;项目&gt;/&lt;短SHA&gt;-&lt;序号&gt;-&lt;slug&gt;</c>。</summary>
+        </member>
+        <member name="P:HistoryJanus.Git.AiWorktreeBranchName.FolderName">
+            <summary>工作树目录名，不含斜杠。</summary>
+        </member>
+        <member name="T:HistoryJanus.Git.AiWorktreeRecord">
+            <summary>
+            AI 工作树注册记录。注册表文件本身属于 Phase 2；本类型冻结字段合同。
+            </summary>
+        </member>
+        <member name="P:HistoryJanus.Git.AiWorktreeRecord.BoundHeadSha">
+            <summary>在 ready/verified/approved 绑定的完整 HEAD；HEAD 变化后验证与审批失效。</summary>
+        </member>
+        <member name="T:HistoryJanus.Git.AiWorktreeJson">
+            <summary>与 <see cref="T:HistoryJanus.Git.HistoryRecorder"/> 相同的 camelCase JSON 选项，供后续注册表使用。</summary>
+        </member>
+        <member name="T:HistoryJanus.Git.AiWorktreeStateMachine">
+            <summary>
+            AI 工作树状态机：纯函数，不访问 Git、不读写文件。
+            合法正向：active → ready → verified → approved → merged → cleaned；
+            active/ready 可转入 failed/abandoned；后续状态必要时可转入 failed；
+            merged/abandoned 清理失败转入 cleanupFailed（保留现场，不得报已清空）。
+            </summary>
+        </member>
+        <member name="M:HistoryJanus.Git.AiWorktreeStateMachine.RequiresFullHeadBind(HistoryJanus.Git.AiWorktreeStatus)">
+            <summary>verified / approved / merged 以及锁定点 ready 必须绑定完整 HEAD。</summary>
+        </member>
+        <member name="M:HistoryJanus.Git.AiWorktreeStateMachine.TryFormatWorktreeFolderName(System.String,System.Int32,System.String,System.String@,System.String@)">
+            <summary>工作树目录名 <c>{shortSha}-{n}-{slug}</c>，禁止斜杠。</summary>
+        </member>
+        <member name="T:HistoryJanus.Git.BranchHistoryCommands">
+            <summary>分支历史、恢复提交、本地硬重置与 lease 强推指令。</summary>
+        </member>
+        <member name="T:HistoryJanus.Git.BranchHistoryService">
+            <summary>
+            分支历史与安全回滚。Git 提交图是历史真值；所有进程调用仍统一经过 GitRunner。
+            </summary>
+        </member>
+        <member name="M:HistoryJanus.Git.BranchHistoryService.BuildRollbackPrompt(System.String,System.String,System.Boolean)">
+            <summary>CommandDescriptor 的同步确认合同使用；执行阶段仍会完整异步重验。</summary>
+        </member>
+        <member name="T:HistoryJanus.Git.BranchTreeNode">
+            <summary>janus.proj.tree 跨进程传输合同；不携带 WPF 控件或展开状态。</summary>
+        </member>
+        <member name="T:HistoryJanus.Git.BranchTreeService">
+            <summary>
+            继承树：按各仓 project.manifest.json 的 template.source 建树，缓存键为库根。
+            </summary>
+        </member>
+        <member name="T:HistoryJanus.Git.ExcludeRuleState">
+            <summary>一个项目的"不纳入仓库"规则落地状态。</summary>
+        </member>
+        <member name="M:HistoryJanus.Git.ExcludeRuleState.#ctor(System.String,System.Boolean,System.Int32,System.Int32,System.String)">
+            <summary>一个项目的"不纳入仓库"规则落地状态。</summary>
+        </member>
+        <member name="T:HistoryJanus.Git.ExcludeRuleReport">
+            <summary>整库共用的排除清单及各项目的落地情况。</summary>
+        </member>
+        <member name="M:HistoryJanus.Git.ExcludeRuleReport.#ctor(System.Collections.Generic.IReadOnlyList{System.String},System.Collections.Generic.IReadOnlyList{System.String},System.Collections.Generic.IReadOnlyList{HistoryJanus.Git.ExcludeRuleState})">
+            <summary>整库共用的排除清单及各项目的落地情况。</summary>
+        </member>
+        <member name="T:HistoryJanus.Git.IExcludeRuleWriter">
+            <summary>
+            提交链路刷写 .gitignore 托管块的窄接口。
+            单独抽出来只为打断依赖环：GitFileRuleService 需要 ProjectService 解析项目路径，
+            而提交链路又要回头刷规则；ProjectService 只依赖这个接口，且可为空。
+            </summary>
+        </member>
+        <member name="T:HistoryJanus.Git.GitFileRuleService">
+             <summary>
+             Git 文件规则的唯一形态：一份**全库共用**的「不纳入仓库」清单。
+            
+             4.x 曾按格式逐条维护 Git/LFS/LF 三态规则表，并要求人工执行 sync 下发。
+             实践证明那套规则面本身就是故障源：137 条按扩展名的 LFS 通配把 *.asm / *.baml
+             这类文本也塞进 LFS，最终 11 GB LFS 占用、推送被 GitHub pre-receive 拒收。
+             5.0.0 起规则只回答一个问题——这个后缀/目录要不要进仓库；LFS 完全退出规则面，
+             只在提交链路里对超过 GitHub 100MB 硬限的**具体文件**征求人工同意。
+            
+             清单存在设置里而不是各仓文件里：全库一致才不消耗认知，且提交链路会自动把它
+             幂等刷进各仓 .gitignore 托管块，不再需要任何手动下发命令。
+             </summary>
+        </member>
+        <member name="F:HistoryJanus.Git.GitFileRuleService.DefaultExcludeSuffixes">
+            <summary>
+            默认清单来自 2026-08 全库推送的实测：这些目录与后缀全是可再生产物或 IDE 状态，
+            入库只会撑大仓库并把推送顶到传输上限。目录项以 / 结尾。
+            </summary>
+        </member>
+        <member name="F:HistoryJanus.Git.GitFileRuleService.SnapshotPrefix">
+            <summary>
+            正式消费快照目录前缀。`z-*` 下的内容由发布管线刻意入库
+            （例如 z-HistoryVulcan/host 的宿主 DLL、各模块的 z-&lt;模块&gt;/*.dll），
+            是跨项目消费的权威产物，绝不能被排除清单顺手删出索引。
+            </summary>
+        </member>
+        <member name="F:HistoryJanus.Git.GitFileRuleService.ManagedFooter">
+            <summary>
+            块尾的豁免：必须排在全部排除项之后，gitignore 才会让后面的否定规则生效。
+            这是系统不变量而不是用户选项，所以不进清单——把 dll 之类写进清单的人
+            不应该因此把正式快照删出索引。
+            </summary>
+        </member>
+        <member name="P:HistoryJanus.Git.GitFileRuleService.Suffixes">
+            <summary>后缀项（*.xxx 或裸文件名），不含目录项。</summary>
+        </member>
+        <member name="P:HistoryJanus.Git.GitFileRuleService.Directories">
+            <summary>目录项（以 / 结尾），生成时统一加 **/ 前缀以匹配任意层级。</summary>
+        </member>
+        <member name="M:HistoryJanus.Git.GitFileRuleService.SetExcludeList(System.String)">
+            <summary>
+            改写整库共用清单。逐项校验后整体接受或整体拒绝，不做部分写入。
+            </summary>
+        </member>
+        <member name="M:HistoryJanus.Git.GitFileRuleService.EnsureIgnoreAsync(System.String,System.Threading.CancellationToken)">
+            <summary>
+            把当前清单幂等刷进该仓 .gitignore 的托管块。提交链路每次调用，
+            所以不需要任何手动下发命令；块外内容与其它块逐字保留。
+            </summary>
+        </member>
+        <member name="M:HistoryJanus.Git.GitFileRuleService.ListAsync(System.String,System.Threading.CancellationToken)">
+            <summary>
+            只读：清单本身，以及各项目托管块是否最新、有多少文件被排除、
+            有多少**已被跟踪却命中排除**（这类需要人工决定是否 git rm --cached）。
+            </summary>
+        </member>
+        <member name="T:HistoryJanus.Git.CreatedRemoteEntry">
+            <summary>本次推送为某个项目新建（或复用）的远端仓库。</summary>
+        </member>
+        <member name="M:HistoryJanus.Git.CreatedRemoteEntry.#ctor(System.String,System.String,System.String,System.String,System.Boolean)">
+            <summary>本次推送为某个项目新建（或复用）的远端仓库。</summary>
+        </member>
+        <member name="T:HistoryJanus.Git.GitlinkService">
+            <summary>直属 160000 gitlink 的结构化发现与只读状态校验。</summary>
+        </member>
+        <member name="T:HistoryJanus.Git.GitRuleCommands">
+            <summary>
+            gitrule.* 指令域：只暴露「全库共用的不纳入仓库清单」的读与改。
+            没有下发命令——清单由提交链路每次自动刷进各仓托管块。
+            也没有 LFS 相关命令——LFS 只在提交链路对超 100MB 的具体文件征求同意。
+            </summary>
+        </member>
+        <member name="T:HistoryJanus.Git.GitRunner">
+            <summary>
+            统一 git 进程封装：固定 -C 工作目录、UTF-8 输出、外部取消与异常兜底。
+            全项目禁止在此之外散落 Process.Start("git")。
+            </summary>
+        </member>
+        <member name="T:HistoryJanus.Git.GraphCommands">
+            <summary>只读 DAG 图谱指令；无 ConfirmPrompt，不改写仓库。</summary>
+        </member>
+        <member name="T:HistoryJanus.Git.BranchKind">
+            <summary>图谱分支分类：编号主线、仍可能出现的继承标记、平行（含 ai/）工作分支。</summary>
+        </member>
+        <member name="T:HistoryJanus.Git.GraphRef">
+            <summary>本地或远端 ref；不含布局坐标。</summary>
+        </member>
+        <member name="P:HistoryJanus.Git.GraphRef.IsOpen">
+            <summary>未合并的平行分支为 true；已合并仍保留历史行，但右侧不再画端点。</summary>
+        </member>
+        <member name="T:HistoryJanus.Git.GraphCommitNode">
+            <summary>
+            提交节点。列表页 FileSummary / ReleaseId / ReleaseStatus 可为空；
+            证据槽留给后续 Diana 版本，Phase 1 保持空字符串。
+            </summary>
+        </member>
+        <member name="T:HistoryJanus.Git.GraphEdge">
+            <summary>
+            提交 DAG 边：FromSha 为父提交，ToSha 为子提交。
+            IsMergeParent 为 true 表示该父提交不是子提交的第一父。
+            </summary>
+        </member>
+        <member name="T:HistoryJanus.Git.GraphPage">
+            <summary>janus.graph.commits 分页游标。</summary>
+        </member>
+        <member name="T:HistoryJanus.Git.GraphBranchRelation">
+            <summary>分支与其父/基线关系，供 janus.graph.branches 使用。</summary>
+        </member>
+        <member name="T:HistoryJanus.Git.GraphSummary">
+            <summary>janus.graph.summary 返回合同：项目、分支、HEAD、节点数与 dirty。</summary>
+        </member>
+        <member name="T:HistoryJanus.Git.GraphBranchesReport">
+            <summary>janus.graph.branches 返回合同：编号主线 + 平行分支（含已合并历史）。</summary>
+        </member>
+        <member name="T:HistoryJanus.Git.GraphCommitsReport">
+            <summary>janus.graph.commits 返回合同。</summary>
+        </member>
+        <member name="P:HistoryJanus.Git.GraphCommitsReport.Lanes">
+            <summary>第 0 条为主线，其后为平行分支；<see cref="P:HistoryJanus.Git.GraphRef.IsOpen"/> 决定右侧是否画 tip。</summary>
+        </member>
+        <member name="T:HistoryJanus.Git.GraphNodeDetail">
+            <summary>janus.graph.node 返回合同：单提交、父边、差异摘要与空证据槽。</summary>
+        </member>
+        <member name="T:HistoryJanus.Git.GraphService">
+            <summary>
+            当前编号项目仓内的只读提交 DAG。
+            主线是仓内 main；范围天然是本仓。
+            平行分支（主要是 ai/P/）含未合并与已合并历史；已合并行不在右侧画 tip。
+            git log --parents --date-order，不用 --first-parent。
+            </summary>
+        </member>
+        <member name="M:HistoryJanus.Git.GraphService.GetCommitsAsync(System.String,System.Int32,System.Int32,System.Threading.CancellationToken)">
+            <summary>
+            提交按 --date-order 新→旧排列；skip 从最新端跳过，与 GraphPage 一致。
+            </summary>
+        </member>
+        <member name="M:HistoryJanus.Git.GraphService.DiscoverMergedHistoriesAsync(System.String,System.String,System.String,System.Collections.Generic.HashSet{System.String},System.Collections.Generic.HashSet{System.String},System.Threading.CancellationToken)">
+            <summary>
+            已删除但仍被 --no-ff 合并提交第二父指向的历史：ref 没了，提交对象还在主线可达集里。
+            squash / fast-forward 没有第二父，无法还原平行行。
+            </summary>
+        </member>
+        <member name="M:HistoryJanus.Git.GraphService.ReadAheadCountsAsync(System.String,System.String,System.Collections.Generic.IEnumerable{System.String},System.Threading.CancellationToken)">
+            <summary>
+            一次 for-each-ref 读出各平行分支相对主线的 ahead。Git 2.41+ 的
+            %(ahead-behind) 避免对每条 AI 分支再跑一次 rev-list --count。
+            </summary>
+        </member>
+        <member name="T:HistoryJanus.Git.HistoryRecorder">
+            <summary>
+            操作留痕与分支描述的文件存储：操作留痕使用 JSONL 追加，
+            分支描述使用原子替换 JSON。记录失败仍只告警，不阻断主操作。
+            </summary>
+            <remarks>
+            本类曾实现 <c>IMcpAuditLog</c>，把 MCP 调用留痕转交给宿主的 McpAuditRecorder。
+            那条实现从来没有被接上：唯一的装配点是 Aurora 的 <c>ShellConfig.McpAuditLog</c>，
+            而它全仓从未被赋值。MCP 随 Vulcan 4.4.0 迁往 HistoryPortunus 后，
+            由那个模块自己的审计器落盘，Janus 不再需要转交任何东西。
+            </remarks>
+        </member>
+        <member name="F:HistoryJanus.Git.HistoryRecorder.MessageLimit">
+            <summary>留痕单行的消息长度上限。</summary>
+        </member>
+        <member name="M:HistoryJanus.Git.HistoryRecorder.Truncate(System.String,System.Int32)">
+            <summary>
+            截断到上限并补省略号。
+            </summary>
+            <remarks>
+            原先调用宿主的 <c>Core.Data.SqlText.Truncate</c>。那个类型随 SQL 文本拼接工具
+            一起从宿主删除（Vulcan 4.2.0）——留痕写的是 JSONL，本来就不该依赖 SQL 转义工具集，
+            只是当年顺手拿了同一个 Truncate。
+            </remarks>
+        </member>
+        <member name="T:HistoryJanus.Git.ProjectCommands">
+            <summary>
+            proj.* 指令域注册。推送两条指令在 ProjectCommands.Push.cs。
+            危险操作（delete / commitall / pushall / repair）统一经过总线 ConfirmPrompt；
+            受保护分支在确认之前即由 ConfirmPrompt 返回 null + Handler 拒绝,不弹无意义确认框。
+            </summary>
+            <summary>
+            proj.* 的推送切面。推送与提交共享 target 语义，但多了一条提交链路没有的分支：
+            仓库还没有 origin 时按需在 GitHub 上建远端，因此单独成文件。
+            </summary>
+        </member>
+        <member name="M:HistoryJanus.Git.ProjectCommands.RecordCommit(HistoryJanus.Git.HistoryRecorder,System.String,System.String,HistoryJanus.Git.CommitReport)">
+            <summary>janus.proj.commit / janus.proj.commitall 共用的单项目提交留痕(R4:结果映射唯一实现)。</summary>
+        </member>
+        <member name="T:HistoryJanus.Git.ProjectRepoLayout">
+            <summary>
+            一项目一仓的目录约定、工作树拷贝与清单字段。
+            不发 git 进程；身份规则与路径变换集中在此，避免撑破 ProjectService 行数上限。
+            </summary>
+        </member>
+        <member name="M:HistoryJanus.Git.ProjectRepoLayout.ToRemoteRepositoryName(System.String)">
+            <summary>
+            远端仓库名取项目编号 <c>YYYY-NNN</c>，不带中文标题部分。
+            本地目录保留中文是为了人肉查找；而 GitHub 会把非 ASCII 字符整段吃掉
+            （请求 <c>2025-001-AGV洗轮机</c> 建出来的是 <c>2025-001-AGV-</c>），
+            编号本身已经唯一，用它既避免被截断成无意义的名字，也不会互相撞名。
+            没有编号前缀的项目名原样返回，由调用方按 GitHub 命名规则校验。
+            </summary>
+        </member>
+        <member name="T:HistoryJanus.Git.ProjectService">
+            <summary>
+            ProjectService 的提交切面。提交链路与确认通道、gitlink 子模块发现、
+            文件大小阈值和 LFS 预检共享状态，因此保留在同一个 partial 类型中。
+            子仓库先于父仓库提交，target 决定操作范围。推送切面在 ProjectService.Push.cs。
+            </summary>
+            <summary>
+            proj.* 指令域：HistoryClio 库根下一项目一仓。
+            确认交互统一走总线确认通道，运行参数通过配置服务现读现生效。
+            </summary>
+            <summary>
+            ProjectService 的 Meta 文件夹切面：项目根下以 z/Z 开头的一级子目录。
+            </summary>
+            <summary>
+            ProjectService 的推送切面。与提交切面共享 gitlink 发现和工作树解析，
+            但多了一条提交没有的分支：仓库还没有 origin 时按需建远端，再 remote add 后推送。
+            </summary>
+            <summary>
+            逐仓诊断：独立 .git、能 status。指向旧裸仓的 .git 文件只报告，不删盘。
+            </summary>
+        </member>
+        <member name="F:HistoryJanus.Git.ProjectService.GitHubFileLimitBytes">
+            <summary>
+            GitHub 的单文件硬限，超过即被服务端拒收。这不是可配置偏好，所以不进设置：
+            LFS 的唯一触发条件就是触到这条线。
+            </summary>
+        </member>
+        <member name="F:HistoryJanus.Git.ProjectService.PushChunkBudgetBytes">
+            <summary>
+            单次推送的字节预算。实测超过约 300MB 的推送在本机链路上会中断
+            （HTTPS 17MB 即断，SSH 亦偶发），因此超预算时按提交分批推。
+            </summary>
+        </member>
+        <member name="P:HistoryJanus.Git.ProjectService.RepositoryProvisioner">
+            <summary>
+            首次推送时按需建远端仓库的通道。为空时推送保持旧行为：没有 origin 就直接失败。
+            </summary>
+        </member>
+        <member name="P:HistoryJanus.Git.ProjectService.ExcludeRules">
+            <summary>
+            提交前刷写 .gitignore 排除规则的通道。为空时跳过刷写，提交行为不变。
+            </summary>
+        </member>
+        <member name="M:HistoryJanus.Git.ProjectService.ResolveWorktree(System.String)">
+            <summary>
+            按库根直接子目录定位单个项目仓。不得为了找一个仓去列举并 git 查询全库。
+            </summary>
+        </member>
+        <member name="M:HistoryJanus.Git.ProjectService.ListMetaFoldersAsync">
+            <summary>
+            扫描全部 worktree 根下以 z/Z 开头的一级子文件夹。
+            单项目枚举失败只计入警告并跳过,不拖垮整次扫描。
+            </summary>
+        </member>
+        <member name="M:HistoryJanus.Git.ProjectService.PushBranchAsync(System.String,System.String,System.Boolean,System.IProgress{System.String},System.Threading.CancellationToken)">
+             <summary>
+             全部父仓库推送的唯一出口。把 2026-08 全库首推里手工验证过的四条经验固化下来：
+            
+             1. **推显式分支名，不推 HEAD**。`push origin HEAD` 在部分仓上报
+                「hint: 'HEAD:refs/heads/HEAD'?」而失败，换成分支名即通过。
+             2. **关掉 lfs.locksverify**。缺失 LFS 对象较多的仓在 locks/verify 端点撞 EOF，
+                整个推送失败；这个校验对本链路没有价值。
+             3. **超预算就按提交分批推**。单次推送超过约 300MB 在本机链路上会中断，
+                分批后同样的内容能稳定推完。
+             4. 失败消息保留 git 原文，便于区分传输中断和服务端拒收（pre-receive）。
+             </summary>
+        </member>
+        <member name="M:HistoryJanus.Git.ProjectService.PlanPushBatchesAsync(System.String,System.String,System.Threading.CancellationToken)">
+            <summary>
+            规划推送批次：返回中间提交列表，最后一项恒为分支 tip（由调用方用分支名推）。
+            待推内容在预算内时返回单批，不引入任何额外 git 调用带来的开销。
+            </summary>
+        </member>
+        <member name="M:HistoryJanus.Git.ProjectService.EnsureRemoteAsync(System.String,System.String,System.String,System.Threading.CancellationToken)">
+            <summary>
+            推送前确保 origin 存在：已有则原样放行；缺失且配了 provisioner 时按需建远端再 remote add。
+            provision 失败绝不写 remote，避免留下半配的仓库让下一次推送更难诊断。
+            </summary>
+        </member>
+        <member name="P:HistoryJanus.Git.WorktreeInfo.FolderName">
+            <summary>项目目录名（与已登记项目名相同）。</summary>
+        </member>
+        <member name="P:HistoryJanus.Git.WorktreeInfo.HasNameMismatch">
+            <summary>HEAD 不在 main 时总览可警告，不阻断列举与提交。</summary>
+        </member>
+        <member name="T:HistoryJanus.Git.MetaFolderInfo">
+            <summary>某项目根下以 z/Z 开头的一级 Meta 文件夹。</summary>
+        </member>
+        <member name="M:HistoryJanus.Git.MetaFolderInfo.#ctor(System.String,System.String,System.String,System.String)">
+            <summary>某项目根下以 z/Z 开头的一级 Meta 文件夹。</summary>
+        </member>
+        <member name="T:HistoryJanus.GitHub.GitHubCommands">
+            <summary>
+            janus.github.* 类注册（宿主域为模块名 HistoryJanus，类为 github）。
+            读写均登记到宿主命令总线；写操作由 apply 参数和 ConfirmPrompt 统一保护。
+            </summary>
+        </member>
+        <member name="T:HistoryJanus.GitHub.GitHubRepositoryCreation">
+            <summary>首次推送时按需创建（或复用）的远端仓库事实，字段全部来自 GitHub 接口回执。</summary>
+        </member>
+        <member name="M:HistoryJanus.GitHub.GitHubRepositoryCreation.#ctor(System.String,System.String,System.String,System.String,System.String,System.Boolean,System.String)">
+            <summary>首次推送时按需创建（或复用）的远端仓库事实，字段全部来自 GitHub 接口回执。</summary>
+        </member>
+        <member name="P:HistoryJanus.GitHub.GitHubRepositoryCreation.OriginUrl">
+            <summary>
+            写进 origin 的 URL：优先 SSH。HTTPS 在大包（实测约 17MB 起）上会被稳定重置成
+            <c>curl 55/56 Recv failure</c>，同一个包走 SSH 能推完；接口没给 ssh_url 时才退回 HTTPS。
+            </summary>
+        </member>
+        <member name="T:HistoryJanus.GitHub.GitHubConnectionService">
+            <summary>服务器本机 Git 作者、GitHub 凭据、远端和 SSH 事实的读取与修改入口。</summary>
+        </member>
+        <member name="M:HistoryJanus.GitHub.GitHubConnectionService.AccountName">
+            <remarks>
+            Pattern:<br/>
+            <code>^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$</code><br/>
+            Explanation:<br/>
+            <code>
+            ○ Match if at the beginning of the string.<br/>
+            ○ Match a character in the set [0-9A-Za-z].<br/>
+            ○ Match a character in the set [-0-9A-Za-z] atomically at most 38 times.<br/>
+            ○ Match if at the end of the string or if before an ending newline.<br/>
+            </code>
+            </remarks>
+        </member>
+        <member name="M:HistoryJanus.GitHub.GitHubConnectionService.ScpRemote">
+            <remarks>
+            Pattern:<br/>
+            <code>^(?:[^@/:]+@)?(?&lt;host&gt;[^:]+):(?&lt;path&gt;.+)$</code><br/>
+            Explanation:<br/>
+            <code>
+            ○ Match if at the beginning of the string.<br/>
+            ○ Optional (greedy).<br/>
+                ○ Match a character in the set [^/:@] atomically at least once.<br/>
+                ○ Match '@'.<br/>
+            ○ "host" capture group.<br/>
+                ○ Match a character other than ':' atomically at least once.<br/>
+            ○ Match ':'.<br/>
+            ○ "path" capture group.<br/>
+                ○ Match a character other than '\n' greedily at least once.<br/>
+            ○ Match if at the end of the string or if before an ending newline.<br/>
+            </code>
+            </remarks>
+        </member>
+        <member name="M:HistoryJanus.GitHub.GitHubConnectionService.TokenLike">
+            <remarks>
+            Pattern:<br/>
+            <code>(?:github_pat_|gh[pousr]_)</code><br/>
+            Options:<br/>
+            <code>RegexOptions.IgnoreCase</code><br/>
+            Explanation:<br/>
+            <code>
+            ○ Match a character in the set [Gg].<br/>
+            ○ Match with 2 alternative expressions, atomically.<br/>
+                ○ Match a sequence of expressions.<br/>
+                    ○ Match a character in the set [Ii].<br/>
+                    ○ Match a character in the set [Tt].<br/>
+                    ○ Match a character in the set [Hh].<br/>
+                    ○ Match a character in the set [Uu].<br/>
+                    ○ Match a character in the set [Bb].<br/>
+                    ○ Match '_'.<br/>
+                    ○ Match a character in the set [Pp].<br/>
+                    ○ Match a character in the set [Aa].<br/>
+                    ○ Match a character in the set [Tt].<br/>
+                    ○ Match '_'.<br/>
+                ○ Match a sequence of expressions.<br/>
+                    ○ Match a character in the set [Hh].<br/>
+                    ○ Match a character in the set [OPRSUoprsu].<br/>
+                    ○ Match '_'.<br/>
+            </code>
+            </remarks>
+        </member>
+        <member name="M:HistoryJanus.GitHub.GitHubRedactor.PrivateKeyBlock">
+            <remarks>
+            Pattern:<br/>
+            <code>-----BEGIN [^-]*PRIVATE KEY-----[\\s\\S]*?-----END [^-]*PRIVATE KEY-----</code><br/>
+            Options:<br/>
+            <code>RegexOptions.IgnoreCase</code><br/>
+            Explanation:<br/>
+            <code>
+            ○ Match the string "-----".<br/>
+            ○ Match a character in the set [Bb].<br/>
+            ○ Match a character in the set [Ee].<br/>
+            ○ Match a character in the set [Gg].<br/>
+            ○ Match a character in the set [Ii].<br/>
+            ○ Match a character in the set [Nn].<br/>
+            ○ Match ' '.<br/>
+            ○ Match a character other than '-' greedily any number of times.<br/>
+            ○ Match a character in the set [Pp].<br/>
+            ○ Match a character in the set [Rr].<br/>
+            ○ Match a character in the set [Ii].<br/>
+            ○ Match a character in the set [Vv].<br/>
+            ○ Match a character in the set [Aa].<br/>
+            ○ Match a character in the set [Tt].<br/>
+            ○ Match a character in the set [Ee].<br/>
+            ○ Match ' '.<br/>
+            ○ Match a character in the set [Kk\u212A].<br/>
+            ○ Match a character in the set [Ee].<br/>
+            ○ Match a character in the set [Yy].<br/>
+            ○ Match the string "-----".<br/>
+            ○ Match any character lazily any number of times.<br/>
+            ○ Match the string "-----".<br/>
+            ○ Match a character in the set [Ee].<br/>
+            ○ Match a character in the set [Nn].<br/>
+            ○ Match a character in the set [Dd].<br/>
+            ○ Match ' '.<br/>
+            ○ Match a character other than '-' greedily any number of times.<br/>
+            ○ Match a character in the set [Pp].<br/>
+            ○ Match a character in the set [Rr].<br/>
+            ○ Match a character in the set [Ii].<br/>
+            ○ Match a character in the set [Vv].<br/>
+            ○ Match a character in the set [Aa].<br/>
+            ○ Match a character in the set [Tt].<br/>
+            ○ Match a character in the set [Ee].<br/>
+            ○ Match ' '.<br/>
+            ○ Match a character in the set [Kk\u212A].<br/>
+            ○ Match a character in the set [Ee].<br/>
+            ○ Match a character in the set [Yy].<br/>
+            ○ Match the string "-----".<br/>
+            </code>
+            </remarks>
+        </member>
+        <member name="M:HistoryJanus.GitHub.GitHubRedactor.Token">
+            <remarks>
+            Pattern:<br/>
+            <code>(?:github_pat_[A-Za-z0-9_]+|gh[pousr]_[A-Za-z0-9_]+)</code><br/>
+            Options:<br/>
+            <code>RegexOptions.IgnoreCase</code><br/>
+            Explanation:<br/>
+            <code>
+            ○ Match a character in the set [Gg].<br/>
+            ○ Match with 2 alternative expressions, atomically.<br/>
+                ○ Match a sequence of expressions.<br/>
+                    ○ Match a character in the set [Ii].<br/>
+                    ○ Match a character in the set [Tt].<br/>
+                    ○ Match a character in the set [Hh].<br/>
+                    ○ Match a character in the set [Uu].<br/>
+                    ○ Match a character in the set [Bb].<br/>
+                    ○ Match '_'.<br/>
+                    ○ Match a character in the set [Pp].<br/>
+                    ○ Match a character in the set [Aa].<br/>
+                    ○ Match a character in the set [Tt].<br/>
+                    ○ Match '_'.<br/>
+                    ○ Match a character in the set [0-9A-Z_a-z\u212A] atomically at least once.<br/>
+                ○ Match a sequence of expressions.<br/>
+                    ○ Match a character in the set [Hh].<br/>
+                    ○ Match a character in the set [OPRSUoprsu].<br/>
+                    ○ Match '_'.<br/>
+                    ○ Match a character in the set [0-9A-Z_a-z\u212A] atomically at least once.<br/>
+            </code>
+            </remarks>
+        </member>
+        <member name="M:HistoryJanus.GitHub.GitHubRedactor.SecretAssignment">
+            <remarks>
+            Pattern:<br/>
+            <code>(?i)\\b(token|password|secret|client_secret)\\s*[=:]\\s*[^\\s;]+</code><br/>
+            Explanation:<br/>
+            <code>
+            ○ Match if at a word boundary.<br/>
+            ○ 1st capture group.<br/>
+                ○ Match with 4 alternative expressions.<br/>
+                    ○ Match a sequence of expressions.<br/>
+                        ○ Match a character in the set [Tt].<br/>
+                        ○ Match a character in the set [Oo].<br/>
+                        ○ Match a character in the set [Kk\u212A].<br/>
+                        ○ Match a character in the set [Ee].<br/>
+                        ○ Match a character in the set [Nn].<br/>
+                    ○ Match a sequence of expressions.<br/>
+                        ○ Match a character in the set [Pp].<br/>
+                        ○ Match a character in the set [Aa].<br/>
+                        ○ Match a character in the set [Ss] exactly 2 times.<br/>
+                        ○ Match a character in the set [Ww].<br/>
+                        ○ Match a character in the set [Oo].<br/>
+                        ○ Match a character in the set [Rr].<br/>
+                        ○ Match a character in the set [Dd].<br/>
+                    ○ Match a sequence of expressions.<br/>
+                        ○ Match a character in the set [Ss].<br/>
+                        ○ Match a character in the set [Ee].<br/>
+                        ○ Match a character in the set [Cc].<br/>
+                        ○ Match a character in the set [Rr].<br/>
+                        ○ Match a character in the set [Ee].<br/>
+                        ○ Match a character in the set [Tt].<br/>
+                    ○ Match a sequence of expressions.<br/>
+                        ○ Match a character in the set [Cc].<br/>
+                        ○ Match a character in the set [Ll].<br/>
+                        ○ Match a character in the set [Ii].<br/>
+                        ○ Match a character in the set [Ee].<br/>
+                        ○ Match a character in the set [Nn].<br/>
+                        ○ Match a character in the set [Tt].<br/>
+                        ○ Match '_'.<br/>
+                        ○ Match a character in the set [Ss].<br/>
+                        ○ Match a character in the set [Ee].<br/>
+                        ○ Match a character in the set [Cc].<br/>
+                        ○ Match a character in the set [Rr].<br/>
+                        ○ Match a character in the set [Ee].<br/>
+                        ○ Match a character in the set [Tt].<br/>
+            ○ Match a whitespace character atomically any number of times.<br/>
+            ○ Match a character in the set [:=].<br/>
+            ○ Match a whitespace character greedily any number of times.<br/>
+            ○ Match a character in the set [^;\s] atomically at least once.<br/>
+            </code>
+            </remarks>
+        </member>
+        <member name="M:HistoryJanus.GitHub.GitHubRedactor.Bearer">
+            <remarks>
+            Pattern:<br/>
+            <code>(?i)(authorization\\s*:\\s*bearer\\s+)[^\\s]+</code><br/>
+            Explanation:<br/>
+            <code>
+            ○ 1st capture group.<br/>
+                ○ Match a character in the set [Aa].<br/>
+                ○ Match a character in the set [Uu].<br/>
+                ○ Match a character in the set [Tt].<br/>
+                ○ Match a character in the set [Hh].<br/>
+                ○ Match a character in the set [Oo].<br/>
+                ○ Match a character in the set [Rr].<br/>
+                ○ Match a character in the set [Ii].<br/>
+                ○ Match a character in the set [Zz].<br/>
+                ○ Match a character in the set [Aa].<br/>
+                ○ Match a character in the set [Tt].<br/>
+                ○ Match a character in the set [Ii].<br/>
+                ○ Match a character in the set [Oo].<br/>
+                ○ Match a character in the set [Nn].<br/>
+                ○ Match a whitespace character atomically any number of times.<br/>
+                ○ Match ':'.<br/>
+                ○ Match a whitespace character atomically any number of times.<br/>
+                ○ Match a character in the set [Bb].<br/>
+                ○ Match a character in the set [Ee].<br/>
+                ○ Match a character in the set [Aa].<br/>
+                ○ Match a character in the set [Rr].<br/>
+                ○ Match a character in the set [Ee].<br/>
+                ○ Match a character in the set [Rr].<br/>
+                ○ Match a whitespace character atomically at least once.<br/>
+            ○ Match a character in the set [^\s] atomically at least once.<br/>
+            </code>
+            </remarks>
+        </member>
+        <member name="M:HistoryJanus.GitHub.GitHubRedactor.UrlUserInfo">
+            <remarks>
+            Pattern:<br/>
+            <code>(https?://)[^/@\\s]+@</code><br/>
+            Options:<br/>
+            <code>RegexOptions.IgnoreCase</code><br/>
+            Explanation:<br/>
+            <code>
+            ○ 1st capture group.<br/>
+                ○ Match a character in the set [Hh].<br/>
+                ○ Match a character in the set [Tt] exactly 2 times.<br/>
+                ○ Match a character in the set [Pp].<br/>
+                ○ Match a character in the set [Ss] atomically, optionally.<br/>
+                ○ Match the string "://".<br/>
+            ○ Match a character in the set [^/@\s] atomically at least once.<br/>
+            ○ Match '@'.<br/>
+            </code>
+            </remarks>
+        </member>
+        <member name="M:HistoryJanus.GitHub.GitHubRemoteHistoryReader.GitHubRemote">
+            <remarks>
+            Pattern:<br/>
+            <code>^(?:https://github\\.com/|git@github\\.com:|ssh://git@github\\.com/)(?&lt;owner&gt;[^/]+)/(?&lt;repo&gt;[^/?#]+?)/?$</code><br/>
+            Options:<br/>
+            <code>RegexOptions.IgnoreCase</code><br/>
+            Explanation:<br/>
+            <code>
+            ○ Match if at the beginning of the string.<br/>
+            ○ Match with 3 alternative expressions.<br/>
+                ○ Match a sequence of expressions.<br/>
+                    ○ Match a character in the set [Hh].<br/>
+                    ○ Match a character in the set [Tt] exactly 2 times.<br/>
+                    ○ Match a character in the set [Pp].<br/>
+                    ○ Match a character in the set [Ss].<br/>
+                    ○ Match the string "://".<br/>
+                    ○ Match a character in the set [Gg].<br/>
+                    ○ Match a character in the set [Ii].<br/>
+                    ○ Match a character in the set [Tt].<br/>
+                    ○ Match a character in the set [Hh].<br/>
+                    ○ Match a character in the set [Uu].<br/>
+                    ○ Match a character in the set [Bb].<br/>
+                    ○ Match '.'.<br/>
+                    ○ Match a character in the set [Cc].<br/>
+                    ○ Match a character in the set [Oo].<br/>
+                    ○ Match a character in the set [Mm].<br/>
+                    ○ Match '/'.<br/>
+                ○ Match a sequence of expressions.<br/>
+                    ○ Match a character in the set [Gg].<br/>
+                    ○ Match a character in the set [Ii].<br/>
+                    ○ Match a character in the set [Tt].<br/>
+                    ○ Match '@'.<br/>
+                    ○ Match a character in the set [Gg].<br/>
+                    ○ Match a character in the set [Ii].<br/>
+                    ○ Match a character in the set [Tt].<br/>
+                    ○ Match a character in the set [Hh].<br/>
+                    ○ Match a character in the set [Uu].<br/>
+                    ○ Match a character in the set [Bb].<br/>
+                    ○ Match '.'.<br/>
+                    ○ Match a character in the set [Cc].<br/>
+                    ○ Match a character in the set [Oo].<br/>
+                    ○ Match a character in the set [Mm].<br/>
+                    ○ Match ':'.<br/>
+                ○ Match a sequence of expressions.<br/>
+                    ○ Match a character in the set [Ss] exactly 2 times.<br/>
+                    ○ Match a character in the set [Hh].<br/>
+                    ○ Match the string "://".<br/>
+                    ○ Match a character in the set [Gg].<br/>
+                    ○ Match a character in the set [Ii].<br/>
+                    ○ Match a character in the set [Tt].<br/>
+                    ○ Match '@'.<br/>
+                    ○ Match a character in the set [Gg].<br/>
+                    ○ Match a character in the set [Ii].<br/>
+                    ○ Match a character in the set [Tt].<br/>
+                    ○ Match a character in the set [Hh].<br/>
+                    ○ Match a character in the set [Uu].<br/>
+                    ○ Match a character in the set [Bb].<br/>
+                    ○ Match '.'.<br/>
+                    ○ Match a character in the set [Cc].<br/>
+                    ○ Match a character in the set [Oo].<br/>
+                    ○ Match a character in the set [Mm].<br/>
+                    ○ Match '/'.<br/>
+            ○ "owner" capture group.<br/>
+                ○ Match a character other than '/' atomically at least once.<br/>
+            ○ Match '/'.<br/>
+            ○ "repo" capture group.<br/>
+                ○ Match a character in the set [^#/?] lazily at least once.<br/>
+            ○ Match '/' atomically, optionally.<br/>
+            ○ Match if at the end of the string or if before an ending newline.<br/>
+            </code>
+            </remarks>
+        </member>
+        <member name="T:HistoryJanus.GitHub.IGitHubRepositoryProvisioner">
+            <summary>
+            首次推送时按需创建 GitHub 远端仓库。
+            与 <see cref="T:HistoryJanus.GitHub.GitHubConnectionService"/> 分开的原因：连接服务绑定单个仓库路径
+            （构造函数里的 Func&lt;string&gt;），而推送按各自的项目工作树发生，路径必须逐次传入。
+            </summary>
+        </member>
+        <member name="M:HistoryJanus.GitHub.IGitHubRepositoryProvisioner.EnsureAsync(System.String,System.String,System.String,System.Threading.CancellationToken)">
+            <summary>确保 <paramref name="repositoryName"/> 在 GitHub 上存在，返回接口给出的真实事实。</summary>
+            <param name="repositoryPath">用于读取凭据的本地仓库路径。</param>
+            <param name="repositoryName">期望的仓库名，通常是项目目录名。</param>
+            <param name="visibility">public 或 private。</param>
+        </member>
+        <member name="T:HistoryJanus.GitHub.GitHubRepositoryProvisioner">
+            <summary>
+            令牌来自 <c>git credential fill</c>：janus.github.login 已经把 HTTPS 凭据存进 GCM，
+            所以建仓库不新增任何凭据面，也不把 token 落盘。全部对外文本经 GitHubRedactor 脱敏。
+            </summary>
+        </member>
+        <member name="M:HistoryJanus.GitHub.GitHubRepositoryProvisioner.ReadStoredTokenAsync(System.String,System.Threading.CancellationToken)">
+            <summary>
+            走 GCM 已存的 HTTPS 凭据。<c>credential.interactive=false</c> 是必需的：
+            缺凭据时 GCM 会弹窗，而推送链路跑在没有人值守的宿主进程里。
+            </summary>
+        </member>
+        <member name="M:HistoryJanus.GitHub.GitHubRepositoryProvisioner.RepositoryName">
+            <remarks>
+            Pattern:<br/>
+            <code>^[A-Za-z0-9._-]{1,100}$</code><br/>
+            Explanation:<br/>
+            <code>
+            ○ Match if at the beginning of the string.<br/>
+            ○ Match a character in the set [-.0-9A-Z_a-z] atomically at least 1 and at most 100 times.<br/>
+            ○ Match if at the end of the string or if before an ending newline.<br/>
+            </code>
+            </remarks>
+        </member>
+        <member name="T:HistoryJanus.GitHub.ToolProcessRunner">
+            <summary>Git、GCM 和 SSH 共用的无 Shell 进程门面。</summary>
+        </member>
+        <member name="T:HistoryJanus.Views.AuroraDialog">
+            <summary>
+            把页面弹窗编成 <c>aurora.ui.dialog</c>。模块不自己 <c>new Window</c>；
+            写操作确认仍走命令 <c>ConfirmPrompt</c>，页面不得再叠一层。
+            </summary>
+        </member>
+        <member name="T:HistoryJanus.Views.BranchHistoryView">
+            <summary>跟随共享项目选择的分支提交历史窗口。</summary>
+            <summary>
+            BranchHistoryView
+            </summary>
+        </member>
+        <member name="M:HistoryJanus.Views.BranchHistoryView.InitializeComponent">
+            <summary>
+            InitializeComponent
+            </summary>
+        </member>
+        <member name="T:HistoryJanus.Views.GitHubConnectionView">
+            <summary>
+            GitHubConnectionView
+            </summary>
+        </member>
+        <member name="M:HistoryJanus.Views.GitHubConnectionView.InitializeComponent">
+            <summary>
+            InitializeComponent
+            </summary>
+        </member>
+        <member name="T:HistoryJanus.Views.GraphLayout">
+            <summary>
+            提交图谱泳道布局。X 由 Git 父边决定（左祖右孙），Y 优先贴主线并按水平占用复用空行。
+            已合并平行行保留合并前节点，右侧不画 tip。纯计算：不引用 WPF，不发指令。
+            </summary>
+        </member>
+        <member name="M:HistoryJanus.Views.GraphLayout.PackTowardMainline(System.Collections.Generic.Dictionary{System.String,System.Int32},System.Collections.Generic.List{HistoryJanus.Views.GraphLayout.LaneMeta},System.Collections.Generic.IReadOnlyDictionary{System.String,System.Double})">
+            <summary>
+            Reuse rows nearest the mainline. A later branch only moves down when its
+            X span collides with a branch already sitting on that row.
+            </summary>
+        </member>
+        <member name="M:HistoryJanus.Views.GraphLayout.AssignColumns(System.Collections.Generic.IReadOnlyList{HistoryJanus.Git.GraphCommitNode},System.Collections.Generic.IReadOnlyDictionary{System.String,HistoryJanus.Git.GraphCommitNode},System.Collections.Generic.IReadOnlyDictionary{System.String,System.Int32})">
+            <summary>
+            Each commit sits immediately to the right of its rightmost parent and of
+            the previous commit on the same lane. Wall-clock timestamps never set X:
+            translating a whole lane to pin one end makes a longer historical row
+            overshoot the fork or stretch across the global time axis.
+            </summary>
+        </member>
+        <member name="T:HistoryJanus.Views.GraphView">
+            <summary>独立窗口提交图谱：父边拓扑泳道 + 可视窗口裁剪。</summary>
+            <summary>
+            GraphView
+            </summary>
+        </member>
+        <member name="M:HistoryJanus.Views.GraphView.InitializeComponent">
+            <summary>
+            InitializeComponent
+            </summary>
+        </member>
+        <member name="T:HistoryJanus.Views.ModuleResultData">
+            <summary>Restores typed Janus contracts when a command result crossed the AppShell web boundary.</summary>
+        </member>
+        <member name="T:HistoryJanus.Views.OverviewMetaMerge">
+            <summary>
+            项目总览的项目/Meta 合并与关键字匹配。
+            纯函数独立成件：Smoke 不构造 WPF 视图也能验证合并、搜索和打开命令投影。
+            </summary>
+        </member>
+        <member name="M:HistoryJanus.Views.OverviewMetaMerge.Merge(System.Collections.Generic.IReadOnlyList{HistoryJanus.Git.WorktreeInfo},System.Collections.Generic.IReadOnlyList{HistoryJanus.Git.MetaFolderInfo})">
+            <summary>按项目名(忽略大小写)把 Meta 文件夹并入工作树行；组内按 Meta 名不区分大小写排序。</summary>
+        </member>
+        <member name="M:HistoryJanus.Views.OverviewMetaMerge.MatchesKeyword(HistoryJanus.Views.OverviewView.WorktreeRow,System.String)">
+            <summary>关键字同时匹配项目名、Meta 名、Meta 路径和最近提交描述。</summary>
+        </member>
+        <member name="M:HistoryJanus.Views.OverviewMetaMerge.BuildOpenCommand(HistoryJanus.Git.MetaFolderInfo)">
+            <summary>点击 Meta 名用登记路径打开，避免误拼库根+项目名。</summary>
+        </member>
+        <member name="T:HistoryJanus.Views.OverviewView">
+            <summary>项目工作树、Z 级元文件夹与共享项目选择。</summary>
+            <summary>
+            OverviewView
+            </summary>
+        </member>
+        <member name="M:HistoryJanus.Views.OverviewView.InitializeComponent">
+            <summary>
+            InitializeComponent
+            </summary>
+        </member>
+        <member name="M:HistoryJanus.Views.ProjectOperationCommandBuilder.Excludes(System.String)">
+            <summary>排除清单是全库共用的设置，不带项目名。</summary>
+        </member>
+        <member name="T:HistoryJanus.Views.ProjectOperationsView">
+             <summary>
+             规则分段：全库共用的「不纳入仓库」清单。
+            
+             4.x 这里是一张十列三态规则表（Git/LFS/LF × 每个格式 × 每个项目），
+             外加延迟保存、离页确认和格式台账缓存共约 500 行。
+             5.0.0 起清单全库只有一份、只有"要不要进仓库"一个维度，所以既不需要按项目加载，
+             也不需要离页保存协商——页面只是设置的一个编辑器。
+             </summary>
+            <summary>项目创建、提交推送和所选项目的三状态 Git 文件格式规则。</summary>
+            <summary>
+            ProjectOperationsView
+            </summary>
+        </member>
+        <member name="M:HistoryJanus.Views.ProjectOperationsView.SaveExcludeListAsync(System.String)">
+            <summary>
+            保存清单。返回 null 表示页面自己就拒了（空清单），没有发出任何命令。
+            单独成一个可 await 的方法，是为了让 Smoke 能确定性地断言总线调用，
+            而不必对 async void 处理器泵 WPF 消息队列。
+            </summary>
+        </member>
+        <member name="M:HistoryJanus.Views.ProjectOperationsView.InitializeComponent">
+            <summary>
+            InitializeComponent
+            </summary>
+        </member>
+        <member name="T:HistoryJanus.Views.ExcludeRuleReportView">
+            <summary>
+            跨宿主 HTTP 边界后结构化结果可能是 JsonElement，页面只取自己要显示的两组清单。
+            </summary>
+        </member>
+        <member name="M:HistoryJanus.Views.ExcludeRuleReportView.#ctor(System.Collections.Generic.IReadOnlyList{System.String},System.Collections.Generic.IReadOnlyList{System.String})">
+            <summary>
+            跨宿主 HTTP 边界后结构化结果可能是 JsonElement，页面只取自己要显示的两组清单。
+            </summary>
+        </member>
+        <member name="T:HistoryJanus.Views.ProjectSelectionState">
+            <summary>进程内共享的当前项目选择，只传递稳定的项目名。</summary>
+        </member>
+        <member name="T:HistoryJanus.Views.ViewKit">
+            <summary>
+            视图通用小件。
+            说明:未做视图基类——WPF 要求 XAML 根元素类型与代码后置基类一致,
+            使用组合式助手，避免为共享小功能改动所有 XAML 根元素。
+            </summary>
+        </member>
+        <member name="M:HistoryJanus.Views.ViewKit.RunOnceOnLoaded(System.Windows.FrameworkElement,System.Func{System.Threading.Tasks.Task})">
+            <summary>
+            Loaded 首次触发时执行一次(停靠重排会反复触发 Loaded,守卫防重复加载)。
+            适用于"标志只作守卫"的视图;标志兼作加载状态位的视图(如搜索框联动)自持字段。
+            </summary>
+        </member>
+        <member name="T:HistoryJanus.Views.DebouncedAction">
+            <summary>
+            把连续的选中/Loaded 合成一次加载，避免取消正在进行的宿主 HTTP 请求。
+            </summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.AccountName_0">
+            <summary>Custom <see cref="T:System.Text.RegularExpressions.Regex"/>-derived type for the AccountName method.</summary>
+        </member>
+        <member name="F:System.Text.RegularExpressions.Generated.AccountName_0.Instance">
+            <summary>Cached, thread-safe singleton instance.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.AccountName_0.#ctor">
+            <summary>Initializes the instance.</summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.AccountName_0.RunnerFactory">
+            <summary>Provides a factory for creating <see cref="T:System.Text.RegularExpressions.RegexRunner"/> instances to be used by methods on <see cref="T:System.Text.RegularExpressions.Regex"/>.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.AccountName_0.RunnerFactory.CreateInstance">
+            <summary>Creates an instance of a <see cref="T:System.Text.RegularExpressions.RegexRunner"/> used by methods on <see cref="T:System.Text.RegularExpressions.Regex"/>.</summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.AccountName_0.RunnerFactory.Runner">
+            <summary>Provides the runner that contains the custom logic implementing the specified regular expression.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.AccountName_0.RunnerFactory.Runner.Scan(System.ReadOnlySpan{System.Char})">
+            <summary>Scan the <paramref name="inputSpan"/> starting from base.runtextstart for the next match.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.AccountName_0.RunnerFactory.Runner.TryFindNextPossibleStartingPosition(System.ReadOnlySpan{System.Char})">
+            <summary>Search <paramref name="inputSpan"/> starting from base.runtextpos for the next location a match could possibly start.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+            <returns>true if a possible match was found; false if no more matches are possible.</returns>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.AccountName_0.RunnerFactory.Runner.TryMatchAtCurrentPosition(System.ReadOnlySpan{System.Char})">
+            <summary>Determine whether <paramref name="inputSpan"/> at base.runtextpos is a match for the regular expression.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+            <returns>true if the regular expression matches at the current position; otherwise, false.</returns>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.ScpRemote_1">
+            <summary>Custom <see cref="T:System.Text.RegularExpressions.Regex"/>-derived type for the ScpRemote method.</summary>
+        </member>
+        <member name="F:System.Text.RegularExpressions.Generated.ScpRemote_1.Instance">
+            <summary>Cached, thread-safe singleton instance.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.ScpRemote_1.#ctor">
+            <summary>Initializes the instance.</summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.ScpRemote_1.RunnerFactory">
+            <summary>Provides a factory for creating <see cref="T:System.Text.RegularExpressions.RegexRunner"/> instances to be used by methods on <see cref="T:System.Text.RegularExpressions.Regex"/>.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.ScpRemote_1.RunnerFactory.CreateInstance">
+            <summary>Creates an instance of a <see cref="T:System.Text.RegularExpressions.RegexRunner"/> used by methods on <see cref="T:System.Text.RegularExpressions.Regex"/>.</summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.ScpRemote_1.RunnerFactory.Runner">
+            <summary>Provides the runner that contains the custom logic implementing the specified regular expression.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.ScpRemote_1.RunnerFactory.Runner.Scan(System.ReadOnlySpan{System.Char})">
+            <summary>Scan the <paramref name="inputSpan"/> starting from base.runtextstart for the next match.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.ScpRemote_1.RunnerFactory.Runner.TryFindNextPossibleStartingPosition(System.ReadOnlySpan{System.Char})">
+            <summary>Search <paramref name="inputSpan"/> starting from base.runtextpos for the next location a match could possibly start.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+            <returns>true if a possible match was found; false if no more matches are possible.</returns>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.ScpRemote_1.RunnerFactory.Runner.TryMatchAtCurrentPosition(System.ReadOnlySpan{System.Char})">
+            <summary>Determine whether <paramref name="inputSpan"/> at base.runtextpos is a match for the regular expression.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+            <returns>true if the regular expression matches at the current position; otherwise, false.</returns>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.TokenLike_2">
+            <summary>Custom <see cref="T:System.Text.RegularExpressions.Regex"/>-derived type for the TokenLike method.</summary>
+        </member>
+        <member name="F:System.Text.RegularExpressions.Generated.TokenLike_2.Instance">
+            <summary>Cached, thread-safe singleton instance.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.TokenLike_2.#ctor">
+            <summary>Initializes the instance.</summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.TokenLike_2.RunnerFactory">
+            <summary>Provides a factory for creating <see cref="T:System.Text.RegularExpressions.RegexRunner"/> instances to be used by methods on <see cref="T:System.Text.RegularExpressions.Regex"/>.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.TokenLike_2.RunnerFactory.CreateInstance">
+            <summary>Creates an instance of a <see cref="T:System.Text.RegularExpressions.RegexRunner"/> used by methods on <see cref="T:System.Text.RegularExpressions.Regex"/>.</summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.TokenLike_2.RunnerFactory.Runner">
+            <summary>Provides the runner that contains the custom logic implementing the specified regular expression.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.TokenLike_2.RunnerFactory.Runner.Scan(System.ReadOnlySpan{System.Char})">
+            <summary>Scan the <paramref name="inputSpan"/> starting from base.runtextstart for the next match.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.TokenLike_2.RunnerFactory.Runner.TryFindNextPossibleStartingPosition(System.ReadOnlySpan{System.Char})">
+            <summary>Search <paramref name="inputSpan"/> starting from base.runtextpos for the next location a match could possibly start.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+            <returns>true if a possible match was found; false if no more matches are possible.</returns>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.TokenLike_2.RunnerFactory.Runner.TryMatchAtCurrentPosition(System.ReadOnlySpan{System.Char})">
+            <summary>Determine whether <paramref name="inputSpan"/> at base.runtextpos is a match for the regular expression.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+            <returns>true if the regular expression matches at the current position; otherwise, false.</returns>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.PrivateKeyBlock_3">
+            <summary>Custom <see cref="T:System.Text.RegularExpressions.Regex"/>-derived type for the PrivateKeyBlock method.</summary>
+        </member>
+        <member name="F:System.Text.RegularExpressions.Generated.PrivateKeyBlock_3.Instance">
+            <summary>Cached, thread-safe singleton instance.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.PrivateKeyBlock_3.#ctor">
+            <summary>Initializes the instance.</summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.PrivateKeyBlock_3.RunnerFactory">
+            <summary>Provides a factory for creating <see cref="T:System.Text.RegularExpressions.RegexRunner"/> instances to be used by methods on <see cref="T:System.Text.RegularExpressions.Regex"/>.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.PrivateKeyBlock_3.RunnerFactory.CreateInstance">
+            <summary>Creates an instance of a <see cref="T:System.Text.RegularExpressions.RegexRunner"/> used by methods on <see cref="T:System.Text.RegularExpressions.Regex"/>.</summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.PrivateKeyBlock_3.RunnerFactory.Runner">
+            <summary>Provides the runner that contains the custom logic implementing the specified regular expression.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.PrivateKeyBlock_3.RunnerFactory.Runner.Scan(System.ReadOnlySpan{System.Char})">
+            <summary>Scan the <paramref name="inputSpan"/> starting from base.runtextstart for the next match.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.PrivateKeyBlock_3.RunnerFactory.Runner.TryFindNextPossibleStartingPosition(System.ReadOnlySpan{System.Char})">
+            <summary>Search <paramref name="inputSpan"/> starting from base.runtextpos for the next location a match could possibly start.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+            <returns>true if a possible match was found; false if no more matches are possible.</returns>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.PrivateKeyBlock_3.RunnerFactory.Runner.TryMatchAtCurrentPosition(System.ReadOnlySpan{System.Char})">
+            <summary>Determine whether <paramref name="inputSpan"/> at base.runtextpos is a match for the regular expression.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+            <returns>true if the regular expression matches at the current position; otherwise, false.</returns>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.Token_4">
+            <summary>Custom <see cref="T:System.Text.RegularExpressions.Regex"/>-derived type for the Token method.</summary>
+        </member>
+        <member name="F:System.Text.RegularExpressions.Generated.Token_4.Instance">
+            <summary>Cached, thread-safe singleton instance.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.Token_4.#ctor">
+            <summary>Initializes the instance.</summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.Token_4.RunnerFactory">
+            <summary>Provides a factory for creating <see cref="T:System.Text.RegularExpressions.RegexRunner"/> instances to be used by methods on <see cref="T:System.Text.RegularExpressions.Regex"/>.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.Token_4.RunnerFactory.CreateInstance">
+            <summary>Creates an instance of a <see cref="T:System.Text.RegularExpressions.RegexRunner"/> used by methods on <see cref="T:System.Text.RegularExpressions.Regex"/>.</summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.Token_4.RunnerFactory.Runner">
+            <summary>Provides the runner that contains the custom logic implementing the specified regular expression.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.Token_4.RunnerFactory.Runner.Scan(System.ReadOnlySpan{System.Char})">
+            <summary>Scan the <paramref name="inputSpan"/> starting from base.runtextstart for the next match.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.Token_4.RunnerFactory.Runner.TryFindNextPossibleStartingPosition(System.ReadOnlySpan{System.Char})">
+            <summary>Search <paramref name="inputSpan"/> starting from base.runtextpos for the next location a match could possibly start.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+            <returns>true if a possible match was found; false if no more matches are possible.</returns>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.Token_4.RunnerFactory.Runner.TryMatchAtCurrentPosition(System.ReadOnlySpan{System.Char})">
+            <summary>Determine whether <paramref name="inputSpan"/> at base.runtextpos is a match for the regular expression.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+            <returns>true if the regular expression matches at the current position; otherwise, false.</returns>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.SecretAssignment_5">
+            <summary>Custom <see cref="T:System.Text.RegularExpressions.Regex"/>-derived type for the SecretAssignment method.</summary>
+        </member>
+        <member name="F:System.Text.RegularExpressions.Generated.SecretAssignment_5.Instance">
+            <summary>Cached, thread-safe singleton instance.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.SecretAssignment_5.#ctor">
+            <summary>Initializes the instance.</summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.SecretAssignment_5.RunnerFactory">
+            <summary>Provides a factory for creating <see cref="T:System.Text.RegularExpressions.RegexRunner"/> instances to be used by methods on <see cref="T:System.Text.RegularExpressions.Regex"/>.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.SecretAssignment_5.RunnerFactory.CreateInstance">
+            <summary>Creates an instance of a <see cref="T:System.Text.RegularExpressions.RegexRunner"/> used by methods on <see cref="T:System.Text.RegularExpressions.Regex"/>.</summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.SecretAssignment_5.RunnerFactory.Runner">
+            <summary>Provides the runner that contains the custom logic implementing the specified regular expression.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.SecretAssignment_5.RunnerFactory.Runner.Scan(System.ReadOnlySpan{System.Char})">
+            <summary>Scan the <paramref name="inputSpan"/> starting from base.runtextstart for the next match.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.SecretAssignment_5.RunnerFactory.Runner.TryFindNextPossibleStartingPosition(System.ReadOnlySpan{System.Char})">
+            <summary>Search <paramref name="inputSpan"/> starting from base.runtextpos for the next location a match could possibly start.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+            <returns>true if a possible match was found; false if no more matches are possible.</returns>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.SecretAssignment_5.RunnerFactory.Runner.TryMatchAtCurrentPosition(System.ReadOnlySpan{System.Char})">
+            <summary>Determine whether <paramref name="inputSpan"/> at base.runtextpos is a match for the regular expression.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+            <returns>true if the regular expression matches at the current position; otherwise, false.</returns>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.Bearer_6">
+            <summary>Custom <see cref="T:System.Text.RegularExpressions.Regex"/>-derived type for the Bearer method.</summary>
+        </member>
+        <member name="F:System.Text.RegularExpressions.Generated.Bearer_6.Instance">
+            <summary>Cached, thread-safe singleton instance.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.Bearer_6.#ctor">
+            <summary>Initializes the instance.</summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.Bearer_6.RunnerFactory">
+            <summary>Provides a factory for creating <see cref="T:System.Text.RegularExpressions.RegexRunner"/> instances to be used by methods on <see cref="T:System.Text.RegularExpressions.Regex"/>.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.Bearer_6.RunnerFactory.CreateInstance">
+            <summary>Creates an instance of a <see cref="T:System.Text.RegularExpressions.RegexRunner"/> used by methods on <see cref="T:System.Text.RegularExpressions.Regex"/>.</summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.Bearer_6.RunnerFactory.Runner">
+            <summary>Provides the runner that contains the custom logic implementing the specified regular expression.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.Bearer_6.RunnerFactory.Runner.Scan(System.ReadOnlySpan{System.Char})">
+            <summary>Scan the <paramref name="inputSpan"/> starting from base.runtextstart for the next match.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.Bearer_6.RunnerFactory.Runner.TryFindNextPossibleStartingPosition(System.ReadOnlySpan{System.Char})">
+            <summary>Search <paramref name="inputSpan"/> starting from base.runtextpos for the next location a match could possibly start.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+            <returns>true if a possible match was found; false if no more matches are possible.</returns>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.Bearer_6.RunnerFactory.Runner.TryMatchAtCurrentPosition(System.ReadOnlySpan{System.Char})">
+            <summary>Determine whether <paramref name="inputSpan"/> at base.runtextpos is a match for the regular expression.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+            <returns>true if the regular expression matches at the current position; otherwise, false.</returns>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.UrlUserInfo_7">
+            <summary>Custom <see cref="T:System.Text.RegularExpressions.Regex"/>-derived type for the UrlUserInfo method.</summary>
+        </member>
+        <member name="F:System.Text.RegularExpressions.Generated.UrlUserInfo_7.Instance">
+            <summary>Cached, thread-safe singleton instance.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.UrlUserInfo_7.#ctor">
+            <summary>Initializes the instance.</summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.UrlUserInfo_7.RunnerFactory">
+            <summary>Provides a factory for creating <see cref="T:System.Text.RegularExpressions.RegexRunner"/> instances to be used by methods on <see cref="T:System.Text.RegularExpressions.Regex"/>.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.UrlUserInfo_7.RunnerFactory.CreateInstance">
+            <summary>Creates an instance of a <see cref="T:System.Text.RegularExpressions.RegexRunner"/> used by methods on <see cref="T:System.Text.RegularExpressions.Regex"/>.</summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.UrlUserInfo_7.RunnerFactory.Runner">
+            <summary>Provides the runner that contains the custom logic implementing the specified regular expression.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.UrlUserInfo_7.RunnerFactory.Runner.Scan(System.ReadOnlySpan{System.Char})">
+            <summary>Scan the <paramref name="inputSpan"/> starting from base.runtextstart for the next match.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.UrlUserInfo_7.RunnerFactory.Runner.TryFindNextPossibleStartingPosition(System.ReadOnlySpan{System.Char})">
+            <summary>Search <paramref name="inputSpan"/> starting from base.runtextpos for the next location a match could possibly start.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+            <returns>true if a possible match was found; false if no more matches are possible.</returns>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.UrlUserInfo_7.RunnerFactory.Runner.TryMatchAtCurrentPosition(System.ReadOnlySpan{System.Char})">
+            <summary>Determine whether <paramref name="inputSpan"/> at base.runtextpos is a match for the regular expression.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+            <returns>true if the regular expression matches at the current position; otherwise, false.</returns>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.GitHubRemote_8">
+            <summary>Custom <see cref="T:System.Text.RegularExpressions.Regex"/>-derived type for the GitHubRemote method.</summary>
+        </member>
+        <member name="F:System.Text.RegularExpressions.Generated.GitHubRemote_8.Instance">
+            <summary>Cached, thread-safe singleton instance.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.GitHubRemote_8.#ctor">
+            <summary>Initializes the instance.</summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.GitHubRemote_8.RunnerFactory">
+            <summary>Provides a factory for creating <see cref="T:System.Text.RegularExpressions.RegexRunner"/> instances to be used by methods on <see cref="T:System.Text.RegularExpressions.Regex"/>.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.GitHubRemote_8.RunnerFactory.CreateInstance">
+            <summary>Creates an instance of a <see cref="T:System.Text.RegularExpressions.RegexRunner"/> used by methods on <see cref="T:System.Text.RegularExpressions.Regex"/>.</summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.GitHubRemote_8.RunnerFactory.Runner">
+            <summary>Provides the runner that contains the custom logic implementing the specified regular expression.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.GitHubRemote_8.RunnerFactory.Runner.Scan(System.ReadOnlySpan{System.Char})">
+            <summary>Scan the <paramref name="inputSpan"/> starting from base.runtextstart for the next match.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.GitHubRemote_8.RunnerFactory.Runner.TryFindNextPossibleStartingPosition(System.ReadOnlySpan{System.Char})">
+            <summary>Search <paramref name="inputSpan"/> starting from base.runtextpos for the next location a match could possibly start.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+            <returns>true if a possible match was found; false if no more matches are possible.</returns>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.GitHubRemote_8.RunnerFactory.Runner.TryMatchAtCurrentPosition(System.ReadOnlySpan{System.Char})">
+            <summary>Determine whether <paramref name="inputSpan"/> at base.runtextpos is a match for the regular expression.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+            <returns>true if the regular expression matches at the current position; otherwise, false.</returns>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.RepositoryName_9">
+            <summary>Custom <see cref="T:System.Text.RegularExpressions.Regex"/>-derived type for the RepositoryName method.</summary>
+        </member>
+        <member name="F:System.Text.RegularExpressions.Generated.RepositoryName_9.Instance">
+            <summary>Cached, thread-safe singleton instance.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.RepositoryName_9.#ctor">
+            <summary>Initializes the instance.</summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.RepositoryName_9.RunnerFactory">
+            <summary>Provides a factory for creating <see cref="T:System.Text.RegularExpressions.RegexRunner"/> instances to be used by methods on <see cref="T:System.Text.RegularExpressions.Regex"/>.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.RepositoryName_9.RunnerFactory.CreateInstance">
+            <summary>Creates an instance of a <see cref="T:System.Text.RegularExpressions.RegexRunner"/> used by methods on <see cref="T:System.Text.RegularExpressions.Regex"/>.</summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.RepositoryName_9.RunnerFactory.Runner">
+            <summary>Provides the runner that contains the custom logic implementing the specified regular expression.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.RepositoryName_9.RunnerFactory.Runner.Scan(System.ReadOnlySpan{System.Char})">
+            <summary>Scan the <paramref name="inputSpan"/> starting from base.runtextstart for the next match.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.RepositoryName_9.RunnerFactory.Runner.TryFindNextPossibleStartingPosition(System.ReadOnlySpan{System.Char})">
+            <summary>Search <paramref name="inputSpan"/> starting from base.runtextpos for the next location a match could possibly start.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+            <returns>true if a possible match was found; false if no more matches are possible.</returns>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.RepositoryName_9.RunnerFactory.Runner.TryMatchAtCurrentPosition(System.ReadOnlySpan{System.Char})">
+            <summary>Determine whether <paramref name="inputSpan"/> at base.runtextpos is a match for the regular expression.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+            <returns>true if the regular expression matches at the current position; otherwise, false.</returns>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.Utilities">
+            <summary>Helper methods used by generated <see cref="T:System.Text.RegularExpressions.Regex"/>-derived implementations.</summary>
+        </member>
+        <member name="F:System.Text.RegularExpressions.Generated.Utilities.s_defaultTimeout">
+            <summary>Default timeout value set in <see cref="T:System.AppContext"/>, or <see cref="F:System.Text.RegularExpressions.Regex.InfiniteMatchTimeout"/> if none was set.</summary>
+        </member>
+        <member name="F:System.Text.RegularExpressions.Generated.Utilities.s_hasTimeout">
+            <summary>Whether <see cref="F:System.Text.RegularExpressions.Generated.Utilities.s_defaultTimeout"/> is non-infinite.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.Utilities.IsBoundary(System.ReadOnlySpan{System.Char},System.Int32)">
+            <summary>Determines whether the specified index is a boundary.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.Utilities.IsWordChar(System.Char)">
+            <summary>Determines whether the character is part of the [\w] set.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.Utilities.StackPush(System.Int32[]@,System.Int32@,System.Int32,System.Int32)">
+            <summary>Pushes 2 values onto the backtracking stack.</summary>
+        </member>
+        <member name="F:System.Text.RegularExpressions.Generated.Utilities.s_nonAscii_1D13D87DE94A24C47448D78C8E5A654359C26BDB2CA2141C48E99EEA1CA26540">
+            <summary>Supports searching for characters in or not in "CIKSciksK".</summary>
+        </member>
+    </members>
+</doc>
