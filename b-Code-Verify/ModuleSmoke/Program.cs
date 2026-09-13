@@ -7,14 +7,11 @@ using HistoryVulcan.Core.Modules;
 using HistoryVulcan.Core.Storage;
 using HistoryVulcan.Services.Modules;
 
-// 5.6.0：参数从「模块目录」改成**运行区根目录**，也就是「一堆模块包的父目录」。
-// 宿主 5.1.x 起只经 IModuleDiscoverySource 发现模块，而唯一的实现
-// RuntimeModuleDiscoverySource 扫的是根目录的直接子目录，并要求每个包自带
-// module.manifest.json 与 SHA256SUMS——bin 输出目录没有后者，因此这条冒烟
-// 现在跑的是**候选包**（z-Publish），跑的东西也更接近真正被装载的那份。
+// 5.7.0：同时接受运行区根目录、单包和管线传入的 bin 输出。
+// bin 经 SmokePackageRoot 包装为带校验和的隔离运行区，仍走正式发现器与装载器。
 if (args.Length != 1)
 {
-    Console.Error.WriteLine("usage: ModuleSmoke <runtime-package-root>");
+    Console.Error.WriteLine("usage: ModuleSmoke <runtime-package-root|package|build-output>");
     return 2;
 }
 
@@ -32,7 +29,8 @@ var bus = new CommandBus(registry, log);
 var settings = new MemorySettings();
 var dataDirectory = Path.Combine(Path.GetTempPath(), "HistoryJanus-ModuleSmoke", Guid.NewGuid().ToString("N"));
 
-using var host = new ModuleHost(new RuntimeModuleDiscoverySource(packageRoot), log)
+using var smokePackages = new SmokePackageRoot(packageRoot);
+using var host = new ModuleHost(new RuntimeModuleDiscoverySource(smokePackages.Root), log)
 {
     EnableUiModules = true,
     EnableFileWatching = false,

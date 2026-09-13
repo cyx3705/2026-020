@@ -1,6 +1,6 @@
-﻿# HistoryJanus
+# HistoryJanus
 
-HistoryJanus 5.6.0 是运行在 HistoryVulcan 中的项目与 Git 治理模块。HistoryVulcan 独立负责 Shell、命令总线、模块生命周期、ServiceHost 和 MCP/Web 基础设施；Janus 只注册业务命令和页面。
+HistoryJanus 5.7.0 是运行在 HistoryVulcan 中的项目与 Git 治理模块。HistoryVulcan 独立负责 Shell、命令总线、模块生命周期、ServiceHost 和 MCP/Web 基础设施；Janus 只注册业务命令和页面。
 
 ## 结构
 

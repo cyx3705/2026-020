@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 
 namespace HistoryJanus.Module;
 
@@ -107,8 +107,7 @@ internal static partial class HistoryJanusUiCommands
                             {
                                 new { key = "name", title = "项目", width = "220" },
                                 new { key = "zFolders", title = "z 级文件夹", width = "110", cellAction = "janus.project.openmeta" },
-                                new { key = "status", title = "状态", width = "72" },
-                                new { key = "statusSymbol", title = "动作", width = "48", cellAction = "janus.project.action" },
+                                new { key = "status", title = "状态 / 动作", width = "120", cellAction = "janus.project.action" },
                                 new { key = "subject", title = "最近提交", width = "*" },
                             },
                             view = new { filterable = true, sortable = true, selection = "single" },
