@@ -1,4 +1,4 @@
-﻿using System.IO;
+using System.IO;
 using System.Text.Json;
 using HistoryJanus.Git;
 using HistoryVulcan.Core.Commands;
@@ -41,6 +41,7 @@ internal static partial class HistoryJanusUiCommands
             [
                 new ParameterSpec { Name = "name", Description = "项目名", Required = true, Position = 0 },
                 new ParameterSpec { Name = "action", Description = "状态动作", Required = true, Position = 1 },
+                new ParameterSpec { Name = "msg", Description = "提交描述；省略时弹窗输入" },
             ],
             Handler = context => ProjectActionAsync(context, bus, business),
         }, source);
@@ -67,6 +68,7 @@ internal static partial class HistoryJanusUiCommands
         var current = await projects.RefreshProjectAsync(name, true, context.Cancellation);
         if (!current.Action.Equals(action, StringComparison.Ordinal))
         {
+            await RefreshCachedProjectAsync(projects, name, context.Cancellation);
             _ = await bus.ExecuteAsync("aurora.ui.refreshdata node=projects", context.Source, context.Cancellation);
             return CommandResult.Fail($"项目状态已变化：当前应执行“{current.Action}”（{current.Message}）");
         }
@@ -74,11 +76,15 @@ internal static partial class HistoryJanusUiCommands
         string command;
         if (action == "提交")
         {
-            var dialog = await bus.ExecuteAsync(
-                $"aurora.ui.dialog kind=prompt title=提交 body={Quote(name)} primary=提交 cancel=取消",
-                context.Source, context.Cancellation);
-            if (!dialog.Success) return dialog;
-            var message = DialogValue(dialog);
+            var message = context.GetString("msg")?.Trim() ?? "";
+            if (message.Length == 0)
+            {
+                var dialog = await bus.ExecuteAsync(
+                    $"aurora.ui.dialog kind=prompt title=提交 body={Quote(name)} primary=提交 cancel=取消",
+                    context.Source, context.Cancellation);
+                if (!dialog.Success) return dialog;
+                message = DialogValue(dialog);
+            }
             if (message.Length == 0) return CommandResult.Fail("提交描述不能为空");
             command = $"janus.proj.commit name={Quote(name)} msg={Quote(message)}";
         }
@@ -96,8 +102,38 @@ internal static partial class HistoryJanusUiCommands
         }
         var result = await bus.ExecuteAsync(command, context.Source, context.Cancellation);
         if (result.Success)
+        {
+            await RefreshCachedProjectAsync(projects, name, context.Cancellation);
             _ = await bus.ExecuteAsync("aurora.ui.refreshdata node=projects", context.Source, context.Cancellation);
+        }
         return result;
+    }
+
+    internal static async Task RefreshCachedProjectAsync(
+        ProjectService projects, string name, CancellationToken cancellation = default)
+    {
+        await ProjectCacheGate.WaitAsync(cancellation);
+        try
+        {
+            var cached = _projectCache ?? [];
+            var previous = cached.FirstOrDefault(item => item.BranchName.Equals(name, StringComparison.OrdinalIgnoreCase))
+                ?? new WorktreeInfo(name, Path.Combine(projects.LibraryRoot, name));
+            // 推送/同步命令已更新远端引用；只读当前项目，不再次 fetch 全库。
+            var updated = (await projects.ReadLifecycleStatusesAsync([previous], false, cancellation))[0];
+            if (!updated.IsArchived)
+            {
+                var log = await GitRunner.RunAsync(updated.WorktreePath, ["log", "-1", "--format=%cI%x1f%s"], cancellation);
+                if (log.Success)
+                {
+                    var parts = log.Output.Trim().Split('\u001f', 2);
+                    updated = updated with { LastCommitTime = parts[0], LastCommitMessage = parts.Length > 1 ? parts[1] : "" };
+                }
+            }
+            _projectCache = cached.Any(item => ReferenceEquals(item, previous))
+                ? cached.Select(item => ReferenceEquals(item, previous) ? updated : item).ToArray()
+                : [.. cached, updated];
+        }
+        finally { ProjectCacheGate.Release(); }
     }
 
     private static async Task<CommandResult> OpenMetaAsync(

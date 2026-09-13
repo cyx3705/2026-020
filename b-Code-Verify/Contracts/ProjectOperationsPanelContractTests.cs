@@ -179,14 +179,16 @@ public sealed partial class ProjectOperationsPanelContractTests
     public void CommitAndPushActOnTheSelectedProject()
     {
         var commit = Action("janus.project.commit");
-        Assert.Equal("janus.proj.commit", commit.GetProperty("command").GetString());
+        Assert.Equal("janus.ui.projectaction", commit.GetProperty("command").GetString());
+        Assert.Equal("提交", commit.GetProperty("args").GetProperty("action").GetString());
         Assert.Equal(
             "{selection." + Channel + ".name}",
             commit.GetProperty("args").GetProperty("name").GetString());
         Assert.Equal("{commit-message}", commit.GetProperty("args").GetProperty("msg").GetString());
 
         var push = Action("janus.project.push");
-        Assert.Equal("janus.proj.push", push.GetProperty("command").GetString());
+        Assert.Equal("janus.ui.projectaction", push.GetProperty("command").GetString());
+        Assert.Equal("推送", push.GetProperty("args").GetProperty("action").GetString());
         Assert.Equal(
             "{selection." + Channel + ".name}",
             push.GetProperty("args").GetProperty("name").GetString());

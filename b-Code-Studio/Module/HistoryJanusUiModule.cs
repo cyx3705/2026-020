@@ -1,4 +1,4 @@
-﻿using System.IO;
+using System.IO;
 using System.Text.Json;
 using HistoryVulcan.Core.Commands;
 using HistoryVulcan.Core.Logging;
@@ -307,6 +307,7 @@ internal static partial class HistoryJanusUiCommands
     private static bool _forceProjectRefresh;
 
     private static IReadOnlyList<WorktreeInfo>? _projectCache;
+    private static readonly SemaphoreSlim ProjectCacheGate = new(1, 1);
 
     internal static void RequestProjectRefresh() => _forceProjectRefresh = true;
 
@@ -314,23 +315,28 @@ internal static partial class HistoryJanusUiCommands
         CommandContext context,
         CommandBus bus)
     {
-        var forced = _forceProjectRefresh || context.GetBool("refresh");
-        _forceProjectRefresh = false;
-        if (!forced && _projectCache is { } cached)
-            return (cached, null);
+        await ProjectCacheGate.WaitAsync(context.Cancellation);
+        try
+        {
+            var forced = _forceProjectRefresh || context.GetBool("refresh");
+            _forceProjectRefresh = false;
+            if (!forced && _projectCache is { } cached)
+                return (cached, null);
 
-        // 首屏建树发生在宿主启动路径上，因此默认那一版不查远端也不读工作树状态；
-        // 「刷新」按下的那一次才付全价。
-        var command = forced
-            ? "janus.proj.list status=true refresh=true"
-            : "janus.proj.list status=false";
-        var result = await bus.ExecuteAsync(command, context.Source, context.Cancellation);
-        if (!result.Success)
-            return ([], CommandResult.Fail(result.Message));
+            // 首屏建树发生在宿主启动路径上，因此默认那一版不查远端也不读工作树状态；
+            // 「刷新」按下的那一次才付全价。
+            var command = forced
+                ? "janus.proj.list status=true refresh=true"
+                : "janus.proj.list status=false";
+            var result = await bus.ExecuteAsync(command, context.Source, context.Cancellation);
+            if (!result.Success)
+                return ([], CommandResult.Fail(result.Message));
 
-        var items = UiProjectProjection.ReadWorktrees(result.Data);
-        _projectCache = items;
-        return (items, null);
+            var items = UiProjectProjection.ReadWorktrees(result.Data);
+            _projectCache = items;
+            return (items, null);
+        }
+        finally { ProjectCacheGate.Release(); }
     }
 
     /// <summary>按项目取数：没给项目名就返回 null，调用方据此拒绝，而不是去扫全库。</summary>

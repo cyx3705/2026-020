@@ -96,6 +96,7 @@ internal static partial class HistoryJanusUiCommands
                             dataSource = new
                             {
                                 command = "janus.ui.data",
+                                rowKey = "name",
                                 args = new
                                 {
                                     view = "projects",
@@ -483,9 +484,10 @@ internal static partial class HistoryJanusUiCommands
             {
                 id = "janus.project.commit",
                 title = "提交当前项目",
-                command = "janus.proj.commit",
+                command = "janus.ui.projectaction",
                 args = new Dictionary<string, string>
                 {
+                    ["action"] = "提交",
                     ["name"] = SelectedProject,
                     ["msg"] = "{commit-message}",
                 },
@@ -495,9 +497,10 @@ internal static partial class HistoryJanusUiCommands
             {
                 id = "janus.project.push",
                 title = "推送当前项目",
-                command = "janus.proj.push",
+                command = "janus.ui.projectaction",
                 args = new Dictionary<string, string>
                 {
+                    ["action"] = "推送",
                     ["name"] = SelectedProject,
                 },
                 summary = "推送选中项目的分支",

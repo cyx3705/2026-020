@@ -5,6 +5,8 @@ using System.Text;
 using System.Text.Json;
 using HistoryJanus.Git;
 using HistoryJanus.GitHub;
+using HistoryJanus.Module;
+using HistoryVulcan.Core.Commands;
 using HistoryVulcan.Core.Storage;
 using Xunit;
 
@@ -14,6 +16,80 @@ public sealed class ProjectLifecycleContractTests : IDisposable
 {
     private readonly string _root = Path.Combine(Path.GetTempPath(), "HistoryJanus-Lifecycle", Guid.NewGuid().ToString("N"));
     private readonly string _data = Path.Combine(Path.GetTempPath(), "HistoryJanus-LifecycleData", Guid.NewGuid().ToString("N"));
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task PushActionUpdatesCachedRowBeforeAutomaticRefresh(bool succeeds)
+    {
+        Directory.CreateDirectory(_root);
+        var remote = Path.Combine(_root, "remote.git");
+        const string name = "2026-902-AutoState";
+        var project = Path.Combine(_root, name);
+        await Git(_root, "init", "--bare", remote);
+        Directory.CreateDirectory(project);
+        await Git(project, "init", "-b", "main");
+        await Git(project, "config", "user.name", "Janus Test");
+        await Git(project, "config", "user.email", "janus@example.invalid");
+        await Git(project, "commit", "--allow-empty", "-m", "initial");
+        await Git(project, "remote", "add", "origin", remote);
+        await Git(project, "push", "-u", "origin", "main");
+        await Git(project, "commit", "--allow-empty", "-m", "next");
+        var service = CreateService();
+        var initial = (await service.ReadLifecycleStatusesAsync([new WorktreeInfo(name, project)], false))[0];
+        Assert.Equal("推送", initial.LifecycleAction);
+        var registry = new CommandRegistry();
+        var bus = new CommandBus(registry, new ModuleLog());
+        var composition = new StudioBusinessComposition(service, null!, null!, null!, null!, null!);
+        HistoryJanusUiCommands.Register(registry, bus, "test", () => composition);
+        var lists = 0;
+        registry.Register(new CommandDescriptor
+        {
+            Name = "janus.proj.list", Domain = "janus", CommandClass = "proj", Summary = "test", Readonly = true,
+            Parameters = [new() { Name = "status", Description = "test" }, new() { Name = "refresh", Description = "test" }],
+            Handler = CommandDescriptor.Sync(_ =>
+            {
+                lists++;
+                return CommandResult.Ok("rows", new[] { initial, new WorktreeInfo("2026-903-Unchanged", "untouched", LifecycleAction: "提交") });
+            }),
+        });
+        registry.Register(new CommandDescriptor
+        {
+            Name = "janus.proj.push", Domain = "janus", CommandClass = "proj", Summary = "test", Readonly = true,
+            Parameters = [new() { Name = "name", Description = "test" }],
+            Handler = async _ =>
+            {
+                if (!succeeds) return CommandResult.Fail("test push failure");
+                await Git(project, "push", "origin", "main");
+                return CommandResult.Ok("pushed");
+            },
+        });
+        string? displayed = null;
+        registry.Register(new CommandDescriptor
+        {
+            Name = "aurora.ui.refreshdata", Domain = "aurora", CommandClass = "ui", Summary = "test", Readonly = true,
+            Parameters = [new() { Name = "node", Description = "test" }],
+            Handler = async _ =>
+            {
+                var data = await bus.ExecuteAsync("janus.ui.data view=projects", "UI");
+                Assert.True(data.Success, data.Message);
+                displayed = data.Message;
+                return CommandResult.Ok("refreshed");
+            },
+        });
+        HistoryJanusUiCommands.RequestProjectRefresh();
+        Assert.True((await bus.ExecuteAsync("janus.ui.data view=projects", "UI")).Success);
+        var result = await bus.ExecuteAsync($"janus.ui.projectaction name={name} action=推送", "UI");
+        Assert.Equal(succeeds, result.Success);
+        Assert.Equal(1, lists); // 操作结束没有全库扫描。
+        if (!succeeds) Assert.Null(displayed);
+        var after = await bus.ExecuteAsync("janus.ui.data view=projects", "UI");
+        using var json = JsonDocument.Parse(succeeds ? displayed! : after.Message);
+        var row = json.RootElement.EnumerateArray().Single(item => item.GetProperty("name").GetString() == name);
+        Assert.Equal(succeeds ? "同步" : "推送", row.GetProperty("status").GetString());
+        var other = json.RootElement.EnumerateArray().Single(item => item.GetProperty("name").GetString() == "2026-903-Unchanged");
+        Assert.Equal("提交", other.GetProperty("status").GetString());
+    }
 
     [Fact]
     public async Task LifecyclePreservesMultipleZFoldersAndRestoresThemOverRemoteContent()
