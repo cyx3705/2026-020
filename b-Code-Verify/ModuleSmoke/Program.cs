@@ -26,8 +26,6 @@ AppIdentity.Use(typeof(Program).Assembly);
 var log = new MemoryLog();
 var registry = new CommandRegistry();
 var bus = new CommandBus(registry, log);
-var settings = new MemorySettings();
-var dataDirectory = Path.Combine(Path.GetTempPath(), "HistoryJanus-ModuleSmoke", Guid.NewGuid().ToString("N"));
 
 using var smokePackages = new SmokePackageRoot(packageRoot);
 using var host = new ModuleHost(new RuntimeModuleDiscoverySource(smokePackages.Root), log)
@@ -36,7 +34,8 @@ using var host = new ModuleHost(new RuntimeModuleDiscoverySource(smokePackages.R
     EnableFileWatching = false,
 };
 
-host.Attach(registry, bus, settings, dataDirectory);
+// 宿主 5.4：Attach 只接注册表与总线；设置与数据目录由模块自持，宿主不再注入。
+host.Attach(registry, bus);
 host.Start();
 
 if (host.Modules.Count != 1)

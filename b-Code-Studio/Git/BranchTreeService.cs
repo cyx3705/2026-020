@@ -1,6 +1,5 @@
 using System.IO;
 using System.Text;
-using HistoryVulcan.Services;
 
 namespace HistoryJanus.Git;
 
@@ -207,7 +206,7 @@ public sealed class BranchTreeService
         }
     }
 
-    private string TreeCachePath => Path.Combine(AppPaths.GetDataDir(_dataDir), "branch-tree.json");
+    private string TreeCachePath => Path.Combine(_dataDir, "data", "branch-tree.json");
 
     public void InvalidateCache()
     {

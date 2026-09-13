@@ -65,7 +65,7 @@ public static class StudioBusinessCompositionFactory
         var history = new HistoryRecorder(dataDirectory, log);
         var projects = new ProjectService(
             settings,
-            prompt => bus.Confirmation?.Confirm(prompt) == true,
+            bus.RequestConfirmation,
             dataDirectory);
         projects.EnsureDefaultSettings();
         projects.NotesProvider = history.AllNotes;

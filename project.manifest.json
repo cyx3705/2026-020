@@ -15,7 +15,7 @@
       "appshell-module"
     ],
     "status": "active",
-    "version": "5.7.1",
+    "version": "5.8.0",
     "branch": "main"
   },
   "paths": {
@@ -68,7 +68,7 @@
     "package": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\b-Code-Studio\\eng\\Build-HistoryJanusPackage.ps1"
   },
   "externalDependencies": [
-    "HistoryVulcan >= 5.1.2 host snapshot from ../2026-023-HistoryVulcan/z-Publish/host",
+    "HistoryVulcan >= 5.4.0 host snapshot from ../2026-023-HistoryVulcan/z-Publish/host",
     "HistoryAurora >= 1.21.0 at runtime: stateful command buttons, bounded scrolling rule tables and scrollbar-free graph navigation; not a compile-time reference",
     ".NET 8 SDK and Windows Desktop Runtime",
     "Git command-line client"
