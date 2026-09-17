@@ -30,6 +30,9 @@ public sealed record ProjectLifecycleSnapshot(
 
 public sealed partial class ProjectService
 {
+    /// <summary>远端状态没能确认时的动作：重新查一次这个项目。</summary>
+    public const string RefreshAction = "刷新";
+
     public IReadOnlyList<ProjectLifecycleRecord> LifecycleRecords => _lifecycle.All();
 
     public ProjectLifecycleRecord? GetLifecycleRecord(string name) => _lifecycle.Get(name);
@@ -51,7 +54,7 @@ public sealed partial class ProjectService
         var resolved = ResolveWorktree(name);
         if (!resolved.Success || resolved.Worktree == null)
         {
-            return new ProjectLifecycleSnapshot(name, ProjectLifecycleState.Unavailable, "同步",
+            return new ProjectLifecycleSnapshot(name, ProjectLifecycleState.Unavailable, RefreshAction,
                 resolved.Message, "", "", record?.Remote ?? "", record?.Branch ?? MainlineBranch,
                 0, 0, Directory.Exists(path) ? ReadZFolderNames(path) : []);
         }
@@ -67,7 +70,7 @@ public sealed partial class ProjectService
         var remote = remoteResult.Success ? remoteResult.Output.Trim() : "";
 
         if (!status.Success || local.Length == 0)
-            return Snapshot(ProjectLifecycleState.Unavailable, "同步", "无法读取本地仓库状态");
+            return Snapshot(ProjectLifecycleState.Unavailable, RefreshAction, "无法读取本地仓库状态");
         if (!string.IsNullOrWhiteSpace(status.Output))
             return Snapshot(ProjectLifecycleState.Dirty, "提交", "工作树有未提交或未跟踪内容");
         if (remote.Length == 0)
@@ -79,7 +82,7 @@ public sealed partial class ProjectService
                 ["fetch", "--no-tags", "origin", $"+refs/heads/{MainlineBranch}:refs/remotes/origin/{MainlineBranch}"],
                 cancellation);
             if (!fetch.Success)
-                return Snapshot(ProjectLifecycleState.Unavailable, "同步", $"远端状态待确认: {fetch.Output}");
+                return Snapshot(ProjectLifecycleState.Unavailable, RefreshAction, $"远端状态待确认: {fetch.Output}");
         }
 
         var remoteSha = await ReadRefAsync(repo, $"refs/remotes/origin/{MainlineBranch}", cancellation);
@@ -88,7 +91,7 @@ public sealed partial class ProjectService
         var counts = await GitRunner.RunAsync(repo,
             ["rev-list", "--left-right", "--count", $"{local}...{remoteSha}"], cancellation);
         if (!counts.Success)
-            return Snapshot(ProjectLifecycleState.Unavailable, "同步", "无法比较本地与远端提交");
+            return Snapshot(ProjectLifecycleState.Unavailable, RefreshAction, "无法比较本地与远端提交");
         var parts = counts.Output.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
         var ahead = 0;
         var behind = 0;
@@ -137,23 +140,26 @@ public sealed partial class ProjectService
         var snapshots = await Task.WhenAll(worktrees.Select(item =>
             RefreshProjectAsync(item.BranchName, fetchRemote, cancellation)));
         var byName = snapshots.ToDictionary(item => item.ProjectName, StringComparer.OrdinalIgnoreCase);
-        return worktrees.Select(item =>
-        {
-            var state = byName[item.BranchName];
-            return item with
-            {
-                IsArchived = state.State == ProjectLifecycleState.Archived,
-                IsClean = state.State == ProjectLifecycleState.Dirty ? false
-                    : state.State == ProjectLifecycleState.Unavailable ? null : true,
-                WorktreeStatusMessage = state.Message,
-                ZFolderCount = state.ZFolders.Count,
-                ZFolders = state.ZFolders,
-                LifecycleState = state.State.ToString(),
-                LifecycleAction = state.Action,
-                LifecycleMessage = state.Message,
-            };
-        }).ToList();
+        return worktrees.Select(item => ApplyLifecycle(item, byName[item.BranchName])).ToList();
     }
+
+    /// <summary>
+    /// 把一份已经取到的状态快照写进项目行。调用方手上已有 fetch 过的快照时用它，
+    /// 不要再按 fetchRemote=false 重算——断网时那样会用陈旧的远端引用把「刷新」算回别的动作。
+    /// </summary>
+    public static WorktreeInfo ApplyLifecycle(WorktreeInfo item, ProjectLifecycleSnapshot state)
+        => item with
+        {
+            IsArchived = state.State == ProjectLifecycleState.Archived,
+            IsClean = state.State == ProjectLifecycleState.Dirty ? false
+                : state.State == ProjectLifecycleState.Unavailable ? null : true,
+            WorktreeStatusMessage = state.Message,
+            ZFolderCount = state.ZFolders.Count,
+            ZFolders = state.ZFolders,
+            LifecycleState = state.State.ToString(),
+            LifecycleAction = state.Action,
+            LifecycleMessage = state.Message,
+        };
 
     public void InvalidateVerification(string name)
     {

@@ -129,14 +129,14 @@ internal static partial class HistoryJanusUiCommands
                 new ParameterSpec
                 {
                     Name = "view",
-                    Description = "页面视图：projects、graph、history、excludes、rulestate、github",
+                    Description = "页面视图：projects、graph、history、excludes、github",
                     Required = true,
                     Position = 0,
                 },
                 new ParameterSpec
                 {
                     Name = "name",
-                    Description = "项目名；history / rulestate / graph 需要，由页面按当前选中行填入",
+                    Description = "项目名；history / graph 需要，由页面按当前选中行填入",
                     Position = 1,
                 },
                 new ParameterSpec
@@ -186,41 +186,14 @@ internal static partial class HistoryJanusUiCommands
             Name = "janus.ui.refreshrules",
             Domain = Domain,
             CommandClass = "ui",
-            Summary = "重取排除清单与当前项目的落地状态",
+            Summary = "重取 LFS 与入库规则表",
             Readonly = true,
             HiddenReason = "界面内部协议，对模型无意义",
-            Handler = context => RefreshRulesAsync(context, bus),
+            Handler = context => bus.ExecuteAsync(
+                "aurora.ui.refreshdata node=rule-list", context.Source, context.Cancellation),
         }, source);
 
         RegisterLifecycleCommands(registry, bus, source, business);
-    }
-
-    /// <summary>
-    /// 「刷新规则」的落点。它要刷的是**两张表**，而 <c>aurora.ui.refreshdata</c>
-    /// 一次只收一个 page 或一个 node。
-    ///
-    /// 5.4.5 之前这两张表独占一页，因此按 <c>page=rules</c> 一把刷正好。收进「项目操作」页
-    /// 之后，同一页上还挂着分支历史与 GitHub 两块——按页刷会把它们一起带上，
-    /// 而 GitHub 那条要探 SSH 与凭据助手。所以改成点名刷这两个节点。
-    /// </summary>
-    private static async Task<CommandResult> RefreshRulesAsync(CommandContext context, CommandBus bus)
-    {
-        var refreshed = 0;
-        foreach (var node in new[] { "rule-list", "rule-state" })
-        {
-            var result = await bus.ExecuteAsync(
-                "aurora.ui.refreshdata node=" + node,
-                context.Source,
-                context.Cancellation);
-
-            // 一个节点失败不拦下另一个：两张表各自独立，刷到一张也比一张都不刷强。
-            if (result.Success)
-                refreshed++;
-        }
-
-        return refreshed > 0
-            ? CommandResult.Ok($"已重取 {refreshed} 处规则数据")
-            : CommandResult.Fail("规则表没有登记取数绑定，无处可刷");
     }
 
     private static async Task<CommandResult> LoadDataAsync(
@@ -232,8 +205,7 @@ internal static partial class HistoryJanusUiCommands
         if (view == "graph")
             return await LoadGraphAsync(context, bus);
 
-        // 清单本身存在设置里，读它不碰 Git。这一条必须与落地状态分开：
-        // 落地状态要对每个项目跑两条 git ls-files，全库跑一遍是 90 次进程启动。
+        // 清单本身存在设置里，读它不碰 Git，打开页签就能立刻出来。
         if (view == "excludes")
             return Rows(UiRuleProjection.Excludes(business()));
 
@@ -242,10 +214,9 @@ internal static partial class HistoryJanusUiCommands
 
         var command = view switch
         {
-            // 这三条都按**单个项目**取，项目名由页面从选中通道填入。
+            // 这两条都按**单个项目**取，项目名由页面从选中通道填入。
             // 不带项目名就不取——全库扫描不该由"打开一个页签"触发。
             "history" => Scoped(context, "janus.history.list", " limit=200"),
-            "rulestate" => Scoped(context, "janus.gitrule.list", ""),
             "github" => "janus.github.status",
             _ => null,
         };
@@ -262,7 +233,6 @@ internal static partial class HistoryJanusUiCommands
         return view switch
         {
             "history" => Rows(UiHistoryProjection.Read(result.Data)),
-            "rulestate" => Rows(UiRuleProjection.States(result.Data)),
             "github" => Rows(UiGitHubProjection.Read(result.Data)),
             _ => Payload(JsonSerializer.Serialize(result.Data)),
         };
@@ -334,9 +304,50 @@ internal static partial class HistoryJanusUiCommands
 
             var items = UiProjectProjection.ReadWorktrees(result.Data);
             _projectCache = items;
+            // 只有界面（Aurora 取数来源是 UI）才补这一轮；冒烟与脚本取数不该顺带 fetch 全库。
+            if (!forced && context.Source == "UI" && Interlocked.Exchange(ref _autoRefreshStarted, 1) == 0)
+                _ = Task.Run(() => AutoRefreshProjectsAsync(bus, context.Source, items));
             return (items, null);
         }
         finally { ProjectCacheGate.Release(); }
+    }
+
+    /// <summary>本进程（本次模块加载）是否已经发起过首屏之后的那一轮远端刷新。</summary>
+    private static int _autoRefreshStarted;
+
+    /// <summary>
+    /// 打开软件后自动补一轮「刷新」：首屏先用不查远端的便宜清单把表格立起来，
+    /// 随后在后台线程 fetch 全部项目（不占界面线程与宿主启动路径），完成后让表格重取。
+    ///
+    /// 不借 <see cref="_forceProjectRefresh"/> 这面旗：它是给按钮用的一次性开关，
+    /// 后台任务若立了旗却没等到重取，下一次因搜索词变化的取数就会意外付全价。
+    /// 这期间人若已按过「刷新」，缓存已被换掉，这里就不再覆盖。
+    /// </summary>
+    private static async Task AutoRefreshProjectsAsync(
+        CommandBus bus, string source, IReadOnlyList<WorktreeInfo> firstScreen)
+    {
+        try
+        {
+            var result = await bus.ExecuteAsync("janus.proj.list status=true refresh=true", source);
+            if (!result.Success)
+                return;
+            var items = UiProjectProjection.ReadWorktrees(result.Data);
+
+            await ProjectCacheGate.WaitAsync();
+            try
+            {
+                if (!ReferenceEquals(_projectCache, firstScreen))
+                    return;
+                _projectCache = items;
+            }
+            finally { ProjectCacheGate.Release(); }
+
+            _ = await bus.ExecuteAsync("aurora.ui.refreshdata node=projects", source);
+        }
+        catch (Exception)
+        {
+            // 后台补刷失败不影响首屏；表格仍显示「刷新 ?」，人可以自己点。
+        }
     }
 
     /// <summary>按项目取数：没给项目名就返回 null，调用方据此拒绝，而不是去扫全库。</summary>
@@ -413,7 +424,10 @@ internal static partial class HistoryJanusUiCommands
     /// <summary>Git 文件规则：全库共用的清单，以及某个项目的落地状态。</summary>
     internal static class UiRuleProjection
     {
-        /// <summary>清单只读设置，不碰 Git——它要在打开页签时立刻出来。</summary>
+        /// <summary>
+        /// 规则表：先 LFS，再入库例外，最后逐条列不入库的目录与扩展名。
+        /// 只读设置，不碰 Git——它要在打开页签时立刻出来。
+        /// </summary>
         public static IReadOnlyList<IReadOnlyDictionary<string, string>> Excludes(
             StudioBusinessComposition? business)
         {
@@ -421,24 +435,16 @@ internal static partial class HistoryJanusUiCommands
                 return [Row(("kind", "—"), ("rule", "业务组合尚未装配"))];
 
             var rules = business.GitRules;
-            return rules.Directories
-                .Select(directory => Row(("kind", "目录"), ("rule", directory)))
-                .Concat(rules.Suffixes.Select(suffix => Row(("kind", "后缀"), ("rule", suffix))))
+            var limitMb = ProjectService.GitHubFileLimitBytes / (1024 * 1024);
+            return new[]
+                {
+                    Row(("kind", "LFS"), ("rule", $"单个文件 > {limitMb}MB 转为 LFS 指针（提交时逐个确认）")),
+                    Row(("kind", "入库"), ("rule", "z-* 目录始终入库")),
+                }
+                .Concat(rules.Directories.Select(directory => Row(("kind", "不入库"), ("rule", directory))))
+                .Concat(rules.Suffixes.Select(suffix => Row(("kind", "不入库"), ("rule", suffix))))
                 .ToList();
         }
-
-        /// <summary>落地状态按项目取；每个项目两条 git ls-files，因此绝不整库跑。</summary>
-        public static IReadOnlyList<IReadOnlyDictionary<string, string>> States(object? data)
-            => data is not ExcludeRuleReport report
-                ? []
-                : report.Projects
-                    .Select(state => Row(
-                        ("project", state.Project),
-                        ("block", state.BlockCurrent ? "已是当前清单" : "落后，下次提交自动刷新"),
-                        ("ignored", state.IgnoredFileCount.ToString()),
-                        ("tracked", state.TrackedButExcludedCount.ToString()),
-                        ("detail", state.Detail)))
-                    .ToList();
     }
 
     /// <summary>分支历史：从分叉点到 HEAD 的自有提交。</summary>

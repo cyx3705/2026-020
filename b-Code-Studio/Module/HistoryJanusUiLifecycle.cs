@@ -66,9 +66,18 @@ internal static partial class HistoryJanusUiCommands
         if (projects == null)
             return CommandResult.Fail("Janus 项目服务尚未就绪");
         var current = await projects.RefreshProjectAsync(name, true, context.Cancellation);
+        if (action == ProjectService.RefreshAction)
+        {
+            // 「刷新」本身就是上面那次带 fetch 的复核；把结果写回这一行即可。
+            await RefreshCachedProjectAsync(projects, name, current, context.Cancellation);
+            _ = await bus.ExecuteAsync("aurora.ui.refreshdata node=projects", context.Source, context.Cancellation);
+            return current.State == ProjectLifecycleState.Unavailable
+                ? CommandResult.Fail($"远端状态仍无法确认：{current.Message}")
+                : CommandResult.Ok($"已刷新：当前应执行“{current.Action}”（{current.Message}）");
+        }
         if (!current.Action.Equals(action, StringComparison.Ordinal))
         {
-            await RefreshCachedProjectAsync(projects, name, context.Cancellation);
+            await RefreshCachedProjectAsync(projects, name, current, context.Cancellation);
             _ = await bus.ExecuteAsync("aurora.ui.refreshdata node=projects", context.Source, context.Cancellation);
             return CommandResult.Fail($"项目状态已变化：当前应执行“{current.Action}”（{current.Message}）");
         }
@@ -103,14 +112,19 @@ internal static partial class HistoryJanusUiCommands
         var result = await bus.ExecuteAsync(command, context.Source, context.Cancellation);
         if (result.Success)
         {
-            await RefreshCachedProjectAsync(projects, name, context.Cancellation);
+            await RefreshCachedProjectAsync(projects, name, null, context.Cancellation);
             _ = await bus.ExecuteAsync("aurora.ui.refreshdata node=projects", context.Source, context.Cancellation);
         }
         return result;
     }
 
+    /// <param name="snapshot">
+    /// 已经 fetch 过的状态；给了就直接用。断网时若再按不 fetch 重算，
+    /// 陈旧的远端引用会把「刷新」算成「同步」或「推送」。
+    /// </param>
     internal static async Task RefreshCachedProjectAsync(
-        ProjectService projects, string name, CancellationToken cancellation = default)
+        ProjectService projects, string name, ProjectLifecycleSnapshot? snapshot,
+        CancellationToken cancellation = default)
     {
         await ProjectCacheGate.WaitAsync(cancellation);
         try
@@ -119,7 +133,9 @@ internal static partial class HistoryJanusUiCommands
             var previous = cached.FirstOrDefault(item => item.BranchName.Equals(name, StringComparison.OrdinalIgnoreCase))
                 ?? new WorktreeInfo(name, Path.Combine(projects.LibraryRoot, name));
             // 推送/同步命令已更新远端引用；只读当前项目，不再次 fetch 全库。
-            var updated = (await projects.ReadLifecycleStatusesAsync([previous], false, cancellation))[0];
+            var updated = snapshot != null
+                ? ProjectService.ApplyLifecycle(previous, snapshot)
+                : (await projects.ReadLifecycleStatusesAsync([previous], false, cancellation))[0];
             if (!updated.IsArchived)
             {
                 var log = await GitRunner.RunAsync(updated.WorktreePath, ["log", "-1", "--format=%cI%x1f%s"], cancellation);

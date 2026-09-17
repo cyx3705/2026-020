@@ -86,9 +86,47 @@ public sealed class ProjectLifecycleContractTests : IDisposable
         var after = await bus.ExecuteAsync("janus.ui.data view=projects", "UI");
         using var json = JsonDocument.Parse(succeeds ? displayed! : after.Message);
         var row = json.RootElement.EnumerateArray().Single(item => item.GetProperty("name").GetString() == name);
-        Assert.Equal(succeeds ? "同步" : "推送", row.GetProperty("status").GetString());
+        Assert.Equal(succeeds ? "同步 ↔" : "推送 ↑", row.GetProperty("status").GetString());
         var other = json.RootElement.EnumerateArray().Single(item => item.GetProperty("name").GetString() == "2026-903-Unchanged");
-        Assert.Equal("提交", other.GetProperty("status").GetString());
+        Assert.Equal("提交 ●", other.GetProperty("status").GetString());
+    }
+
+    /// <summary>
+    /// 远端连不上时「操作」格是「刷新」，不是「同步」。
+    /// 推送后的缓存回写也不能拿陈旧的远端引用把它算回去。
+    /// </summary>
+    [Fact]
+    public async Task UnreachableRemoteAsksForRefreshInsteadOfSync()
+    {
+        Directory.CreateDirectory(_root);
+        var remote = Path.Combine(_root, "remote.git");
+        var projectName = "2026-904-Offline";
+        var project = Path.Combine(_root, projectName);
+        await Git(_root, "init", "--bare", remote);
+        Directory.CreateDirectory(project);
+        await Git(project, "init", "-b", "main");
+        await Git(project, "config", "user.name", "Janus Test");
+        await Git(project, "config", "user.email", "janus@example.invalid");
+        File.WriteAllText(Path.Combine(project, "readme.txt"), "tracked");
+        await Git(project, "add", "-A");
+        await Git(project, "commit", "-m", "initial");
+        await Git(project, "remote", "add", "origin", remote);
+        await Git(project, "push", "-u", "origin", "main");
+        await Git(project, "remote", "set-url", "origin", Path.Combine(_root, "missing.git"));
+
+        var service = CreateService();
+        var offline = await service.RefreshProjectAsync(projectName);
+        Assert.Equal(ProjectLifecycleState.Unavailable, offline.State);
+        Assert.Equal(ProjectService.RefreshAction, offline.Action);
+
+        // 不 fetch 重算会得到「同步」；带着已取到的快照回写才保住「刷新」。
+        var stale = await service.RefreshProjectAsync(projectName, fetchRemote: false);
+        Assert.Equal("同步", stale.Action);
+        var row = ProjectService.ApplyLifecycle(new WorktreeInfo(projectName, project), offline);
+        Assert.Null(row.IsClean);
+        using var json = JsonDocument.Parse(HistoryJanusUiCommands.UiProjectProjection.Serialize(new[] { row }));
+        Assert.Equal("刷新 ?", json.RootElement[0].GetProperty("status").GetString());
+        Assert.Equal("刷新", json.RootElement[0].GetProperty("lifecycleAction").GetString());
     }
 
     [Fact]
