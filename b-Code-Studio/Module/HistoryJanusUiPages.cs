@@ -107,9 +107,11 @@ internal static partial class HistoryJanusUiCommands
                             },
                             columns = new object[]
                             {
-                                new { key = "name", title = "项目", width = "220" },
+                                // 点项目名打开项目目录。Aurora 表格没有双击事件，单元格动作是唯一入口。
+                                new { key = "name", title = "项目", width = "220", cellAction = "janus.project.open" },
                                 new { key = "zFolders", title = "z 级文件夹", width = "110", cellAction = "janus.project.openmeta" },
-                                new { key = "status", title = "状态 / 动作", width = "120", cellAction = "janus.project.action" },
+                                // 单元格写「动作 + 状态符号」；点它执行的仍是 lifecycleAction 那一格。
+                                new { key = "status", title = "操作", width = "120", cellAction = "janus.project.action" },
                                 new { key = "subject", title = "最近提交", width = "*" },
                             },
                             view = new { filterable = true, sortable = true, selection = "single" },
@@ -299,47 +301,21 @@ internal static partial class HistoryJanusUiCommands
                                                 },
                                             },
                                         },
+                                        // 一张表说完两件事：什么走 LFS、什么不入库。
+                                        // 目录与扩展名同表，靠末尾的 / 与开头的 * 自己区分。
                                         new
                                         {
-                                            type = "grid",
-                                            min = 320,
-                                            gap = "normal",
-                                            children = new object[]
+                                            type = "table",
+                                            id = "rule-list",
+                                            dataSource = new
                                             {
-                                                new
-                                                {
-                                                    type = "table",
-                                                    id = "rule-list",
-                                                    dataSource = new
-                                                    {
-                                                        command = "janus.ui.data",
-                                                        args = new { view = "excludes" },
-                                                    },
-                                                    columns = new object[]
-                                                    {
-                                                        new { key = "kind", title = "类型", width = "60" },
-                                                        new { key = "rule", title = "规则", width = "*" },
-                                                    },
-                                                },
-                                                new
-                                                {
-                                                    type = "table",
-                                                    id = "rule-state",
-                                                    // 落地状态要跑 git ls-files，因此只看**当前选中的那一个**项目。
-                                                    // 全库跑一遍是 90 次进程启动，不该由"切到这一支"触发。
-                                                    dataSource = new
-                                                    {
-                                                        command = "janus.ui.data",
-                                                        args = new { view = "rulestate", name = SelectedProject },
-                                                    },
-                                                    columns = new object[]
-                                                    {
-                                                        new { key = "block", title = "托管块", width = "160" },
-                                                        new { key = "ignored", title = "已忽略", width = "70" },
-                                                        new { key = "tracked", title = "已跟踪却应排除", width = "110" },
-                                                        new { key = "detail", title = "说明", width = "*" },
-                                                    },
-                                                },
+                                                command = "janus.ui.data",
+                                                args = new { view = "excludes" },
+                                            },
+                                            columns = new object[]
+                                            {
+                                                new { key = "kind", title = "类型", width = "70" },
+                                                new { key = "rule", title = "规则", width = "*" },
                                             },
                                         },
                                     },
@@ -439,6 +415,14 @@ internal static partial class HistoryJanusUiCommands
             },
             new
             {
+                id = "janus.project.open",
+                title = "打开项目目录",
+                command = "janus.proj.open",
+                args = new Dictionary<string, string> { ["name"] = "{name}" },
+                summary = "在资源管理器中打开项目目录",
+            },
+            new
+            {
                 id = "janus.project.openmeta",
                 title = "打开 z 级文件夹",
                 command = "janus.ui.openmeta",
@@ -455,7 +439,7 @@ internal static partial class HistoryJanusUiCommands
                     ["name"] = "{name}",
                     ["action"] = "{lifecycleAction}",
                 },
-                summary = "按重新校验后的项目状态执行提交、推送、同步、归档或拉取",
+                summary = "按重新校验后的项目状态执行提交、推送、同步、归档、拉取或刷新",
             },
             new
             {
@@ -508,18 +492,15 @@ internal static partial class HistoryJanusUiCommands
                 },
                 summary = "推送选中项目的分支",
             },
-            // 刷新落到 Aurora 的取数刷新台账，而不是把 janus.gitrule.list 打到控制台。
-            // 后者是这两个按钮 5.4.4 之前的样子：指令跑了，界面上那张表一动不动。
-            //
-            // 5.4.6 起两条都**按节点**刷，不再按页。三块内容收进「项目操作」一页之后，
-            // 按页刷会把没被点到的那两块一起带上，而 GitHub 那条要探 SSH 与凭据助手。
+            // 刷新落到 Aurora 的取数刷新台账，而不是把指令打到控制台（那样表格一动不动）。
+            // 两条都**按节点**刷：同一页上还挂着分支历史与 GitHub，后者要探 SSH 与凭据助手。
             new
             {
                 id = "janus.rules.refresh",
                 title = "刷新规则",
-                // 规则那一支有两张表，而 refreshdata 一次只收一个节点，所以过一道自己的指令。
+                // 过一道自己的指令，由它点名刷 rule-list。
                 command = "janus.ui.refreshrules",
-                summary = "重新读取排除清单与当前项目的落地状态",
+                summary = "重新读取 LFS 与入库规则",
             },
             new
             {

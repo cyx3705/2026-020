@@ -1,4 +1,4 @@
-# HistoryJanus 5.8.0 模块 API
+# HistoryJanus 5.8.1 模块 API
 
 本文件是其他模块和项目消费 HistoryJanus 的唯一人工合同。运行时命令目录是参数、确认策略和可用性的最终真值；历史文档和 Janus 内部类型不构成公开 API。
 
@@ -6,7 +6,7 @@
 
 - 正式快照：`z-Publish/HistoryJanus-v5.7.0/`。
 - 模块名：`HistoryJanus`。
-- 版本：`5.8.0`。
+- 版本：`5.8.1`。
 - 入口：`HistoryJanus.dll`。
 - 宿主基线：HistoryVulcan `5.1.2` current-host 快照，从 `2026-023-HistoryVulcan/z-Publish` 消费；该快照的 `sourceDirty` 仍由 HistoryVulcan manifest 如实标记。
 - 主题：页面使用 `Aurora.Brush.*` 动态资源，跟随宿主深色/浅色切换，不在模块内维护第二套主题。
@@ -16,7 +16,7 @@
 - UI：启用。
 - MCP：只读投影。
 
-本文件描述活动源的 `5.8.0` 候选合同；只有用户另行授权经宿主 `vulcan.dev.submit` / `finish` 正式发布后，同版本 manifest 和二进制才会提升到
+本文件描述活动源的 `5.8.1` 候选合同；只有用户另行授权经宿主 `vulcan.dev.submit` / `finish` 正式发布后，同版本 manifest 和二进制才会提升到
 `z-Publish/HistoryJanus-vX.Y.Z/`。发布前，z 快照自身的 manifest 与 checksum 仍是正式运行版本的真值。
 其他项目从 `z-Publish/HistoryJanus-vX.Y.Z/docs/` 或 `diana.docs.read domain=janus` 读取已发布 API，从该版本化快照读取 `module.manifest.json`、二进制和
 `SHA256SUMS`；不要从 Janus 的 `bin/obj`、HistoryVulcan 工作树或 Janus 历史文档建立依赖。Diana 不发布。
@@ -105,11 +105,11 @@ GitHub 写操作（登录、注销、提交身份、origin 修改）由页面通
 | `janus.graph.node` | 只读 | 读取单个提交的父边、文件差异摘要；证据槽本阶段为空 |
 | `janus.ui.describe` | 只读 | 返回 Aurora 页面描述协议 V1 |
 | `janus.ui.actions` | 只读 | 返回 Aurora 动作声明协议 V1 |
-| `janus.ui.data` | 只读 | 按 `view` 返回页面数据；`projects` 保留 `name`、`isClean`、`subject` 并增加 `zFolders`、`status`、`statusSymbol`、`lifecycleAction`、`archived`、`lifecycleState`。单个 z/Z 文件夹的 `zFolders` 为真实名称；状态符号固定映射提交 `●`、推送 `↑`、同步 `↔`、归档 `□`、拉取 `↓`。`graph` / `history` / `rulestate` 缺 `name` 时不取数 |
+| `janus.ui.data` | 只读 | 按 `view` 返回页面数据；`projects` 保留 `name`、`isClean`、`subject` 并增加 `zFolders`、`status`、`statusSymbol`、`lifecycleAction`、`archived`、`lifecycleState`。单个 z/Z 文件夹的 `zFolders` 为真实名称；`status` 为「动作 + 空格 + 符号」，符号固定映射提交 `●`、推送 `↑`、同步 `↔`、归档 `□`、拉取 `↓`、刷新 `?`（远端未确认或尚未查询时动作为「刷新」）。首次由界面（来源 `UI`）取 `projects` 时先返回不查远端的清单，再在后台 fetch 全部项目并重取表格。`excludes` 返回单张规则表：LFS（单文件超过 100MB）、`z-*` 入库例外、逐条不入库目录与扩展名。`graph` / `history` 缺 `name` 时不取数 |
 | `janus.ui.graphnode` | 只读 | 将描述化图节点 ID 投影为提交详情 |
-| `janus.ui.refreshrules` | 只读 | 「刷新规则」的落点：按节点重取 `rule-list` 与 `rule-state` 两张表。5.4.6 起两张表同处 `projops` 一页，按页刷会把分支历史与 GitHub 一起带上，而 `aurora.ui.refreshdata` 一次只收一个节点 |
+| `janus.ui.refreshrules` | 只读 | 「刷新规则」的落点：按节点重取 `rule-list`（5.8.1 起规则只剩这一张表）；不按页刷，以免带上分支历史与 GitHub |
 | `janus.ui.refreshprojects` | 本机 UI | 重新查询远端并刷新项目表 |
-| `janus.ui.projectaction` | 本机 UI | 重新校验行状态后执行提交、推送、同步、归档或拉取 |
+| `janus.ui.projectaction` | 本机 UI | 重新校验行状态后执行提交、推送、同步、归档或拉取；`action=刷新` 只带 fetch 复核该项目并回写这一行，仍连不上时返回失败 |
 | `janus.ui.openmeta` | 本机 UI | 0 个 z/Z 明确提示，1 个直接打开，多个经 choice 弹窗选择 |
 | `janus.github.login` | 确认写入 | 启动服务器本机 Git Credential Manager 登录流程 |
 | `janus.github.logout` | 确认写入 | 注销指定 GitHub HTTPS 凭据账号 |

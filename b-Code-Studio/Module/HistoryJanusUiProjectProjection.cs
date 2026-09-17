@@ -116,12 +116,25 @@ internal static partial class HistoryJanusUiCommands
                 : "";
         }
 
+        /// <summary>
+        /// 「操作」格的动作。远端没确认过（未联网、首屏还没查、读不了仓库）一律是「刷新」——
+        /// 此前这里兜底成「同步」，断网时看上去像是该去同步，点下去才报错。
+        /// </summary>
         private static UiProjectRow Project(WorktreeInfo project)
         {
             var lifecycleAction = project.LifecycleAction switch
             {
                 "提交" or "推送" or "同步" or "归档" or "拉取" => project.LifecycleAction,
-                _ => "同步",
+                _ => ProjectService.RefreshAction,
+            };
+            var symbol = lifecycleAction switch
+            {
+                "提交" => "●",
+                "推送" => "↑",
+                "同步" => "↔",
+                "归档" => "□",
+                "拉取" => "↓",
+                _ => "?",
             };
 
             return new(
@@ -133,16 +146,9 @@ internal static partial class HistoryJanusUiCommands
                     _ => $"{project.ZFolderCount} 个",
                 },
                 project.LastCommitMessage,
+                $"{lifecycleAction} {symbol}",
                 lifecycleAction,
-                lifecycleAction,
-                lifecycleAction switch
-                {
-                    "提交" => "●",
-                    "推送" => "↑",
-                    "归档" => "□",
-                    "拉取" => "↓",
-                    _ => "↔",
-                },
+                symbol,
                 project.IsClean switch
                 {
                     true => "干净",

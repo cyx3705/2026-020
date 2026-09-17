@@ -301,8 +301,13 @@ public sealed partial class ProjectOperationsPanelContractTests
 
         var columns = children.Single(node => node.GetProperty("type").GetString() == "table")
             .GetProperty("columns").EnumerateArray().ToList();
-        Assert.Equal(new[] { "项目", "z 级文件夹", "状态 / 动作", "最近提交" },
+        Assert.Equal(new[] { "项目", "z 级文件夹", "操作", "最近提交" },
             columns.Select(column => column.GetProperty("title").GetString()).ToArray());
+        // 单击项目名打开项目目录（Aurora 表格没有双击事件）。
+        Assert.Equal("janus.project.open", columns[0].GetProperty("cellAction").GetString());
+        var open = Action("janus.project.open");
+        Assert.Equal("janus.proj.open", open.GetProperty("command").GetString());
+        Assert.Equal("{name}", open.GetProperty("args").GetProperty("name").GetString());
         Assert.Equal("janus.project.openmeta", columns[1].GetProperty("cellAction").GetString());
 
         Assert.Equal("janus.project.action", columns[2].GetProperty("cellAction").GetString());
@@ -440,7 +445,7 @@ public sealed partial class ProjectOperationsPanelContractTests
         Assert.Equal("github-rows", github.GetProperty("args").GetProperty("node").GetString());
         Assert.False(github.GetProperty("args").TryGetProperty("page", out _));
 
-        // 规则那一支有两张表，而 refreshdata 一次只收一个节点，因此过一道自己的指令。
+        // 规则那一支只剩一张表，经 janus.ui.refreshrules 点名刷 rule-list。
         var rules = Action("janus.rules.refresh");
         Assert.Equal("janus.ui.refreshrules", rules.GetProperty("command").GetString());
 
@@ -461,7 +466,6 @@ public sealed partial class ProjectOperationsPanelContractTests
     {
         foreach (var (node, view) in new[]
                  {
-                     ("rule-state", "rulestate"),
                      ("history-rows", "history"),
                  })
         {

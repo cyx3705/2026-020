@@ -56,8 +56,9 @@ public sealed class UiProjectProjectionContractTests
     [InlineData("同步", "同步", "↔")]
     [InlineData("归档", "归档", "□")]
     [InlineData("拉取", "拉取", "↓")]
-    [InlineData("未知", "同步", "↔")]
-    [InlineData("", "同步", "↔")]
+    [InlineData("刷新", "刷新", "?")]
+    [InlineData("未知", "刷新", "?")]
+    [InlineData("", "刷新", "?")]
     public void LifecycleActionProjectsToFixedStatusSymbol(
         string sourceAction,
         string expectedAction,
@@ -71,7 +72,7 @@ public sealed class UiProjectProjectionContractTests
         using var document = JsonDocument.Parse(payload);
         var row = document.RootElement[0];
 
-        Assert.Equal(expectedAction, row.GetProperty("status").GetString());
+        Assert.Equal($"{expectedAction} {expectedSymbol}", row.GetProperty("status").GetString());
         Assert.Equal(expectedAction, row.GetProperty("lifecycleAction").GetString());
         Assert.Equal(expectedSymbol, row.GetProperty("statusSymbol").GetString());
     }
