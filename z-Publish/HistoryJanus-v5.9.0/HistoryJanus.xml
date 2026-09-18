@@ -286,6 +286,13 @@
                <item>传输失败可重试，不是一次定生死；</item>
                <item>LFS 内容单独一步取，它的失败不连累已经落地的 git 历史。</item>
              </list>
+            
+             分段解决的是「传着传着断了」。还有一种是**一个字节都没传出去**：本机到 GitHub 的
+             SSH 两个口（22 和 443）都被重置，<c>git@github.com:...</c> 的仓在握手阶段就挂了，
+             分段和重试都救不回来——每一段都是同一个握手。HTTPS 这条路是通的，所以
+             <see cref="M:HistoryJanus.Git.ArchiveCloner.ShallowCloneAsync(System.String,System.String,System.String,System.String,System.IProgress{System.String},System.Threading.CancellationToken)"/> 在认出「链路级 SSH 不通」之后换算出同一个仓库的
+             HTTPS 地址再试一次。换路只发生在第一段：克隆出来的仓 <c>origin</c> 就是走通的那个
+             地址，后面的加深、LFS 以及这个项目以后的取放自然都沿用它。
              </summary>
         </member>
         <member name="F:HistoryJanus.Git.ArchiveCloner.DeepenStep">
@@ -304,6 +311,20 @@
             把它们也重试只会让人多等两轮才看到真正的原因。
             </summary>
         </member>
+        <member name="F:HistoryJanus.Git.ArchiveCloner.SshUnreachableMarkers">
+             <summary>
+             SSH 链路整条不通的痕迹。它们都出现在握手阶段，此时仓库数据一个字节都还没传，
+             换句话说重试多少次都是同一个结果——这正是它们和
+             <see cref="F:HistoryJanus.Git.ArchiveCloner.RetryableMarkers"/> 里那些「传输中途断了」的区别。
+             认出这些就换 HTTPS 再试，而不是把失败原样报出去。
+            
+             不含「Permission denied (publickey)」：那是钥匙不对，不是路不通，
+             换条路只会把一个能一眼看懂的原因换成一个看不懂的。
+             </summary>
+        </member>
+        <member name="F:HistoryJanus.Git.ArchiveCloner.GitHubSshAlias">
+            <summary>GitHub 的 SSH 备用口专用域名，HTTPS 侧不认它，换算时要还原成主域名。</summary>
+        </member>
         <member name="F:HistoryJanus.Git.ArchiveCloner.SkipLfsSmudge">
             <summary>克隆期间不铺开 LFS 内容：先把 git 历史落地，实体稍后单独取。</summary>
         </member>
@@ -312,6 +333,22 @@
             取回一个归档项目。成功时 <c>Message</c> 为空串，或是一句「LFS 没取全」的补充说明——
             调用方把它接在成功消息后面，不要当失败处理。
             </summary>
+        </member>
+        <member name="M:HistoryJanus.Git.ArchiveCloner.ShallowCloneAsync(System.String,System.String,System.String,System.String,System.IProgress{System.String},System.Threading.CancellationToken)">
+            <summary>
+            第一段浅克隆。SSH 握手就不通时，换算出同一个仓库的 HTTPS 地址再试一次。
+            成功时 <c>Message</c> 是一句「这次换了路」的补充说明，不是错误。
+            </summary>
+        </member>
+        <member name="M:HistoryJanus.Git.ArchiveCloner.TryBuildHttpsRemote(System.String,System.String@)">
+             <summary>
+             把 SSH 形式的 git 地址换算成同一个仓库的 HTTPS 地址：
+             <c>git@host:owner/repo.git</c> 与 <c>ssh://git@host:port/owner/repo.git</c>
+             都得到 <c>https://host/owner/repo.git</c>。已经是 HTTPS 的原样拒绝——没有可换的路。
+            
+             主机名必须带点：Windows 本地路径（<c>C:\OneHistory\...</c>）长得就是 scp 形式，
+             少这一条，一个本地裸仓会被当成主机名为 <c>C</c> 的远端换成 https。
+             </summary>
         </member>
         <member name="M:HistoryJanus.Git.ArchiveCloner.DeepenAsync(System.String,System.String,System.IProgress{System.String},System.Threading.CancellationToken)">
             <summary>
