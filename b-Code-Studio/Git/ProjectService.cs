@@ -319,10 +319,20 @@ public sealed partial class ProjectService
         if (!TryValidateManagedDirectChild(path, rejectReparsePoint: true, out var error))
             return (false, $"项目目录越出受管边界: {error}", null);
         if (!Directory.Exists(path) || !ProjectRepoLayout.IsIndependentGitRepo(path))
-            return (false, $"未找到已登记项目: {name}", null);
+            return (false, MissingWorktreeMessage(name), null);
 
         return (true, path, new WorktreeInfo(name, path));
     }
+
+    /// <summary>
+    /// 「这里没有仓」的两种原因必须说清楚。归档后目录还在、只是不再是 git 仓，
+    /// 此前一律报「未找到已登记项目」——而项目明明就列在总览里，点一下图谱或分支历史
+    /// 就弹这一句，看上去像是 Janus 把项目弄丢了。归档是自己刚做过的事，要照实说。
+    /// </summary>
+    private string MissingWorktreeMessage(string name)
+        => _lifecycle.Get(name)?.ArchivedAt != null
+            ? $"项目已归档: {name}（本地只保留 z/Z 文件夹；在项目总览点「拉取 ↓」取回工作树）"
+            : $"未找到已登记项目: {name}";
 
     public async Task<(bool Success, string Message)> CreateAsync(
         string name, string? baseBranch, IProgress<string>? progress)

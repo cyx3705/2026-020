@@ -1,4 +1,4 @@
-# HistoryJanus 5.8.1 模块 API
+# HistoryJanus 5.9.0 模块 API
 
 本文件是其他模块和项目消费 HistoryJanus 的唯一人工合同。运行时命令目录是参数、确认策略和可用性的最终真值；历史文档和 Janus 内部类型不构成公开 API。
 
@@ -6,17 +6,17 @@
 
 - 正式快照：`z-Publish/HistoryJanus-v5.7.0/`。
 - 模块名：`HistoryJanus`。
-- 版本：`5.8.1`。
+- 版本：`5.9.0`。
 - 入口：`HistoryJanus.dll`。
 - 宿主基线：HistoryVulcan `5.1.2` current-host 快照，从 `2026-023-HistoryVulcan/z-Publish` 消费；该快照的 `sourceDirty` 仍由 HistoryVulcan manifest 如实标记。
 - 主题：页面使用 `Aurora.Brush.*` 动态资源，跟随宿主深色/浅色切换，不在模块内维护第二套主题。
-- 弹窗：模块不得 `new Window`。提交预览、差异预览、恢复提交说明、GitHub 通知与诊断走 `aurora.ui.dialog`（`message` / `prompt` / `content`）。写操作警告仍走命令 `ConfirmPrompt`，由宿主确认策略弹出，页面不得再叠一层。
+- 弹窗：模块不得 `new Window`。提交预览、差异预览、恢复提交说明、GitHub 通知与诊断走 `aurora.ui.dialog`（`message` / `prompt` / `choice` / `content`）。5.9.0 的提交差异预览用 `kind=content` 带 `options`，**需 Aurora ≥ 1.24.0**。写操作警告仍走命令 `ConfirmPrompt`，由宿主确认策略弹出，页面不得再叠一层。
 - 命令来源：`module:HistoryJanus`。
 - 命令命名：`janus.<类>.<方法>` 三段式全小写（详见 `b-Office/current/指令优化规范.md`）。
 - UI：启用。
 - MCP：只读投影。
 
-本文件描述活动源的 `5.8.1` 候选合同；只有用户另行授权经宿主 `vulcan.dev.submit` / `finish` 正式发布后，同版本 manifest 和二进制才会提升到
+本文件描述活动源的 `5.9.0` 候选合同；只有用户另行授权经宿主 `vulcan.dev.submit` / `finish` 正式发布后，同版本 manifest 和二进制才会提升到
 `z-Publish/HistoryJanus-vX.Y.Z/`。发布前，z 快照自身的 manifest 与 checksum 仍是正式运行版本的真值。
 其他项目从 `z-Publish/HistoryJanus-vX.Y.Z/docs/` 或 `diana.docs.read domain=janus` 读取已发布 API，从该版本化快照读取 `module.manifest.json`、二进制和
 `SHA256SUMS`；不要从 Janus 的 `bin/obj`、HistoryVulcan 工作树或 Janus 历史文档建立依赖。Diana 不发布。
@@ -58,9 +58,13 @@ Janus 不自建按钮或滚动控件，不复制前端状态机。
 
 | `case` | 内容 |
 | --- | --- |
-| `Git 文件规则` | 「刷新规则」按钮，加全库共用的排除清单与**当前选中项目**的托管块落地状态两张表 |
+| `Git 文件规则` | 一张表：**当前选中项目**实际走 LFS 的文件，加全库共用的入库/不入库清单 |
 | `分支历史` | **当前选中项目**从分叉点到 HEAD 的自有提交（最多 200 条） |
-| `GitHub` | 「刷新 GitHub」按钮，加 Git、GCM、提交身份、origin 与 SSH 的当前状态（项/值两列） |
+| `GitHub` | Git、GCM、提交身份、origin 与 SSH 的当前状态（项/值两列） |
+
+5.9.0 起三支都**没有刷新按钮**：子页面选项框带 `commitAction`，切到哪一支就重取哪一支
+（`janus.ui.sectionenter`）。消费方不要再依赖 `janus.rules.refresh` / `janus.github.refresh`
+两条动作 id，它们已删除。
 
 三个 ID 是布局兼容合同。**默认落位**：`overview` 占中央工作区且不声明 `DefaultTabTarget`；`graph` 以 `Tab` 并入宿主 `console`（控制台由 HistoryVulcan 注册，不依赖 Mercury）；`projops` 停靠左侧、默认宽度占比 0.38。已保存的用户布局优先于默认落位。其他模块不能重复注册这些 ID；需要联动项目选择时应通过 Janus 命令读取事实，不访问页面私有状态。
 
@@ -75,7 +79,7 @@ GitHub 写操作（登录、注销、提交身份、origin 修改）由页面通
 旧名（`proj.*` / `git.rule.*` / `github.*` / `debug.*` / `HistoryJanus.Status`）自 3.5.0 起一次作废、不留别名，
 完整映射见 `b-Office/current/指令优化规范.md`。`debug` 类已整体退役，Janus 不公开诊断命令。
 
-当前：业务命令按下表，加模块宿主投影的 `janus.status`，**运行时命令总数 48 条**。
+当前：业务命令按下表，加模块宿主投影的 `janus.status`，**运行时命令总数 51 条**。
 写入命令不进入 MCP 只读投影。逐版本的条数演变见 `b-Office/history/5.6.0-模块API历史备注.md`。
 
 ### 模块与读取
@@ -95,7 +99,9 @@ GitHub 写操作（登录、注销、提交身份、origin 修改）由页面通
 | `janus.history.list` | 只读 | 列出分支自有提交 |
 | `janus.history.show` | 只读 | 读取提交详情 |
 | `janus.history.diff` | 只读 | 预览历史节点与 HEAD 的差异 |
+| `janus.proj.diff` | 只读 | 读项目脏工作树相对 HEAD 的差异（已暂存与未暂存一起算，未跟踪文件只列路径）；正文超过 200000 字符截断并明说 |
 | `janus.gitrule.list` | 只读 | 查看全库共用的不纳入仓库清单，及各项目托管块落地情况 |
+| `janus.gitrule.lfs` | 只读 | 列出该项目仓里实际走 LFS 指针的文件与大小；本机没装 git-lfs 与「一个文件都没走 LFS」分开报 |
 | `janus.github.status` | 只读 | 服务器 Git、GCM、提交身份、origin 和 SSH 状态 |
 | `janus.github.accounts` | 只读 | 列出 GCM 中已知的 GitHub HTTPS 凭据账号 |
 | `janus.github.test` | 只读 | 检测 GitHub SSH/HTTPS 连接（`transport=auto\|ssh\|https`，`timeout=1..120`），不执行 push |
@@ -105,11 +111,11 @@ GitHub 写操作（登录、注销、提交身份、origin 修改）由页面通
 | `janus.graph.node` | 只读 | 读取单个提交的父边、文件差异摘要；证据槽本阶段为空 |
 | `janus.ui.describe` | 只读 | 返回 Aurora 页面描述协议 V1 |
 | `janus.ui.actions` | 只读 | 返回 Aurora 动作声明协议 V1 |
-| `janus.ui.data` | 只读 | 按 `view` 返回页面数据；`projects` 保留 `name`、`isClean`、`subject` 并增加 `zFolders`、`status`、`statusSymbol`、`lifecycleAction`、`archived`、`lifecycleState`。单个 z/Z 文件夹的 `zFolders` 为真实名称；`status` 为「动作 + 空格 + 符号」，符号固定映射提交 `●`、推送 `↑`、同步 `↔`、归档 `□`、拉取 `↓`、刷新 `?`（远端未确认或尚未查询时动作为「刷新」）。首次由界面（来源 `UI`）取 `projects` 时先返回不查远端的清单，再在后台 fetch 全部项目并重取表格。`excludes` 返回单张规则表：LFS（单文件超过 100MB）、`z-*` 入库例外、逐条不入库目录与扩展名。`graph` / `history` 缺 `name` 时不取数 |
+| `janus.ui.data` | 只读 | 按 `view` 返回页面数据；`projects` 保留 `name`、`isClean`、`subject` 并增加 `zFolders`、`status`、`statusSymbol`、`lifecycleAction`、`archived`、`lifecycleState`。单个 z/Z 文件夹的 `zFolders` 为真实名称；`status` 为「动作 + 空格 + 符号」，符号固定映射提交 `●`、推送 `↑`、同步 `↔`、归档 `□`、拉取 `↓`、刷新 `?`（远端未确认或尚未查询时动作为「刷新」）。首次由界面（来源 `UI`）取 `projects` 时先返回不查远端的清单，再在后台 fetch 全部项目并重取表格。`excludes` 返回单张规则表：**该项目仓里实际走 LFS 的文件**（5.9.0 起，因此它也要 `name`）、`z-*` 入库例外、逐条不入库目录与扩展名。`graph` / `history` / `excludes` 缺 `name` 时不取数（`excludes` 退化为一行提示） |
 | `janus.ui.graphnode` | 只读 | 将描述化图节点 ID 投影为提交详情 |
-| `janus.ui.refreshrules` | 只读 | 「刷新规则」的落点：按节点重取 `rule-list`（5.8.1 起规则只剩这一张表）；不按页刷，以免带上分支历史与 GitHub |
+| `janus.ui.sectionenter` | 只读 | 子页面切换的落点（5.9.0 取代 `janus.ui.refreshrules`）：按 `section` 重取 `rule-list` / `history-rows` / `github-rows` 之一；按节点刷，不按页刷 |
 | `janus.ui.refreshprojects` | 本机 UI | 重新查询远端并刷新项目表 |
-| `janus.ui.projectaction` | 本机 UI | 重新校验行状态后执行提交、推送、同步、归档或拉取；`action=刷新` 只带 fetch 复核该项目并回写这一行，仍连不上时返回失败 |
+| `janus.ui.projectaction` | 本机 UI | 重新校验行状态后执行提交、推送、同步、归档或拉取；`action=提交` 先弹差异预览再由人选提交或丢弃（需 Aurora ≥ 1.24.0）；`action=刷新` 只带 fetch 复核该项目并回写这一行，仍连不上时返回失败 |
 | `janus.ui.openmeta` | 本机 UI | 0 个 z/Z 明确提示，1 个直接打开，多个经 choice 弹窗选择 |
 | `janus.github.login` | 确认写入 | 启动服务器本机 Git Credential Manager 登录流程 |
 | `janus.github.logout` | 确认写入 | 注销指定 GitHub HTTPS 凭据账号 |
@@ -124,6 +130,7 @@ GitHub 写操作（登录、注销、提交身份、origin 修改）由页面通
 | `janus.proj.rename` | 经确认同步改名已登记项目展示名与工作树目录；仓内主线仍为 `main` |
 | `janus.proj.delete` | 删除项目目录 |
 | `janus.proj.commit` | 提交指定项目 |
+| `janus.proj.discard` | 丢弃项目脏工作树（需确认，不可撤销）：`reset --hard HEAD` 加 `clean -fd`；被 .gitignore 排除的内容不动；受保护项目拒绝 |
 | `janus.proj.push` | 推送指定项目；仓库没有 origin 时先在 GitHub 上按项目编号建仓再推送（`visibility=public\|private`，默认 `public`） |
 | `janus.proj.commitall` | 批量提交各项目仓 |
 | `janus.proj.pushall` | 批量推送各项目仓；同样对缺 origin 的项目按编号建远端（`visibility` 同上） |

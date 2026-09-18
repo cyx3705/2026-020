@@ -85,17 +85,9 @@ internal static partial class HistoryJanusUiCommands
         string command;
         if (action == "提交")
         {
-            var message = context.GetString("msg")?.Trim() ?? "";
-            if (message.Length == 0)
-            {
-                var dialog = await bus.ExecuteAsync(
-                    $"aurora.ui.dialog kind=prompt title=提交 body={Quote(name)} primary=提交 cancel=取消",
-                    context.Source, context.Cancellation);
-                if (!dialog.Success) return dialog;
-                message = DialogValue(dialog);
-            }
-            if (message.Length == 0) return CommandResult.Fail("提交描述不能为空");
-            command = $"janus.proj.commit name={Quote(name)} msg={Quote(message)}";
+            var decided = await DecideCommitAsync(context, bus, projects, name);
+            if (decided.Result != null) return decided.Result;
+            command = decided.Command!;
         }
         else
         {
@@ -116,6 +108,73 @@ internal static partial class HistoryJanusUiCommands
             _ = await bus.ExecuteAsync("aurora.ui.refreshdata node=projects", context.Source, context.Cancellation);
         }
         return result;
+    }
+
+    /// <summary>提交动作里「丢弃」那一支的回执值。</summary>
+    private const string DiscardChoice = "discard";
+
+    /// <summary>提交动作里「提交」那一支的回执值。</summary>
+    private const string CommitChoice = "commit";
+
+    /// <summary>
+    /// 点「提交」之后到底要执行哪一条。
+    ///
+    /// 先把这次会带走的差异摆出来（<c>janus.proj.diff</c>，只读），连同两个出路一起
+    /// 放进同一个弹窗：提交，或者丢弃这份脏工作树。在此之前人是看不见自己要提交什么的——
+    /// 提交描述框在那儿，内容却得自己去别处翻。
+    ///
+    /// 返回 <c>Result</c> 表示这一轮到此为止（取消、无变更、已丢弃）；
+    /// 返回 <c>Command</c> 表示接着执行它。
+    /// </summary>
+    private static async Task<(CommandResult? Result, string? Command)> DecideCommitAsync(
+        CommandContext context, CommandBus bus, ProjectService projects, string name)
+    {
+        var diff = await projects.ReadWorktreeDiffAsync(
+            name, RepositoryTarget.Parent, context.Cancellation);
+        if (!diff.IsDirty)
+            return (CommandResult.Ok($"{name}: {diff.Summary}"), null);
+
+        var options = JsonSerializer.Serialize(new[]
+        {
+            new { label = "提交到本地仓库", value = CommitChoice },
+            new { label = "删除本次脏工作树（不可撤销）", value = DiscardChoice },
+        });
+        // content 弹窗带 options 需要 Aurora ≥ 1.24.0：正文放差异，下面放两个出路。
+        var chosen = await bus.ExecuteAsync(
+            $"aurora.ui.dialog kind=content title={Quote($"提交 {name}")} " +
+            $"body={Quote(diff.Summary)} content={Quote(diff.Body)} " +
+            $"options={Quote(options)} primary=执行 cancel=取消 defaultcancel=true",
+            context.Source, context.Cancellation);
+        // 取消不是失败：人看完差异决定这次先不提交，是这个弹窗的正常出路之一。
+        if (!chosen.Success)
+            return (CommandResult.Ok($"{name}: 已取消，工作树未改动"), null);
+
+        if (DialogValue(chosen) == DiscardChoice)
+        {
+            // 丢弃自带宿主确认（janus.proj.discard 是 Ask 级）；这里不再叠一层。
+            var discarded = await bus.ExecuteAsync(
+                $"janus.proj.discard name={Quote(name)}", context.Source, context.Cancellation);
+            if (discarded.Success)
+            {
+                await RefreshCachedProjectAsync(projects, name, null, context.Cancellation);
+                _ = await bus.ExecuteAsync(
+                    "aurora.ui.refreshdata node=projects", context.Source, context.Cancellation);
+            }
+            return (discarded, null);
+        }
+
+        var message = context.GetString("msg")?.Trim() ?? "";
+        if (message.Length == 0)
+        {
+            var prompt = await bus.ExecuteAsync(
+                $"aurora.ui.dialog kind=prompt title=提交 body={Quote(name)} primary=提交 cancel=取消",
+                context.Source, context.Cancellation);
+            if (!prompt.Success) return (prompt, null);
+            message = DialogValue(prompt);
+        }
+        return message.Length == 0
+            ? (CommandResult.Fail("提交描述不能为空"), null)
+            : (null, $"janus.proj.commit name={Quote(name)} msg={Quote(message)}");
     }
 
     /// <param name="snapshot">

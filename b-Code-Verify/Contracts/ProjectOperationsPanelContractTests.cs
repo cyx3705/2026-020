@@ -430,29 +430,37 @@ public sealed partial class ProjectOperationsPanelContractTests
     }
 
     /// <summary>
-    /// 两个刷新按钮必须落到 Aurora 的取数刷新台账，而不是把业务指令打到控制台。
+    /// 切到哪一支就刷哪一支，不再留刷新按钮（5.9.0，REQ-017）。
     ///
-    /// 后者是 5.4.4 之前这两个按钮的样子：指令确实跑了，界面上那张表一动不动——
-    /// 「点了有反应」和「点了有用」在那一版里是两回事。
+    /// **为什么非有这一条不可**：Aurora 的 switch 在建页时一次建好三支，切走再切回来
+    /// 用的是同一个控件实例（它刻意不重建，为的是保住滚动位置与选中行），因此切回来
+    /// 不会重新取数。漏掉 commitAction 不报任何错——人看到的是一张不知道有多旧的表。
+    ///
+    /// 两个刷新按钮退役，连带 <c>janus.rules.refresh</c> / <c>janus.github.refresh</c>
+    /// 两条动作声明：留着而没有按钮引用，下一个人会以为它们还在起作用。
     /// </summary>
     [Fact]
-    public void TheRefreshButtonsActuallyRefetchTheirOwnNodes()
+    public void EnteringASectionRefetchesItInsteadOfWaitingForARefreshButton()
     {
-        // 5.4.6 起两条都**按节点**刷，不再按页：三块内容同处「项目操作」一页，
-        // 按页刷会把没被点到的那两块一起带上，而 GitHub 那条要探 SSH 与凭据助手。
-        var github = Action("janus.github.refresh");
-        Assert.Equal("aurora.ui.refreshdata", github.GetProperty("command").GetString());
-        Assert.Equal("github-rows", github.GetProperty("args").GetProperty("node").GetString());
-        Assert.False(github.GetProperty("args").TryGetProperty("page", out _));
+        var selector = PanelWidgets(OperationsPanel())
+            .Single(w => w.TryGetProperty("id", out var id) && id.GetString() == "section");
+        Assert.Equal("janus.section.enter", selector.GetProperty("commitAction").GetString());
 
-        // 规则那一支只剩一张表，经 janus.ui.refreshrules 点名刷 rule-list。
-        var rules = Action("janus.rules.refresh");
-        Assert.Equal("janus.ui.refreshrules", rules.GetProperty("command").GetString());
+        // 动作把选中的标题原样带过去，由 janus.ui.sectionenter 决定刷哪个节点。
+        var enter = Action("janus.section.enter");
+        Assert.Equal("janus.ui.sectionenter", enter.GetProperty("command").GetString());
+        Assert.Equal("{section}", enter.GetProperty("args").GetProperty("section").GetString());
 
-        // 两个按钮都还在「项目操作」页上，否则刷的是这里、按钮在别处。
-        var actions = Buttons("projops").Select(b => b.GetProperty("action").GetString()).ToList();
-        Assert.Contains("janus.rules.refresh", actions);
-        Assert.Contains("janus.github.refresh", actions);
+        // 项目操作页上只剩改名/新建/提交/推送四个按钮，没有任何「刷新 X」。
+        var actions = Buttons("projops").Select(b => b.GetProperty("action").GetString()!).ToList();
+        Assert.DoesNotContain("janus.rules.refresh", actions);
+        Assert.DoesNotContain("janus.github.refresh", actions);
+
+        var declared = Actions.GetProperty("actions").EnumerateArray()
+            .Select(action => action.GetProperty("id").GetString()!)
+            .ToList();
+        Assert.DoesNotContain("janus.rules.refresh", declared);
+        Assert.DoesNotContain("janus.github.refresh", declared);
     }
 
     /// <summary>
@@ -467,6 +475,9 @@ public sealed partial class ProjectOperationsPanelContractTests
         foreach (var (node, view) in new[]
                  {
                      ("history-rows", "history"),
+                     // 5.9.0：规则表的 LFS 那几行读的是**选中项目仓**里实际走 LFS 的文件，
+                     // 因此它也进了这条约束——换项目要重取，而不是让人看着上一个项目的清单。
+                     ("rule-list", "excludes"),
                  })
         {
             var args = Node("projops", node).GetProperty("dataSource").GetProperty("args");
@@ -480,16 +491,21 @@ public sealed partial class ProjectOperationsPanelContractTests
     }
 
     /// <summary>
-    /// 排除清单那张表**不带项目名**：清单是全库共用的，读它只碰设置不碰 Git，
-    /// 因此打开页签就该立刻出来，不必等人先选一个项目。
+    /// 规则表现在**按选中项目取**（5.9.0，REQ-016）。
+    ///
+    /// 5.0.0–5.8.1 它不带项目名，因为那时表里只有全库共用的排除清单，读它只碰设置。
+    /// 本版 LFS 那一行由一条对谁都一样的策略（「单文件超过 100MB 转 LFS」）换成
+    /// **这个仓里实际走 LFS 的文件**，事实来自 <c>git lfs ls-files</c>，
+    /// 于是它必须跟着选中项目走——否则看到的是上一个项目的 LFS 清单，
+    /// 而两个项目的清单长得一样合理，没人能看出它是旧的。
     /// </summary>
     [Fact]
-    public void TheSharedExcludeListLoadsWithoutTouchingGit()
+    public void TheRuleTableIsScopedToTheSelectedProjectForItsLfsRows()
     {
         var args = Node("projops", "rule-list").GetProperty("dataSource").GetProperty("args");
 
         Assert.Equal("excludes", args.GetProperty("view").GetString());
-        Assert.False(args.TryGetProperty("name", out _));
+        Assert.Equal("{selection." + Channel + ".name}", args.GetProperty("name").GetString());
     }
 
     private static IEnumerable<JsonElement> Buttons(string pageId)

@@ -63,13 +63,13 @@ public static partial class ProjectCommands
     {
         Name = "janus.proj.pull",
         CommandClass = "proj",
-        Summary = "从归档记录克隆远端并优先恢复本地 z/Z 内容",
+        Summary = "从归档记录分段取回远端并优先恢复本地 z/Z 内容（逐段报进度，可取消）",
         Example = "janus.proj.pull name=2026-018-MyAPI",
         Parameters = [ProjectNameParameter()],
         Handler = async ctx =>
         {
             var name = ctx.RequireString("name");
-            var result = await projects.PullAsync(name, ctx.Cancellation);
+            var result = await projects.PullAsync(name, ctx.Progress, ctx.Cancellation);
             history.Record(name, "pull", result.Message, result.Success ? "成功" : "失败");
             return result.Success ? CommandResult.Ok(result.Message) : CommandResult.Fail(result.Message);
         },
