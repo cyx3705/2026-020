@@ -184,11 +184,15 @@ internal static class GitRulesSuite
 
         var names = registry.All().Select(descriptor => descriptor.Name)
             .OrderBy(name => name, StringComparer.Ordinal).ToArray();
-        True(names.SequenceEqual(["janus.gitrule.excludes", "janus.gitrule.list"]),
-            $"gitrule exposes exactly two commands, was: {string.Join(", ", names)}");
+        // 5.9.0 增加 janus.gitrule.lfs：规则面的 LFS 行改为列本仓实际走 LFS 的文件，
+        // 事实来自 git lfs ls-files，因此它是一条按项目取的只读命令。
+        True(names.SequenceEqual(["janus.gitrule.excludes", "janus.gitrule.lfs", "janus.gitrule.list"]),
+            $"gitrule exposes exactly three commands, was: {string.Join(", ", names)}");
 
         True(registry.TryGet("janus.gitrule.list", out var list) && list.Readonly,
             "janus.gitrule.list stays readonly");
+        True(registry.TryGet("janus.gitrule.lfs", out var lfs) && lfs.Readonly,
+            "janus.gitrule.lfs stays readonly");
         True(registry.TryGet("janus.gitrule.excludes", out var excludes)
              && excludes.ConfirmPrompt != null,
             "changing the shared list requires confirmation");

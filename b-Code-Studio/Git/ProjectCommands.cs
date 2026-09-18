@@ -103,6 +103,8 @@ public static partial class ProjectCommands
         registry.Register(BuildSync(projects, history), source);
         registry.Register(BuildArchive(projects, history), source);
         registry.Register(BuildPull(projects, history), source);
+        registry.Register(BuildDiff(projects), source);
+        registry.Register(BuildDiscard(projects, history), source);
     }
 
     // ---------------------------------------------------------------- janus.proj.list

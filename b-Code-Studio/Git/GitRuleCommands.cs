@@ -3,9 +3,10 @@ using HistoryVulcan.Core.Commands;
 namespace HistoryJanus.Git;
 
 /// <summary>
-/// gitrule.* 指令域：只暴露「全库共用的不纳入仓库清单」的读与改。
+/// gitrule.* 指令域：全库共用的「不纳入仓库」清单的读与改，加一条按项目读 LFS 实况。
 /// 没有下发命令——清单由提交链路每次自动刷进各仓托管块。
-/// 也没有 LFS 相关命令——LFS 只在提交链路对超 100MB 的具体文件征求同意。
+/// 也没有**改** LFS 的命令：LFS 仍然只在提交链路对超 100MB 的具体文件征求同意；
+/// `janus.gitrule.lfs` 是只读的，回答「本仓现在有哪几个文件在走 LFS」。
 /// </summary>
 public static class GitRuleCommands
 {
@@ -15,8 +16,34 @@ public static class GitRuleCommands
         string source = "app")
     {
         registry.Register(BuildList(service), source);
+        registry.Register(BuildLfs(service), source);
         registry.Register(BuildExcludes(service), source);
     }
+
+    private static CommandDescriptor BuildLfs(GitFileRuleService service) => new()
+    {
+        Name = "janus.gitrule.lfs",
+        CommandClass = "gitrule",
+        Summary = "列出该项目仓里实际走 LFS 指针的文件",
+        Readonly = true,
+        Example = "janus.gitrule.lfs name=2026-018-MyAPI",
+        Parameters =
+        [
+            new ParameterSpec
+            {
+                Name = "name",
+                Description = "已登记项目名（目录名）",
+                Required = true,
+                Position = 0,
+            },
+        ],
+        Handler = async ctx =>
+        {
+            var (success, message, report) = await service.ListLfsAsync(
+                ctx.RequireString("name"), ctx.Cancellation);
+            return success ? CommandResult.Ok(message, report) : CommandResult.Fail(message);
+        },
+    };
 
     private static CommandDescriptor BuildList(GitFileRuleService service) => new()
     {

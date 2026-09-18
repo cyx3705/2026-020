@@ -43,12 +43,13 @@ public sealed partial class ProjectService
         name = name.Trim();
         var record = _lifecycle.Get(name);
         var path = Path.Combine(LibraryRoot, name);
-        if (record?.ArchivedAt != null && Directory.Exists(path)
-            && !ProjectRepoLayout.IsIndependentGitRepo(path))
+        // 归档记录在、原地又不是仓，就是归档态——不要求目录还在：归档后只剩 z/Z 的项目
+        // 一个 z 都没有时目录可能被手工清掉，那时它仍然是「已归档」，不是「读不了仓库」。
+        if (record?.ArchivedAt != null && !ProjectRepoLayout.IsIndependentGitRepo(path))
         {
             return new ProjectLifecycleSnapshot(name, ProjectLifecycleState.Archived, "拉取",
                 "项目已归档，本地只保留 z/Z 文件夹", record.VerifiedSha, record.VerifiedSha,
-                record!.Remote, record.Branch, 0, 0, ReadZFolderNames(path));
+                record.Remote, record.Branch, 0, 0, ReadZFolderNames(path));
         }
 
         var resolved = ResolveWorktree(name);
@@ -130,18 +131,52 @@ public sealed partial class ProjectService
         }
         foreach (var record in _lifecycle.All().Where(item => item.ArchivedAt != null))
             names.Add(record.ProjectName);
-        return await Task.WhenAll(names.OrderBy(item => item, StringComparer.OrdinalIgnoreCase)
-            .Select(item => RefreshProjectAsync(item, fetchRemote: true, cancellation)));
+        return await RefreshManyAsync(
+            names.OrderBy(item => item, StringComparer.OrdinalIgnoreCase).ToList(),
+            fetchRemote: true, cancellation);
     }
 
     public async Task<List<WorktreeInfo>> ReadLifecycleStatusesAsync(
         IReadOnlyList<WorktreeInfo> worktrees, bool fetchRemote, CancellationToken cancellation = default)
     {
-        var snapshots = await Task.WhenAll(worktrees.Select(item =>
-            RefreshProjectAsync(item.BranchName, fetchRemote, cancellation)));
+        var snapshots = await RefreshManyAsync(
+            worktrees.Select(item => item.BranchName).ToList(), fetchRemote, cancellation);
         var byName = snapshots.ToDictionary(item => item.ProjectName, StringComparer.OrdinalIgnoreCase);
         return worktrees.Select(item => ApplyLifecycle(item, byName[item.BranchName])).ToList();
     }
+
+    /// <summary>
+    /// 同时在跑的 fetch 上限。全库有四十多个项目，此前一次刷新会同时开四十多条 ssh
+    /// 传输；本机链路撑不住那个并发，结果是每一条都变慢、偶发中断，而同一时刻若还有
+    /// 一次归档拉取在跑，它会被挤到近乎不动。限流之后总时长并没有变长——
+    /// 链路带宽就那么多，排队只是把它按顺序用完。
+    /// </summary>
+    private const int MaxConcurrentFetches = 6;
+
+    private static async Task<IReadOnlyList<ProjectLifecycleSnapshot>> RefreshManyAsync(
+        IReadOnlyList<string> names,
+        Func<string, Task<ProjectLifecycleSnapshot>> refresh)
+    {
+        var results = new ProjectLifecycleSnapshot[names.Count];
+        using var gate = new SemaphoreSlim(MaxConcurrentFetches, MaxConcurrentFetches);
+        await Task.WhenAll(names.Select(async (name, index) =>
+        {
+            await gate.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                results[index] = await refresh(name).ConfigureAwait(false);
+            }
+            finally
+            {
+                gate.Release();
+            }
+        }));
+        return results;
+    }
+
+    private Task<IReadOnlyList<ProjectLifecycleSnapshot>> RefreshManyAsync(
+        IReadOnlyList<string> names, bool fetchRemote, CancellationToken cancellation)
+        => RefreshManyAsync(names, name => RefreshProjectAsync(name, fetchRemote, cancellation));
 
     /// <summary>
     /// 把一份已经取到的状态快照写进项目行。调用方手上已有 fetch 过的快照时用它，
@@ -259,26 +294,33 @@ public sealed partial class ProjectService
     }
 
     public async Task<(bool Success, string Message)> PullAsync(
-        string name, CancellationToken cancellation = default)
+        string name,
+        IProgress<string>? progress = null,
+        CancellationToken cancellation = default)
     {
         name = name.Trim();
         var record = _lifecycle.Get(name);
         if (record?.ArchivedAt == null)
             return (false, "项目没有归档记录");
+        if (string.IsNullOrWhiteSpace(record.Remote))
+            return (false, $"归档记录里没有 origin 地址，无法拉取: {name}");
         var target = Path.Combine(LibraryRoot, name);
         if (!TryValidateManagedDirectChild(target, true, out var pathError))
             return (false, $"项目路径不安全: {pathError}");
         var stage = Path.Combine(LibraryRoot, $".janus-pull-{Guid.NewGuid():N}");
         var backup = Path.Combine(LibraryRoot, $".janus-backup-{Guid.NewGuid():N}");
-        var clone = await GitRunner.RunAsync(LibraryRoot,
-            ["clone", "--branch", record.Branch, "--single-branch", record.Remote, stage], cancellation);
+        // 分段取：整包克隆在本机链路上会断（见 ArchiveCloner）。取不下来时归档现场一个字不动。
+        var clone = await ArchiveCloner.CloneAsync(
+            LibraryRoot, record.Remote, record.Branch, stage, progress, cancellation);
         if (!clone.Success)
         {
             if (Directory.Exists(stage)) ProjectRepoLayout.DeleteTree(stage);
-            return (false, $"拉取失败，归档现场未改变:\n{clone.Output}");
+            return (false, $"拉取失败，归档现场未改变:\n{clone.Message}");
         }
+        var lfsNote = clone.Message;
         try
         {
+            progress?.Report("恢复本地 z/Z 文件夹...");
             foreach (var z in ReadZFolderNames(target))
             {
                 var destination = Path.Combine(stage, z);
@@ -309,11 +351,11 @@ public sealed partial class ProjectService
             try
             {
                 ProjectRepoLayout.DeleteTree(backup);
-                return (true, "远端项目已拉取，本地 z/Z 内容已优先恢复");
+                return (true, $"远端项目已拉取，本地 z/Z 内容已优先恢复{lfsNote}");
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                return (true, $"远端项目已拉取；归档备份清理失败: {ex.Message}");
+                return (true, $"远端项目已拉取；归档备份清理失败: {ex.Message}{lfsNote}");
             }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)

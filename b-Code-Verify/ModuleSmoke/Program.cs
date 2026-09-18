@@ -52,7 +52,8 @@ var manifestPath = host.Modules[0].ManifestPath
 using var manifest = JsonDocument.Parse(File.ReadAllText(manifestPath));
 var expectedVersion = manifest.RootElement.GetProperty("version").GetString();
 // 5.6.0：39 条业务命令 + 8 条 UI 命令 + janus.status = 48（命令面与 5.5.1 相同）。
-const int expectedRuntimeCommandCount = 48;
+// 5.9.0：业务命令增至 42（proj.diff / proj.discard / gitrule.lfs），UI 仍 8 条 → 51。
+const int expectedRuntimeCommandCount = 51;
 
 var meta = host.Modules[0];
 if (!meta.ModuleName.Equals("HistoryJanus", StringComparison.Ordinal)
@@ -64,7 +65,7 @@ if (!meta.ModuleName.Equals("HistoryJanus", StringComparison.Ordinal)
         $"(manifest declares {expectedVersion}) commands={meta.CommandCount}");
 }
 
-foreach (var name in new[] { "janus.ui.describe", "janus.ui.actions", "janus.ui.data", "janus.ui.graphnode", "janus.ui.refreshrules" })
+foreach (var name in new[] { "janus.ui.describe", "janus.ui.actions", "janus.ui.data", "janus.ui.graphnode", "janus.ui.sectionenter" })
 {
     if (!registry.TryGet(name, out var descriptor)
         || !descriptor.Readonly

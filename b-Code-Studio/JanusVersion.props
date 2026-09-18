@@ -1,6 +1,6 @@
 <Project>
   <PropertyGroup>
-    <HistoryJanusVersion>5.8.1</HistoryJanusVersion>
+    <HistoryJanusVersion>5.9.0</HistoryJanusVersion>
     <!-- Janus 消费的 HistoryVulcan 正式宿主版本。这是宿主契约的唯一真源：
          发布脚本与质量门禁都从此读取，不再各自硬编码字面量。 -->
     <MinimumHistoryVulcanVersion>5.4.0</MinimumHistoryVulcanVersion>

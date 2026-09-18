@@ -15,7 +15,7 @@
       "appshell-module"
     ],
     "status": "active",
-    "version": "5.8.1",
+    "version": "5.9.0",
     "branch": "main"
   },
   "paths": {
@@ -69,7 +69,7 @@
   },
   "externalDependencies": [
     "HistoryVulcan >= 5.4.0 host snapshot from ../2026-023-HistoryVulcan/z-Publish/host",
-    "HistoryAurora >= 1.21.0 at runtime: stateful command buttons, bounded scrolling rule tables and scrollbar-free graph navigation; not a compile-time reference",
+    "HistoryAurora >= 1.24.0 at runtime: content dialogs that carry action options (commit diff preview), stateful command buttons, bounded scrolling rule tables and scrollbar-free graph navigation; not a compile-time reference",
     ".NET 8 SDK and Windows Desktop Runtime",
     "Git command-line client"
   ],

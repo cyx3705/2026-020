@@ -136,7 +136,7 @@ internal static partial class HistoryJanusUiCommands
                 new ParameterSpec
                 {
                     Name = "name",
-                    Description = "项目名；history / graph 需要，由页面按当前选中行填入",
+                    Description = "项目名；history / graph / excludes 需要，由页面按当前选中行填入",
                     Position = 1,
                 },
                 new ParameterSpec
@@ -183,17 +183,51 @@ internal static partial class HistoryJanusUiCommands
 
         registry.Register(new CommandDescriptor
         {
-            Name = "janus.ui.refreshrules",
+            Name = "janus.ui.sectionenter",
             Domain = Domain,
             CommandClass = "ui",
-            Summary = "重取 LFS 与入库规则表",
+            Summary = "切到某个子页面时重取它那一张表",
             Readonly = true,
             HiddenReason = "界面内部协议，对模型无意义",
-            Handler = context => bus.ExecuteAsync(
-                "aurora.ui.refreshdata node=rule-list", context.Source, context.Cancellation),
+            Parameters =
+            [
+                new ParameterSpec
+                {
+                    Name = "section",
+                    Description = $"子页面标题：{SectionRules} / {SectionHistory} / {SectionGitHub}",
+                    Required = true,
+                    Position = 0,
+                },
+            ],
+            Handler = context => EnterSectionAsync(context, bus),
         }, source);
 
         RegisterLifecycleCommands(registry, bus, source, business);
+    }
+
+    /// <summary>
+    /// 子页面一被切到就重取它那一张表。
+    ///
+    /// 为什么非得由模块来做这件事：Aurora 的 switch 在建页时一次建好三支，
+    /// 切走再切回来用的是**同一个控件实例**（为的是保住滚动位置、筛选词和选中行），
+    /// 因此切回来不会触发取数。此前靠「刷新规则 / 刷新 GitHub」两个按钮补位，
+    /// 等于把「这张表是不是旧的」这件事交给人判断。
+    ///
+    /// 按节点刷、不按页刷：一页上挂着三支，刷整页会把没人看的那两支一起跑掉。
+    /// 认不出的标题按成功返回：子页面是界面自己的候选项，多出一个不该让人看见报错。
+    /// </summary>
+    private static Task<CommandResult> EnterSectionAsync(CommandContext context, CommandBus bus)
+    {
+        var node = context.GetString("section")?.Trim() switch
+        {
+            SectionRules => "rule-list",
+            SectionHistory => "history-rows",
+            SectionGitHub => "github-rows",
+            _ => null,
+        };
+        return node == null
+            ? Task.FromResult(CommandResult.Ok("该子页面没有需要重取的表"))
+            : bus.ExecuteAsync($"aurora.ui.refreshdata node={node}", context.Source, context.Cancellation);
     }
 
     private static async Task<CommandResult> LoadDataAsync(
@@ -205,9 +239,10 @@ internal static partial class HistoryJanusUiCommands
         if (view == "graph")
             return await LoadGraphAsync(context, bus);
 
-        // 清单本身存在设置里，读它不碰 Git，打开页签就能立刻出来。
+        // 排除清单存在设置里，读它不碰 Git；LFS 那几行要读选中项目的仓，因此这一支是异步的。
         if (view == "excludes")
-            return Rows(UiRuleProjection.Excludes(business()));
+            return Rows(await UiRuleProjection.ExcludesAsync(
+                business(), context.GetString("name"), context.Cancellation));
 
         if (view is "projects" or "years")
             return await LoadProjectsAsync(context, bus, view == "years");
@@ -421,29 +456,56 @@ internal static partial class HistoryJanusUiCommands
         return row;
     }
 
-    /// <summary>Git 文件规则：全库共用的清单，以及某个项目的落地状态。</summary>
+    /// <summary>Git 文件规则：全库共用的排除清单，加当前选中项目的 LFS 实况。</summary>
     internal static class UiRuleProjection
     {
         /// <summary>
-        /// 规则表：先 LFS，再入库例外，最后逐条列不入库的目录与扩展名。
-        /// 只读设置，不碰 Git——它要在打开页签时立刻出来。
+        /// 规则表：先列**本仓实际走 LFS 的文件**，再入库例外，最后逐条列不入库的目录与扩展名。
+        ///
+        /// 5.9.0 之前 LFS 那一行写的是一条策略——「单个文件超过 100MB 转 LFS 指针」。
+        /// 那句话对每个仓都一模一样，看完仍然不知道自己这个仓有没有 LFS、有哪几个文件；
+        /// 而 2026-08 的 11GB LFS 占用事故之后，最该一眼看到的恰恰是这份文件清单。
+        /// 策略本身没变，它属于提交链路的逐个确认，不属于规则面。
         /// </summary>
-        public static IReadOnlyList<IReadOnlyDictionary<string, string>> Excludes(
-            StudioBusinessComposition? business)
+        public static async Task<IReadOnlyList<IReadOnlyDictionary<string, string>>> ExcludesAsync(
+            StudioBusinessComposition? business,
+            string? project,
+            CancellationToken cancellation)
         {
             if (business is null)
                 return [Row(("kind", "—"), ("rule", "业务组合尚未装配"))];
 
             var rules = business.GitRules;
-            var limitMb = ProjectService.GitHubFileLimitBytes / (1024 * 1024);
-            return new[]
-                {
-                    Row(("kind", "LFS"), ("rule", $"单个文件 > {limitMb}MB 转为 LFS 指针（提交时逐个确认）")),
-                    Row(("kind", "入库"), ("rule", "z-* 目录始终入库")),
-                }
+            return (await LfsRowsAsync(rules, project, cancellation))
+                .Append(Row(("kind", "入库"), ("rule", "z-* 目录始终入库")))
                 .Concat(rules.Directories.Select(directory => Row(("kind", "不入库"), ("rule", directory))))
                 .Concat(rules.Suffixes.Select(suffix => Row(("kind", "不入库"), ("rule", suffix))))
                 .ToList();
+        }
+
+        /// <summary>
+        /// LFS 那几行。没选项目、读不到仓、没装 git-lfs、一个文件都没走 LFS——
+        /// 四种情况各说各的，都不要退回那句放之四海而皆准的策略描述。
+        /// </summary>
+        private static async Task<IEnumerable<IReadOnlyDictionary<string, string>>> LfsRowsAsync(
+            GitFileRuleService rules, string? project, CancellationToken cancellation)
+        {
+            if (string.IsNullOrWhiteSpace(project))
+                return [Row(("kind", "LFS"), ("rule", "（先在项目总览选中一个项目，这里列出本仓走 LFS 的文件）"))];
+
+            var (success, message, report) = await rules.ListLfsAsync(project, cancellation);
+            if (!success || report == null)
+                return [Row(("kind", "LFS"), ("rule", $"读取失败：{message}"))];
+            if (!report.Available)
+                return [Row(("kind", "LFS"), ("rule", "本机未安装 git-lfs，无法确认本仓 LFS 状态"))];
+            if (report.Files.Count == 0)
+                return [Row(("kind", "LFS"), ("rule", $"{report.Project}：本仓没有文件走 LFS"))];
+
+            return report.Files.Select(file => Row(
+                ("kind", "LFS"),
+                ("rule", file.FormattedSize.Length > 0
+                    ? $"{file.RelativePath}（{file.FormattedSize}）"
+                    : file.RelativePath)));
         }
     }
 
@@ -529,10 +591,14 @@ internal static partial class HistoryJanusUiCommands
             context.Cancellation);
     }
 
-    private static string Quote(string value)
-        => value.Contains(' ') || value.Contains('"')
-            ? "\"" + value.Replace("\"", "\\\"", StringComparison.Ordinal) + "\""
-            : value;
+    /// <summary>
+    /// 参数值的编码统一交给宿主解析器的反函数，不在模块里自写一份。
+    ///
+    /// 模块原先那一份只在「有空格或有引号」时加引号，且只转义引号：差异正文里的
+    /// 反斜杠（Windows 路径、`\ No newline at end of file`）会被当成转义符，
+    /// 而只含换行、不含空格的值根本不会被引起来——两种都是指令拼出来就散架。
+    /// </summary>
+    private static string Quote(string value) => CommandParser.QuoteArg(value);
 }
 
 internal sealed class ModuleSettings : ISettingsService

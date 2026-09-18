@@ -241,6 +241,12 @@ internal static partial class HistoryJanusUiCommands
                                 //
                                 // 它不写 enabledWhen：切页面与选没选中项目无关，
                                 // 而按选中启停会让"没选项目时连看一眼 GitHub 状态都不行"。
+                                //
+                                // commitAction（5.9.0）：切到哪一支就刷哪一支。
+                                // switch 的三支在建页时一次建好、切走再切回来是**同一个控件实例**
+                                // （Aurora BuildSwitch 明写不重建，为的是保住滚动位置与选中行），
+                                // 因此切回来不会重新取数——旧版靠「刷新规则 / 刷新 GitHub」两个按钮
+                                // 补这一手，等于把刷新的责任推给人。
                                 new
                                 {
                                     mode = "even",
@@ -254,6 +260,7 @@ internal static partial class HistoryJanusUiCommands
                                             mode = "select",
                                             channel = SectionChannel,
                                             options = new[] { SectionRules, SectionHistory, SectionGitHub },
+                                            commitAction = "janus.section.enter",
                                         },
                                     },
                                 },
@@ -272,52 +279,26 @@ internal static partial class HistoryJanusUiCommands
                             source = "{selection." + SectionChannel + ".value}",
                             children = new object[]
                             {
+                                // 一张表说完两件事：本仓哪几个文件在走 LFS、什么不入库。
+                                // 目录与扩展名同表，靠末尾的 / 与开头的 * 自己区分。
+                                //
+                                // 没有「刷新规则」按钮了：切到这一支就重取（见 section 那一行的
+                                // commitAction）。LFS 那几行按**当前选中项目**取，
+                                // 所以换项目时 Aurora 也会自己重取——取数参数引用了选中通道。
                                 new
                                 {
-                                    type = "stack",
+                                    type = "table",
                                     @case = SectionRules,
-                                    gap = "tight",
-                                    children = new object[]
+                                    id = "rule-list",
+                                    dataSource = new
                                     {
-                                        new
-                                        {
-                                            type = "panel",
-                                            id = "janus-rules-ops",
-                                            text = "规则",
-                                            rows = new object[]
-                                            {
-                                                new
-                                                {
-                                                    mode = "even",
-                                                    widgets = new object[]
-                                                    {
-                                                        new
-                                                        {
-                                                            kind = "button",
-                                                            action = "janus.rules.refresh",
-                                                            text = "刷新规则",
-                                                        },
-                                                    },
-                                                },
-                                            },
-                                        },
-                                        // 一张表说完两件事：什么走 LFS、什么不入库。
-                                        // 目录与扩展名同表，靠末尾的 / 与开头的 * 自己区分。
-                                        new
-                                        {
-                                            type = "table",
-                                            id = "rule-list",
-                                            dataSource = new
-                                            {
-                                                command = "janus.ui.data",
-                                                args = new { view = "excludes" },
-                                            },
-                                            columns = new object[]
-                                            {
-                                                new { key = "kind", title = "类型", width = "70" },
-                                                new { key = "rule", title = "规则", width = "*" },
-                                            },
-                                        },
+                                        command = "janus.ui.data",
+                                        args = new { view = "excludes", name = SelectedProject },
+                                    },
+                                    columns = new object[]
+                                    {
+                                        new { key = "kind", title = "类型", width = "70" },
+                                        new { key = "rule", title = "规则", width = "*" },
                                     },
                                 },
                                 new
@@ -343,50 +324,23 @@ internal static partial class HistoryJanusUiCommands
                                     },
                                     view = new { filterable = true, sortable = true, selection = "single" },
                                 },
+                                // 同样没有「刷新 GitHub」按钮：切到这一支就重探。
+                                // 这一支贵（要探 SSH 与凭据助手），正因为贵才不该在人看着
+                                // 另一支的时候白跑，也不该靠人记得回来点一下刷新。
                                 new
                                 {
-                                    type = "stack",
+                                    type = "table",
                                     @case = SectionGitHub,
-                                    gap = "tight",
-                                    children = new object[]
+                                    id = "github-rows",
+                                    dataSource = new
                                     {
-                                        new
-                                        {
-                                            type = "panel",
-                                            id = "janus-github-ops",
-                                            text = "GitHub",
-                                            rows = new object[]
-                                            {
-                                                new
-                                                {
-                                                    mode = "even",
-                                                    widgets = new object[]
-                                                    {
-                                                        new
-                                                        {
-                                                            kind = "button",
-                                                            action = "janus.github.refresh",
-                                                            text = "刷新 GitHub",
-                                                        },
-                                                    },
-                                                },
-                                            },
-                                        },
-                                        new
-                                        {
-                                            type = "table",
-                                            id = "github-rows",
-                                            dataSource = new
-                                            {
-                                                command = "janus.ui.data",
-                                                args = new { view = "github" },
-                                            },
-                                            columns = new object[]
-                                            {
-                                                new { key = "item", title = "项", width = "120" },
-                                                new { key = "value", title = "值", width = "*" },
-                                            },
-                                        },
+                                        command = "janus.ui.data",
+                                        args = new { view = "github" },
+                                    },
+                                    columns = new object[]
+                                    {
+                                        new { key = "item", title = "项", width = "120" },
+                                        new { key = "value", title = "值", width = "*" },
                                     },
                                 },
                             },
@@ -492,23 +446,19 @@ internal static partial class HistoryJanusUiCommands
                 },
                 summary = "推送选中项目的分支",
             },
-            // 刷新落到 Aurora 的取数刷新台账，而不是把指令打到控制台（那样表格一动不动）。
-            // 两条都**按节点**刷：同一页上还挂着分支历史与 GitHub，后者要探 SSH 与凭据助手。
+            // 切到哪一支就刷哪一支（5.9.0）。它不是按钮，是子页面选项框的
+            // commitAction——选项框一变就带着新标题打过来。
+            //
+            // 刷新落到 Aurora 的取数刷新台账，而不是把指令打到控制台（那样表格一动不动），
+            // 并且**按节点**刷：一页上挂着三支，刷整页会把没人看的那两支也跑一遍，
+            // 而 GitHub 那一支要探 SSH 与凭据助手。
             new
             {
-                id = "janus.rules.refresh",
-                title = "刷新规则",
-                // 过一道自己的指令，由它点名刷 rule-list。
-                command = "janus.ui.refreshrules",
-                summary = "重新读取 LFS 与入库规则",
-            },
-            new
-            {
-                id = "janus.github.refresh",
-                title = "刷新 GitHub",
-                command = "aurora.ui.refreshdata",
-                args = new Dictionary<string, string> { ["node"] = "github-rows" },
-                summary = "重新探测 Git、GCM、提交身份、origin 与 SSH",
+                id = "janus.section.enter",
+                title = "切换子页面",
+                command = "janus.ui.sectionenter",
+                args = new Dictionary<string, string> { ["section"] = "{section}" },
+                summary = "切到某个子页面时重取它的数据",
             },
             new
             {

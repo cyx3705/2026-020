@@ -190,7 +190,7 @@ foreach ($page in $expectedScenePlacements.GetEnumerator()) {
         $violations.Add("HistoryJanusUiModule.cs must declare $($page.Key) for HistoryJanus at $($page.Value) and visible by default")
     }
 }
-foreach ($uiCommand in @('janus.ui.describe', 'janus.ui.actions', 'janus.ui.data', 'janus.ui.graphnode', 'janus.ui.refreshrules', 'janus.ui.refreshprojects', 'janus.ui.projectaction', 'janus.ui.openmeta')) {
+foreach ($uiCommand in @('janus.ui.describe', 'janus.ui.actions', 'janus.ui.data', 'janus.ui.graphnode', 'janus.ui.sectionenter', 'janus.ui.refreshprojects', 'janus.ui.projectaction', 'janus.ui.openmeta')) {
     if ($uiSource -notmatch ('Name = "' + [regex]::Escape($uiCommand) + '"') -or
         $apiText -notmatch ('(?m)^\|\s*`' + [regex]::Escape($uiCommand) + '`\s*\|')) {
         $violations.Add("Aurora UI command missing from source or API contract: $uiCommand")
@@ -214,8 +214,10 @@ $apiCommandNames = @(
         Sort-Object -Unique
 )
 # 5.4.6 增加 janus.ui.refreshrules（REQ-015）：40 → 41。
-if ($businessCommandNames.Count -ne 47 -or $expectedRuntimeCommandNames.Count -ne 48) {
-    $violations.Add("运行时命令总数应为 48（39 条业务命令 + 8 条 Aurora UI 投影命令 + janus.status）；源码为 $($businessCommandNames.Count) + 1")
+# 5.9.0 增加 proj.diff / proj.discard（REQ-014）与 gitrule.lfs（REQ-016）：47 → 50；
+# janus.ui.refreshrules 改名为 janus.ui.sectionenter（REQ-017），UI 投影仍是 8 条。
+if ($businessCommandNames.Count -ne 50 -or $expectedRuntimeCommandNames.Count -ne 51) {
+    $violations.Add("运行时命令总数应为 51（42 条业务命令 + 8 条 Aurora UI 投影命令 + janus.status）；源码为 $($businessCommandNames.Count) + 1")
 }
 if (($expectedRuntimeCommandNames -join ',') -cne ($apiCommandNames -join ',')) {
     $violations.Add("模块API.md 命令清单与源码不一致：API $($apiCommandNames.Count)，运行时 $($expectedRuntimeCommandNames.Count)")
