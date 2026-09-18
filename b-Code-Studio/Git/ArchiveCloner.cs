@@ -1,3 +1,4 @@
+using System.IO;
 using System.Text;
 
 namespace HistoryJanus.Git;
@@ -19,6 +20,13 @@ namespace HistoryJanus.Git;
 ///   <item>传输失败可重试，不是一次定生死；</item>
 ///   <item>LFS 内容单独一步取，它的失败不连累已经落地的 git 历史。</item>
 /// </list>
+///
+/// 分段解决的是「传着传着断了」。还有一种是**一个字节都没传出去**：本机到 GitHub 的
+/// SSH 两个口（22 和 443）都被重置，<c>git@github.com:...</c> 的仓在握手阶段就挂了，
+/// 分段和重试都救不回来——每一段都是同一个握手。HTTPS 这条路是通的，所以
+/// <see cref="ShallowCloneAsync"/> 在认出「链路级 SSH 不通」之后换算出同一个仓库的
+/// HTTPS 地址再试一次。换路只发生在第一段：克隆出来的仓 <c>origin</c> 就是走通的那个
+/// 地址，后面的加深、LFS 以及这个项目以后的取放自然都沿用它。
 /// </summary>
 internal static class ArchiveCloner
 {
@@ -48,6 +56,29 @@ internal static class ArchiveCloner
         "unable to access",
     ];
 
+    /// <summary>
+    /// SSH 链路整条不通的痕迹。它们都出现在握手阶段，此时仓库数据一个字节都还没传，
+    /// 换句话说重试多少次都是同一个结果——这正是它们和
+    /// <see cref="RetryableMarkers"/> 里那些「传输中途断了」的区别。
+    /// 认出这些就换 HTTPS 再试，而不是把失败原样报出去。
+    ///
+    /// 不含「Permission denied (publickey)」：那是钥匙不对，不是路不通，
+    /// 换条路只会把一个能一眼看懂的原因换成一个看不懂的。
+    /// </summary>
+    private static readonly string[] SshUnreachableMarkers =
+    [
+        "Connection reset by",
+        "Connection closed by",
+        "Connection refused",
+        "Connection timed out",
+        "kex_exchange_identification",
+        "Could not resolve hostname",
+        "Network is unreachable",
+    ];
+
+    /// <summary>GitHub 的 SSH 备用口专用域名，HTTPS 侧不认它，换算时要还原成主域名。</summary>
+    private const string GitHubSshAlias = "ssh.github.com";
+
     /// <summary>克隆期间不铺开 LFS 内容：先把 git 历史落地，实体稍后单独取。</summary>
     private static readonly Dictionary<string, string> SkipLfsSmudge =
         new(StringComparer.Ordinal) { ["GIT_LFS_SKIP_SMUDGE"] = "1" };
@@ -64,12 +95,8 @@ internal static class ArchiveCloner
         IProgress<string>? progress,
         CancellationToken cancellation)
     {
-        progress?.Report($"浅克隆 {branch}（深度 {DeepenStep}）...");
-        var clone = await TransferAsync(
-            libraryRoot,
-            ["-c", "lfs.locksverify=false", "clone", "--progress", "--depth", DeepenStep.ToString(),
-                "--branch", branch, "--single-branch", remote, destination],
-            "浅克隆", progress, cancellation);
+        var clone = await ShallowCloneAsync(
+            libraryRoot, remote, branch, destination, progress, cancellation);
         if (!clone.Success)
             return (false, clone.Message);
 
@@ -78,7 +105,99 @@ internal static class ArchiveCloner
             return (false, deepened.Message);
 
         var lfs = await FetchLfsAsync(destination, progress, cancellation);
-        return (true, lfs.Message);
+        return (true, clone.Message + lfs.Message);
+    }
+
+    /// <summary>
+    /// 第一段浅克隆。SSH 握手就不通时，换算出同一个仓库的 HTTPS 地址再试一次。
+    /// 成功时 <c>Message</c> 是一句「这次换了路」的补充说明，不是错误。
+    /// </summary>
+    private static async Task<(bool Success, string Message)> ShallowCloneAsync(
+        string libraryRoot,
+        string remote,
+        string branch,
+        string destination,
+        IProgress<string>? progress,
+        CancellationToken cancellation)
+    {
+        progress?.Report($"浅克隆 {branch}（深度 {DeepenStep}）...");
+        var direct = await TransferAsync(
+            libraryRoot, CloneArguments(remote, branch, destination), "浅克隆", progress, cancellation);
+        if (direct.Success)
+            return (true, string.Empty);
+        if (!IsSshUnreachable(direct.Message) || !TryBuildHttpsRemote(remote, out var https))
+            return (false, direct.Message);
+
+        // 克隆失败后 git 通常会自己清掉目标目录，但不保证；留着会让下一次克隆直接
+        // 报「目录已存在」，把一次本来能成的回退变成一条看不懂的报错。
+        if (Directory.Exists(destination))
+            ProjectRepoLayout.DeleteTree(destination);
+        progress?.Report($"SSH 链路不通，改用 HTTPS 重试：{https}");
+        var fallback = await TransferAsync(
+            libraryRoot, CloneArguments(https, branch, destination),
+            "HTTPS 浅克隆", progress, cancellation);
+        return fallback.Success
+            ? (true, $"；SSH 链路不通，本次经 HTTPS 取回，origin 已指向 {https}")
+            : (false, $"{direct.Message}\n改用 HTTPS 后仍然失败:\n{fallback.Message}");
+    }
+
+    private static string[] CloneArguments(string remote, string branch, string destination) =>
+    [
+        "-c", "lfs.locksverify=false", "clone", "--progress", "--depth", DeepenStep.ToString(),
+        "--branch", branch, "--single-branch", remote, destination,
+    ];
+
+    /// <summary>
+    /// 把 SSH 形式的 git 地址换算成同一个仓库的 HTTPS 地址：
+    /// <c>git@host:owner/repo.git</c> 与 <c>ssh://git@host:port/owner/repo.git</c>
+    /// 都得到 <c>https://host/owner/repo.git</c>。已经是 HTTPS 的原样拒绝——没有可换的路。
+    ///
+    /// 主机名必须带点：Windows 本地路径（<c>C:\OneHistory\...</c>）长得就是 scp 形式，
+    /// 少这一条，一个本地裸仓会被当成主机名为 <c>C</c> 的远端换成 https。
+    /// </summary>
+    internal static bool TryBuildHttpsRemote(string remote, out string https)
+    {
+        https = string.Empty;
+        var value = remote.Trim();
+        if (value.Length == 0 || value.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        string authority;
+        string path;
+        if (value.StartsWith("ssh://", StringComparison.OrdinalIgnoreCase))
+        {
+            var rest = value["ssh://".Length..];
+            var slash = rest.IndexOf('/');
+            if (slash <= 0)
+                return false;
+            authority = rest[..slash];
+            path = rest[(slash + 1)..];
+        }
+        else
+        {
+            var colon = value.IndexOf(':');
+            var firstSlash = value.IndexOf('/');
+            if (colon <= 0 || (firstSlash >= 0 && firstSlash < colon))
+                return false;
+            authority = value[..colon];
+            path = value[(colon + 1)..];
+        }
+
+        var user = authority.LastIndexOf('@');
+        if (user >= 0)
+            authority = authority[(user + 1)..];
+        var port = authority.IndexOf(':');
+        if (port >= 0)
+            authority = authority[..port];
+        if (authority.Equals(GitHubSshAlias, StringComparison.OrdinalIgnoreCase))
+            authority = "github.com";
+
+        path = path.TrimStart('/');
+        if (!authority.Contains('.') || authority.Contains('\\') || path.Length == 0 || path.Contains('\\'))
+            return false;
+
+        https = $"https://{authority}/{path}";
+        return true;
     }
 
     /// <summary>
@@ -178,6 +297,9 @@ internal static class ArchiveCloner
 
     private static bool IsRetryable(string output)
         => RetryableMarkers.Any(marker => output.Contains(marker, StringComparison.OrdinalIgnoreCase));
+
+    private static bool IsSshUnreachable(string output)
+        => SshUnreachableMarkers.Any(marker => output.Contains(marker, StringComparison.OrdinalIgnoreCase));
 
     private static async Task<bool> IsShallowAsync(string repository, CancellationToken cancellation)
     {
