@@ -33,6 +33,19 @@ public sealed partial class ProjectService
     /// <summary>远端状态没能确认时的动作：重新查一次这个项目。</summary>
     public const string RefreshAction = "刷新";
 
+    /// <summary>
+    /// 刷新时取回的远端引用范围：**origin 上的全部分支**。
+    ///
+    /// 5.9 及以前这里写的是 <c>+refs/heads/main:refs/remotes/origin/main</c>。命令行上给出
+    /// 显式 refspec 会**顶掉** <c>remote.origin.fetch</c> 里配好的 <c>refs/heads/*</c>，
+    /// 于是除 main 以外的远端分支——别人在 GitHub 上推的 feature 分支、别的机器上的 ai 工作分支——
+    /// 一条都不会落到本地，图谱和分支历史自然看不到它们，表现为「同步过了却没有这段历史」。
+    ///
+    /// 带 <c>--prune</c>：远端删掉的分支若不清理，<c>refs/remotes/origin/*</c> 会永久留着一条
+    /// 指向已不存在分支的引用，比不取更容易骗人。取回的只是跟踪引用，不动本地分支和工作树。
+    /// </summary>
+    public const string AllHeadsRefspec = "+refs/heads/*:refs/remotes/origin/*";
+
     public IReadOnlyList<ProjectLifecycleRecord> LifecycleRecords => _lifecycle.All();
 
     public ProjectLifecycleRecord? GetLifecycleRecord(string name) => _lifecycle.Get(name);
@@ -79,8 +92,7 @@ public sealed partial class ProjectService
 
         if (fetchRemote)
         {
-            var fetch = await GitRunner.RunAsync(repo,
-                ["fetch", "--no-tags", "origin", $"+refs/heads/{MainlineBranch}:refs/remotes/origin/{MainlineBranch}"],
+            var fetch = await GitRunner.RunAsync(repo, ["fetch", "--no-tags", "--prune", "origin", AllHeadsRefspec],
                 cancellation);
             if (!fetch.Success)
                 return Snapshot(ProjectLifecycleState.Unavailable, RefreshAction, $"远端状态待确认: {fetch.Output}");
@@ -146,12 +158,15 @@ public sealed partial class ProjectService
     }
 
     /// <summary>
-    /// 同时在跑的 fetch 上限。全库有四十多个项目，此前一次刷新会同时开四十多条 ssh
-    /// 传输；本机链路撑不住那个并发，结果是每一条都变慢、偶发中断，而同一时刻若还有
-    /// 一次归档拉取在跑，它会被挤到近乎不动。限流之后总时长并没有变长——
-    /// 链路带宽就那么多，排队只是把它按顺序用完。
+    /// 同时在跑的 fetch 上限。
+    ///
+    /// 全库四十多个项目，一次刷新就是四十多次 fetch，而这些 fetch 几乎不传字节——
+    /// 每一次的开销是一趟 ssh 握手往返（本机实测约 4 秒），因此**总时长由并发度决定，
+    /// 不由带宽决定**。5.9 及以前按 6 限流，实测全库 31 秒；放到 16 之后是 12 秒，
+    /// 且没有一条失败。再往上收益递减，而真有对象要传的项目会开始互相抢链路
+    /// （本机链路大传输本就易断），所以停在 16。
     /// </summary>
-    private const int MaxConcurrentFetches = 6;
+    private const int MaxConcurrentFetches = 16;
 
     private static async Task<IReadOnlyList<ProjectLifecycleSnapshot>> RefreshManyAsync(
         IReadOnlyList<string> names,
@@ -174,9 +189,42 @@ public sealed partial class ProjectService
         return results;
     }
 
+    /// <summary>
+    /// 已归档的项目不占限流名额。它们本地只剩 z/Z 文件夹，读数是一条现成的归档记录，
+    /// 一次 git 都不跑；混在同一个信号量里排队，只会让后面真要 fetch 的项目白等。
+    /// </summary>
     private Task<IReadOnlyList<ProjectLifecycleSnapshot>> RefreshManyAsync(
         IReadOnlyList<string> names, bool fetchRemote, CancellationToken cancellation)
-        => RefreshManyAsync(names, name => RefreshProjectAsync(name, fetchRemote, cancellation));
+    {
+        if (!fetchRemote)
+            return RefreshManyAsync(names, name => RefreshProjectAsync(name, false, cancellation));
+
+        var archived = names.Where(IsArchivedInPlace).ToList();
+        if (archived.Count == 0)
+            return RefreshManyAsync(names, name => RefreshProjectAsync(name, true, cancellation));
+
+        return MergeAsync();
+
+        async Task<IReadOnlyList<ProjectLifecycleSnapshot>> MergeAsync()
+        {
+            var archivedSet = archived.ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var live = names.Where(name => !archivedSet.Contains(name)).ToList();
+            var offlineTask = Task.WhenAll(archived.Select(
+                name => RefreshProjectAsync(name, false, cancellation)));
+            var onlineTask = RefreshManyAsync(live, name => RefreshProjectAsync(name, true, cancellation));
+            await Task.WhenAll(offlineTask, onlineTask).ConfigureAwait(false);
+
+            var byName = (await onlineTask.ConfigureAwait(false))
+                .Concat(await offlineTask.ConfigureAwait(false))
+                .ToDictionary(item => item.ProjectName, StringComparer.OrdinalIgnoreCase);
+            return names.Select(name => byName[name]).ToList();
+        }
+    }
+
+    /// <summary>归档态：有归档记录，且原地已经不是一个 git 仓（与刷新链路同一判据）。</summary>
+    private bool IsArchivedInPlace(string name)
+        => _lifecycle.Get(name.Trim())?.ArchivedAt != null
+           && !ProjectRepoLayout.IsIndependentGitRepo(Path.Combine(LibraryRoot, name.Trim()));
 
     /// <summary>
     /// 把一份已经取到的状态快照写进项目行。调用方手上已有 fetch 过的快照时用它，

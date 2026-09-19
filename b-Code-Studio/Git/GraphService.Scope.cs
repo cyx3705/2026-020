@@ -115,14 +115,26 @@ public sealed partial class GraphService
         return relations;
     }
 
+    /// <summary>
+    /// 进图谱的平行分支候选：**主线以外的每一条分支**，本地的和远端跟踪的都算。
+    ///
+    /// 5.9 及以前这里只收名字形如 <c>ai/&lt;项目名&gt;/…</c> 的引用。那条规矩把「别人在 GitHub 上
+    /// 开的分支」整类挡在图外——即便刷新已经把 <c>origin/feature/xxx</c> 取到本地，
+    /// 图谱照样只画一条主线，看上去像是同步没生效。分支是谁开的、叫什么名字，
+    /// 不该决定它算不算这个项目的历史；<c>ai/</c> 前缀只用来决定泳道的**类别**
+    /// （见调用方按 <see cref="IsAiWork"/> 分 <see cref="BranchKind.AiWork"/> 与
+    /// <see cref="BranchKind.Parallel"/>），不再用来决定去留。继承关系一视同仁，
+    /// 由 <see cref="BuildRelationsAsync"/> 按与主线的 merge-base 算出基线。
+    ///
+    /// 同名的本地分支与远端跟踪分支合成一条泳道，本地那份优先——两条画成两行等于
+    /// 把同一段历史说了两遍。
+    /// </summary>
     private static List<GraphRef> SelectParallelCandidates(string project, IReadOnlyList<RawRef> refs)
     {
         var chosen = new Dictionary<string, GraphRef>(StringComparer.OrdinalIgnoreCase);
         foreach (var item in refs)
         {
             var logical = LogicalRefName(item);
-            if (!IsAiWork(project, logical, item.FullName))
-                continue;
             if (IsExcludedProjectRef(project, logical))
                 continue;
 
@@ -308,7 +320,13 @@ public sealed partial class GraphService
         return slash >= 0 ? rest[(slash + 1)..] : item.ShortName;
     }
 
+    /// <summary>
+    /// 不进平行泳道的引用：主线自己、与项目同名的遗留 ref，以及 <c>origin/HEAD</c>
+    /// 这类指向别的分支的符号引用——它没有自己的历史，画出来就是主线的一份重影。
+    /// </summary>
     private static bool IsExcludedProjectRef(string project, string logicalName)
         => logicalName.Equals(project, StringComparison.OrdinalIgnoreCase)
-           || logicalName.Equals(ProjectService.MainlineBranch, StringComparison.OrdinalIgnoreCase);
+           || logicalName.Equals(ProjectService.MainlineBranch, StringComparison.OrdinalIgnoreCase)
+           || logicalName.Equals("HEAD", StringComparison.Ordinal)
+           || logicalName.EndsWith("/HEAD", StringComparison.Ordinal);
 }

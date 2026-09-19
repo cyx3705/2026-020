@@ -163,10 +163,11 @@ public sealed class BranchHistoryService
         string? remoteWarning = null;
         if (refreshRemote)
         {
-            progress?.Report($"刷新 origin/{ProjectService.MainlineBranch}...");
+            // 与刷新链路同一个 refspec：取 origin 全部分支，不只 main。只取 main 的话，
+            // 这里报的「远端领先/落后」永远只针对主线，别人推的分支既进不来也算不进去。
+            progress?.Report("刷新 origin 全部分支...");
             var fetch = await GitRunner.RunAsync(boundary.RepoPath,
-                ["fetch", "--no-tags", "origin",
-                    $"+refs/heads/{ProjectService.MainlineBranch}:refs/remotes/origin/{ProjectService.MainlineBranch}"],
+                ["fetch", "--no-tags", "--prune", "origin", ProjectService.AllHeadsRefspec],
                 cancellation: cancellation);
             if (!fetch.Success)
                 remoteWarning = fetch.Output;

@@ -246,13 +246,16 @@ public sealed partial class ProjectService
                 subject = parts.Length > 1 ? parts[1].Trim() : "";
             }
 
+            // 一次枚举就够：此前这里对同一个目录连读两遍，全库四十多个项目就是四十多次
+            // 多余的目录枚举，而刷新链路随后还会再读一遍。
+            var zFolders = ReadZFolderNames(worktree.WorktreePath);
             return worktree with
             {
                 HeadBranch = head.Success ? head.Output.Trim() : "",
                 LastCommitTime = time,
                 LastCommitMessage = subject,
-                ZFolderCount = ReadZFolderNames(worktree.WorktreePath).Count,
-                ZFolders = ReadZFolderNames(worktree.WorktreePath),
+                ZFolderCount = zFolders.Count,
+                ZFolders = zFolders,
             };
         }));
         return (new GitResult(0, ""), [.. enriched]);
