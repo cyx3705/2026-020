@@ -33,6 +33,19 @@ public sealed partial class ProjectService
     /// <summary>远端状态没能确认时的动作：重新查一次这个项目。</summary>
     public const string RefreshAction = "刷新";
 
+    /// <summary>
+    /// 刷新时取回的远端引用范围：**origin 上的全部分支**。
+    ///
+    /// 5.9 及以前这里写的是 <c>+refs/heads/main:refs/remotes/origin/main</c>。命令行上给出
+    /// 显式 refspec 会**顶掉** <c>remote.origin.fetch</c> 里配好的 <c>refs/heads/*</c>，
+    /// 于是除 main 以外的远端分支——别人在 GitHub 上推的 feature 分支、别的机器上的 ai 工作分支——
+    /// 一条都不会落到本地，图谱和分支历史自然看不到它们，表现为「同步过了却没有这段历史」。
+    ///
+    /// 带 <c>--prune</c>：远端删掉的分支若不清理，<c>refs/remotes/origin/*</c> 会永久留着一条
+    /// 指向已不存在分支的引用，比不取更容易骗人。取回的只是跟踪引用，不动本地分支和工作树。
+    /// </summary>
+    public const string AllHeadsRefspec = "+refs/heads/*:refs/remotes/origin/*";
+
     public IReadOnlyList<ProjectLifecycleRecord> LifecycleRecords => _lifecycle.All();
 
     public ProjectLifecycleRecord? GetLifecycleRecord(string name) => _lifecycle.Get(name);
@@ -79,8 +92,7 @@ public sealed partial class ProjectService
 
         if (fetchRemote)
         {
-            var fetch = await GitRunner.RunAsync(repo,
-                ["fetch", "--no-tags", "origin", $"+refs/heads/{MainlineBranch}:refs/remotes/origin/{MainlineBranch}"],
+            var fetch = await GitRunner.RunAsync(repo, ["fetch", "--no-tags", "--prune", "origin", AllHeadsRefspec],
                 cancellation);
             if (!fetch.Success)
                 return Snapshot(ProjectLifecycleState.Unavailable, RefreshAction, $"远端状态待确认: {fetch.Output}");
@@ -89,6 +101,8 @@ public sealed partial class ProjectService
         var remoteSha = await ReadRefAsync(repo, $"refs/remotes/origin/{MainlineBranch}", cancellation);
         if (remoteSha.Length == 0)
             return Snapshot(ProjectLifecycleState.NoRemote, "推送", "origin 尚无 main 分支");
+        // 只读本地引用，不联网：上面那次 fetch（或上一次刷新留下的跟踪引用）已经够判断了。
+        var branchGap = await RemoteBranchSync.ReadGapAsync(repo, cancellation);
         var counts = await GitRunner.RunAsync(repo,
             ["rev-list", "--left-right", "--count", $"{local}...{remoteSha}"], cancellation);
         if (!counts.Success)
@@ -99,11 +113,19 @@ public sealed partial class ProjectService
         if (parts.Length > 0) _ = int.TryParse(parts[0], out ahead);
         if (parts.Length > 1) _ = int.TryParse(parts[1], out behind);
         if (ahead > 0 && behind == 0)
-            return Snapshot(ProjectLifecycleState.Ahead, "推送", $"本地领先 {ahead} 个提交", remoteSha, ahead, behind);
+            return Snapshot(ProjectLifecycleState.Ahead, "推送",
+                $"本地领先 {ahead} 个提交{BranchNote(branchGap)}", remoteSha, ahead, behind);
         if (ahead == 0 && behind > 0)
-            return Snapshot(ProjectLifecycleState.Behind, "同步", $"远端领先 {behind} 个提交", remoteSha, ahead, behind);
+            return Snapshot(ProjectLifecycleState.Behind, "同步",
+                $"远端领先 {behind} 个提交{BranchNote(branchGap)}", remoteSha, ahead, behind);
         if (ahead > 0 && behind > 0)
-            return Snapshot(ProjectLifecycleState.Diverged, "同步", $"分支已分叉：本地 {ahead} / 远端 {behind}", remoteSha, ahead, behind);
+            return Snapshot(ProjectLifecycleState.Diverged, "同步",
+                $"分支已分叉：本地 {ahead} / 远端 {behind}{BranchNote(branchGap)}", remoteSha, ahead, behind);
+        // main 已经一致，但远端还有本地没落下的分支：这也是「没同步完」，不能让它显示成可归档。
+        // 归档只留 z/Z 文件夹，此时说「本地与远端已验证一致」是不实的——本地压根没有那几条分支。
+        if (branchGap.PendingCount > 0)
+            return Snapshot(ProjectLifecycleState.Behind, "同步",
+                $"main 已一致；远端还有 {branchGap.PendingCount} 条分支本地尚未建立", remoteSha);
         if (record == null || !record.VerifiedSha.Equals(local, StringComparison.OrdinalIgnoreCase))
             return Snapshot(ProjectLifecycleState.Unverified, "同步", "两端提交一致，尚未完成同步校验", remoteSha);
         return Snapshot(ProjectLifecycleState.Synchronized, "归档", "本地与远端已验证一致", remoteSha);
@@ -114,6 +136,13 @@ public sealed partial class ProjectService
             => new(name, state, action, message, local, remoteSha, remote, branch,
                 ahead, behind, zFolders);
     }
+
+    /// <summary>
+    /// 主线之外还欠几条分支，附在主线读数后面。主线本身的状态（领先/落后/分叉）
+    /// 是更要紧的那件事，因此分支只作补充，不抢动作。
+    /// </summary>
+    private static string BranchNote(RemoteBranchGap gap)
+        => gap.PendingCount == 0 ? "" : $"；远端另有 {gap.PendingCount} 条分支本地尚未建立";
 
     public async Task<IReadOnlyList<ProjectLifecycleSnapshot>> RefreshProjectsAsync(
         CancellationToken cancellation = default)
@@ -146,12 +175,15 @@ public sealed partial class ProjectService
     }
 
     /// <summary>
-    /// 同时在跑的 fetch 上限。全库有四十多个项目，此前一次刷新会同时开四十多条 ssh
-    /// 传输；本机链路撑不住那个并发，结果是每一条都变慢、偶发中断，而同一时刻若还有
-    /// 一次归档拉取在跑，它会被挤到近乎不动。限流之后总时长并没有变长——
-    /// 链路带宽就那么多，排队只是把它按顺序用完。
+    /// 同时在跑的 fetch 上限。
+    ///
+    /// 全库四十多个项目，一次刷新就是四十多次 fetch，而这些 fetch 几乎不传字节——
+    /// 每一次的开销是一趟 ssh 握手往返（本机实测约 4 秒），因此**总时长由并发度决定，
+    /// 不由带宽决定**。5.9 及以前按 6 限流，实测全库 31 秒；放到 16 之后是 12 秒，
+    /// 且没有一条失败。再往上收益递减，而真有对象要传的项目会开始互相抢链路
+    /// （本机链路大传输本就易断），所以停在 16。
     /// </summary>
-    private const int MaxConcurrentFetches = 6;
+    private const int MaxConcurrentFetches = 16;
 
     private static async Task<IReadOnlyList<ProjectLifecycleSnapshot>> RefreshManyAsync(
         IReadOnlyList<string> names,
@@ -174,9 +206,45 @@ public sealed partial class ProjectService
         return results;
     }
 
+    /// <summary>
+    /// 已归档的项目不占限流名额。它们本地只剩 z/Z 文件夹，读数是一条现成的归档记录，
+    /// 一次 git 都不跑；混在同一个信号量里排队，只会让后面真要 fetch 的项目白等。
+    /// </summary>
     private Task<IReadOnlyList<ProjectLifecycleSnapshot>> RefreshManyAsync(
         IReadOnlyList<string> names, bool fetchRemote, CancellationToken cancellation)
-        => RefreshManyAsync(names, name => RefreshProjectAsync(name, fetchRemote, cancellation));
+    {
+        if (!fetchRemote)
+            return RefreshManyAsync(names, name => RefreshProjectAsync(name, false, cancellation));
+
+        var archived = names.Where(IsArchivedInPlace).ToList();
+        if (archived.Count == 0)
+            return RefreshManyAsync(names, name => RefreshProjectAsync(name, true, cancellation));
+
+        return MergeAsync();
+
+        async Task<IReadOnlyList<ProjectLifecycleSnapshot>> MergeAsync()
+        {
+            var archivedSet = archived.ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var live = names.Where(name => !archivedSet.Contains(name)).ToList();
+            var offlineTask = Task.WhenAll(archived.Select(
+                name => RefreshProjectAsync(name, false, cancellation)));
+            var onlineTask = RefreshManyAsync(live, name => RefreshProjectAsync(name, true, cancellation));
+            await Task.WhenAll(offlineTask, onlineTask).ConfigureAwait(false);
+
+            // 入参理论上不重名，但这里不能因为重名就抛：刷新是首屏链路，
+            // 一个重复的项目名不该把整张表换成一条异常。
+            var byName = new Dictionary<string, ProjectLifecycleSnapshot>(StringComparer.OrdinalIgnoreCase);
+            foreach (var item in (await onlineTask.ConfigureAwait(false))
+                     .Concat(await offlineTask.ConfigureAwait(false)))
+                byName[item.ProjectName] = item;
+            return names.Select(name => byName[name]).ToList();
+        }
+    }
+
+    /// <summary>归档态：有归档记录，且原地已经不是一个 git 仓（与刷新链路同一判据）。</summary>
+    private bool IsArchivedInPlace(string name)
+        => _lifecycle.Get(name.Trim())?.ArchivedAt != null
+           && !ProjectRepoLayout.IsIndependentGitRepo(Path.Combine(LibraryRoot, name.Trim()));
 
     /// <summary>
     /// 把一份已经取到的状态快照写进项目行。调用方手上已有 fetch 过的快照时用它，
@@ -204,7 +272,9 @@ public sealed partial class ProjectService
     }
 
     public async Task<(bool Success, string Message, ProjectLifecycleSnapshot? Snapshot)> SyncAsync(
-        string name, CancellationToken cancellation = default)
+        string name,
+        CancellationToken cancellation = default,
+        IProgress<string>? progress = null)
     {
         var before = await RefreshProjectAsync(name, fetchRemote: true, cancellation);
         if (before.State == ProjectLifecycleState.Diverged)
@@ -218,20 +288,35 @@ public sealed partial class ProjectService
         var repo = Path.Combine(LibraryRoot, name.Trim());
         if (before.State == ProjectLifecycleState.Behind)
         {
+            // main 已经一致、只欠别的分支时这一步是空跑：ff-only 对已包含的提交返回成功。
             var merge = await GitRunner.RunAsync(repo,
                 ["merge", "--ff-only", $"refs/remotes/origin/{MainlineBranch}"], cancellation);
             if (!merge.Success)
                 return (false, $"仅快进同步失败，未执行 merge/rebase:\n{merge.Output}", before);
         }
 
+        // 主线收口之后再落分支：刷新只取跟踪引用，本地 git branch 里仍然没有它们。
+        var gap = await RemoteBranchSync.ReadGapAsync(repo, cancellation);
+        var branches = await RemoteBranchSync.MaterializeAsync(repo, gap, progress, cancellation);
+        var branchNote = RemoteBranchSync.Describe(branches);
+
         var local = await ReadRefAsync(repo, "HEAD", cancellation);
         var remoteSha = await ReadRefAsync(repo, $"refs/remotes/origin/{MainlineBranch}", cancellation);
         if (local.Length == 0 || !local.Equals(remoteSha, StringComparison.OrdinalIgnoreCase))
             return (false, "同步后本地与远端 SHA 仍不一致", before);
+        if (branches.Failures.Count > 0)
+        {
+            // 主线已经对上，但分支没落全：这时说「已验证一致」是不实的，宁可让它停在「同步」。
+            var partial = await RefreshProjectAsync(name, fetchRemote: false, cancellation);
+            return (false, $"main 已同步，但部分远端分支未能落地。{branchNote}", partial);
+        }
         _lifecycle.Save(new ProjectLifecycleRecord(name.Trim(), before.Remote, before.Branch,
             local, ReadZFolderNames(repo), null));
         var after = await RefreshProjectAsync(name, fetchRemote: false, cancellation);
-        return (true, "同步完成，本地与远端已验证一致", after);
+        var message = branchNote.Length == 0
+            ? "同步完成，本地与远端已验证一致"
+            : $"同步完成，本地与远端已验证一致。{branchNote}";
+        return (true, message, after);
     }
 
     public async Task<(bool Success, string Message)> ArchiveAsync(
