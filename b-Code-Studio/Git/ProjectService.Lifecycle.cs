@@ -101,6 +101,8 @@ public sealed partial class ProjectService
         var remoteSha = await ReadRefAsync(repo, $"refs/remotes/origin/{MainlineBranch}", cancellation);
         if (remoteSha.Length == 0)
             return Snapshot(ProjectLifecycleState.NoRemote, "推送", "origin 尚无 main 分支");
+        // 只读本地引用，不联网：上面那次 fetch（或上一次刷新留下的跟踪引用）已经够判断了。
+        var branchGap = await RemoteBranchSync.ReadGapAsync(repo, cancellation);
         var counts = await GitRunner.RunAsync(repo,
             ["rev-list", "--left-right", "--count", $"{local}...{remoteSha}"], cancellation);
         if (!counts.Success)
@@ -111,11 +113,19 @@ public sealed partial class ProjectService
         if (parts.Length > 0) _ = int.TryParse(parts[0], out ahead);
         if (parts.Length > 1) _ = int.TryParse(parts[1], out behind);
         if (ahead > 0 && behind == 0)
-            return Snapshot(ProjectLifecycleState.Ahead, "推送", $"本地领先 {ahead} 个提交", remoteSha, ahead, behind);
+            return Snapshot(ProjectLifecycleState.Ahead, "推送",
+                $"本地领先 {ahead} 个提交{BranchNote(branchGap)}", remoteSha, ahead, behind);
         if (ahead == 0 && behind > 0)
-            return Snapshot(ProjectLifecycleState.Behind, "同步", $"远端领先 {behind} 个提交", remoteSha, ahead, behind);
+            return Snapshot(ProjectLifecycleState.Behind, "同步",
+                $"远端领先 {behind} 个提交{BranchNote(branchGap)}", remoteSha, ahead, behind);
         if (ahead > 0 && behind > 0)
-            return Snapshot(ProjectLifecycleState.Diverged, "同步", $"分支已分叉：本地 {ahead} / 远端 {behind}", remoteSha, ahead, behind);
+            return Snapshot(ProjectLifecycleState.Diverged, "同步",
+                $"分支已分叉：本地 {ahead} / 远端 {behind}{BranchNote(branchGap)}", remoteSha, ahead, behind);
+        // main 已经一致，但远端还有本地没落下的分支：这也是「没同步完」，不能让它显示成可归档。
+        // 归档只留 z/Z 文件夹，此时说「本地与远端已验证一致」是不实的——本地压根没有那几条分支。
+        if (branchGap.PendingCount > 0)
+            return Snapshot(ProjectLifecycleState.Behind, "同步",
+                $"main 已一致；远端还有 {branchGap.PendingCount} 条分支本地尚未建立", remoteSha);
         if (record == null || !record.VerifiedSha.Equals(local, StringComparison.OrdinalIgnoreCase))
             return Snapshot(ProjectLifecycleState.Unverified, "同步", "两端提交一致，尚未完成同步校验", remoteSha);
         return Snapshot(ProjectLifecycleState.Synchronized, "归档", "本地与远端已验证一致", remoteSha);
@@ -126,6 +136,13 @@ public sealed partial class ProjectService
             => new(name, state, action, message, local, remoteSha, remote, branch,
                 ahead, behind, zFolders);
     }
+
+    /// <summary>
+    /// 主线之外还欠几条分支，附在主线读数后面。主线本身的状态（领先/落后/分叉）
+    /// 是更要紧的那件事，因此分支只作补充，不抢动作。
+    /// </summary>
+    private static string BranchNote(RemoteBranchGap gap)
+        => gap.PendingCount == 0 ? "" : $"；远端另有 {gap.PendingCount} 条分支本地尚未建立";
 
     public async Task<IReadOnlyList<ProjectLifecycleSnapshot>> RefreshProjectsAsync(
         CancellationToken cancellation = default)
@@ -255,7 +272,9 @@ public sealed partial class ProjectService
     }
 
     public async Task<(bool Success, string Message, ProjectLifecycleSnapshot? Snapshot)> SyncAsync(
-        string name, CancellationToken cancellation = default)
+        string name,
+        CancellationToken cancellation = default,
+        IProgress<string>? progress = null)
     {
         var before = await RefreshProjectAsync(name, fetchRemote: true, cancellation);
         if (before.State == ProjectLifecycleState.Diverged)
@@ -269,20 +288,35 @@ public sealed partial class ProjectService
         var repo = Path.Combine(LibraryRoot, name.Trim());
         if (before.State == ProjectLifecycleState.Behind)
         {
+            // main 已经一致、只欠别的分支时这一步是空跑：ff-only 对已包含的提交返回成功。
             var merge = await GitRunner.RunAsync(repo,
                 ["merge", "--ff-only", $"refs/remotes/origin/{MainlineBranch}"], cancellation);
             if (!merge.Success)
                 return (false, $"仅快进同步失败，未执行 merge/rebase:\n{merge.Output}", before);
         }
 
+        // 主线收口之后再落分支：刷新只取跟踪引用，本地 git branch 里仍然没有它们。
+        var gap = await RemoteBranchSync.ReadGapAsync(repo, cancellation);
+        var branches = await RemoteBranchSync.MaterializeAsync(repo, gap, progress, cancellation);
+        var branchNote = RemoteBranchSync.Describe(branches);
+
         var local = await ReadRefAsync(repo, "HEAD", cancellation);
         var remoteSha = await ReadRefAsync(repo, $"refs/remotes/origin/{MainlineBranch}", cancellation);
         if (local.Length == 0 || !local.Equals(remoteSha, StringComparison.OrdinalIgnoreCase))
             return (false, "同步后本地与远端 SHA 仍不一致", before);
+        if (branches.Failures.Count > 0)
+        {
+            // 主线已经对上，但分支没落全：这时说「已验证一致」是不实的，宁可让它停在「同步」。
+            var partial = await RefreshProjectAsync(name, fetchRemote: false, cancellation);
+            return (false, $"main 已同步，但部分远端分支未能落地。{branchNote}", partial);
+        }
         _lifecycle.Save(new ProjectLifecycleRecord(name.Trim(), before.Remote, before.Branch,
             local, ReadZFolderNames(repo), null));
         var after = await RefreshProjectAsync(name, fetchRemote: false, cancellation);
-        return (true, "同步完成，本地与远端已验证一致", after);
+        var message = branchNote.Length == 0
+            ? "同步完成，本地与远端已验证一致"
+            : $"同步完成，本地与远端已验证一致。{branchNote}";
+        return (true, message, after);
     }
 
     public async Task<(bool Success, string Message)> ArchiveAsync(

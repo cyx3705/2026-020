@@ -93,7 +93,7 @@ GitHub 写操作（登录、注销、提交身份、origin 修改）由页面通
 | `janus.proj.config` | 只读 | 返回项目命令配置 |
 | `janus.proj.metas` | 只读 | 列出项目 z/Z 级元文件夹 |
 | `janus.proj.refresh` | 本机写入 | fetch 全部项目的 origin/main 并返回生命周期状态 |
-| `janus.proj.sync` | 本机写入 | 仅快进同步并记录已验证 SHA；分叉时拒绝 merge/rebase |
+| `janus.proj.sync` | 本机写入 | 仅快进同步并记录已验证 SHA；分叉时拒绝 merge/rebase | 5.10.0 起同步在主线快进之后把 **origin 上本地尚未建立的分支**落成本地分支（`--track` 指向 origin）：本地落后的快进，本地领先/已分叉/正被工作树签出的一律跳过并报原因；有分支未能落地时整条返回失败且不写已验证 SHA。
 | `janus.proj.archive` | 确认写入 | 复核干净且两端一致后只保留直属 z/Z 文件夹 |
 | `janus.proj.pull` | 本机写入 | 从归档记录克隆远端并以本地 z/Z 内容覆盖恢复 |
 | `janus.history.list` | 只读 | 列出分支自有提交 |

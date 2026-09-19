@@ -21,13 +21,13 @@ public static partial class ProjectCommands
     {
         Name = "janus.proj.sync",
         CommandClass = "proj",
-        Summary = "fetch 后仅快进同步项目，并记录两端已验证 SHA",
+        Summary = "fetch 后仅快进同步项目（含把远端分支落成本地分支），并记录两端已验证 SHA",
         Example = "janus.proj.sync name=2026-018-MyAPI",
         Parameters = [ProjectNameParameter()],
         Handler = async ctx =>
         {
             var name = ctx.RequireString("name");
-            var result = await projects.SyncAsync(name, ctx.Cancellation);
+            var result = await projects.SyncAsync(name, ctx.Cancellation, ctx.Progress);
             history.Record(name, "sync", result.Snapshot?.Message ?? result.Message,
                 result.Success ? "成功" : "失败");
             return result.Success
