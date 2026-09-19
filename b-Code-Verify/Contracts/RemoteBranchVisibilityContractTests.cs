@@ -115,10 +115,12 @@ public sealed class RemoteBranchVisibilityContractTests : IDisposable
         return new ProjectService(settings, _ => true, _data);
     }
 
-    private static Task Identity(string directory)
-        => Task.WhenAll(
-            Git(directory, "config", "user.name", "Janus Test"),
-            Git(directory, "config", "user.email", "janus@example.invalid"));
+    /// <summary>两条 config 必须**依次**写：git 写 .git/config 要先拿文件锁，并发写会撞锁。</summary>
+    private static async Task Identity(string directory)
+    {
+        await Git(directory, "config", "user.name", "Janus Test");
+        await Git(directory, "config", "user.email", "janus@example.invalid");
+    }
 
     private static async Task Git(string directory, params string[] args)
     {

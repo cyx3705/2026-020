@@ -214,9 +214,12 @@ public sealed partial class ProjectService
             var onlineTask = RefreshManyAsync(live, name => RefreshProjectAsync(name, true, cancellation));
             await Task.WhenAll(offlineTask, onlineTask).ConfigureAwait(false);
 
-            var byName = (await onlineTask.ConfigureAwait(false))
-                .Concat(await offlineTask.ConfigureAwait(false))
-                .ToDictionary(item => item.ProjectName, StringComparer.OrdinalIgnoreCase);
+            // 入参理论上不重名，但这里不能因为重名就抛：刷新是首屏链路，
+            // 一个重复的项目名不该把整张表换成一条异常。
+            var byName = new Dictionary<string, ProjectLifecycleSnapshot>(StringComparer.OrdinalIgnoreCase);
+            foreach (var item in (await onlineTask.ConfigureAwait(false))
+                     .Concat(await offlineTask.ConfigureAwait(false)))
+                byName[item.ProjectName] = item;
             return names.Select(name => byName[name]).ToList();
         }
     }
