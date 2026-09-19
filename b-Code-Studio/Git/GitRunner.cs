@@ -75,6 +75,12 @@ public static class GitRunner
 
             psi.ArgumentList.Add("-C");
             psi.ArgumentList.Add(gitDir);
+            // 路径按原样交出，不做八进制转义。git 默认 core.quotepath=true，凡是输出路径的命令
+            // （status / diff / ls-files / for-each-ref）都会把非 ASCII 字节写成 \344\270\255
+            // 这种三位八进制码。本库项目名和文件名大量是中文，于是提交前的差异弹窗里整排文件
+            // 变成看不懂的数字串。关掉它只影响 git **打印**路径的方式，不影响匹配、暂存与提交。
+            psi.ArgumentList.Add("-c");
+            psi.ArgumentList.Add("core.quotepath=false");
             foreach (var argument in arguments)
                 psi.ArgumentList.Add(argument);
 

@@ -159,7 +159,7 @@ public sealed partial class ProjectService
             .Split('\n', StringSplitOptions.RemoveEmptyEntries)
             .Select(line => line.TrimEnd())
             .Where(line => line.StartsWith("?? ", StringComparison.Ordinal))
-            .Select(line => line[3..].Trim())
+            .Select(line => GitPath.Unquote(line[3..].Trim()))
             .ToList();
 
         var stat = await GitRunner.RunAsync(repository, ["diff", "--stat", "HEAD"], cancellation);
