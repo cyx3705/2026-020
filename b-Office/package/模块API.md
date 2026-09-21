@@ -4,11 +4,11 @@
 
 ## 正式消费入口
 
-- 正式快照：`z-Publish/HistoryJanus-v5.7.0/`。
+- 正式快照：`z-Publish/HistoryJanus-v5.10.0/`。
 - 模块名：`HistoryJanus`。
 - 版本：`5.10.0`。
 - 入口：`HistoryJanus.dll`。
-- 宿主基线：HistoryVulcan `5.1.2` current-host 快照，从 `2026-023-HistoryVulcan/z-Publish` 消费；该快照的 `sourceDirty` 仍由 HistoryVulcan manifest 如实标记。
+- 宿主基线：HistoryVulcan `5.4.0` current-host 快照（即最低宿主，单点声明在 `b-Code-Studio/JanusVersion.props`），从 `2026-023-HistoryVulcan/z-Publish` 消费；该快照的 `sourceDirty` 仍由 HistoryVulcan manifest 如实标记。
 - 主题：页面使用 `Aurora.Brush.*` 动态资源，跟随宿主深色/浅色切换，不在模块内维护第二套主题。
 - 弹窗：模块不得 `new Window`。提交预览、差异预览、恢复提交说明、GitHub 通知与诊断走 `aurora.ui.dialog`（`message` / `prompt` / `choice` / `content`）。5.9.0 的提交差异预览用 `kind=content` 带 `options`，**需 Aurora ≥ 1.24.0**。写操作警告仍走命令 `ConfirmPrompt`，由宿主确认策略弹出，页面不得再叠一层。
 - 命令来源：`module:HistoryJanus`。
@@ -23,7 +23,7 @@
 
 ## 宿主接入
 
-Janus 仅实现 `IModuleContextAware`。HistoryVulcan 5.1.2 注入 `IModuleContext` 后，Janus 通过 `context.RegisterCommands` 使用宿主 `CommandRegistry` 与 `CommandBus` 注册业务命令和描述化前端投影；页面不再由模块注册 WPF 窗口。消费者模块通过自己的宿主上下文取得同一个 `CommandBus`，按命令名调用 Janus；不得构造 Janus 服务、引用内部 DTO，或自行加载 Janus DLL。
+Janus 仅实现 `IModuleContextAware`。HistoryVulcan 注入 `IModuleContext` 后，Janus 通过 `context.RegisterCommands` 使用宿主 `CommandRegistry` 与 `CommandBus` 注册业务命令和描述化前端投影；页面不再由模块注册 WPF 窗口。消费者模块通过自己的宿主上下文取得同一个 `CommandBus`，按命令名调用 Janus；不得构造 Janus 服务、引用内部 DTO，或自行加载 Janus DLL。
 
 ```csharp
 var result = await context.Bus.ExecuteAsync("janus.proj.list", "filter=2026");

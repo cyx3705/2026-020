@@ -1,48 +1,90 @@
 # HistoryJanus
 
-HistoryJanus 5.8.1 是运行在 HistoryVulcan 中的项目与 Git 治理模块。HistoryVulcan 独立负责 Shell、命令总线、模块生命周期、ServiceHost 和 MCP/Web 基础设施；Janus 只注册业务命令和页面。
+> 项目、Git 与 GitHub 治理：项目库、提交同步与分支图谱
 
-## 结构
+![OneHistory Logo](./Logo.png)
 
-| 目录 | 职责 |
+## 定位
+
+HistoryJanus 是运行在 HistoryVulcan 中的项目与 Git 治理模块：管理 HistoryClio 项目库的登记、提交、同步、归档，
+Git 文件规则与 LFS，GitHub 账号与远端，以及分支图谱与提交历史。
+
+- 宿主负责 Shell、命令总线、模块生命周期与 MCP；Janus 只注册业务命令和描述化页面（由 HistoryAurora 渲染）。
+- 模块不自建窗口：提交预览、差异预览等一律走 `aurora.ui.dialog`。
+
+## 概况
+
+| 项 | 值 |
 | --- | --- |
-| `b-Code-Studio` | Janus 业务源码、模块入口与候选构建脚本 |
-| `b-Code-Verify` | Contracts、功能 Smoke 与 ModuleSmoke |
-| `b-Office/current` | 四份核心元文档、指令规范与 AI/图谱专题计划 |
-| `b-Office/package` | 唯一跨项目模块 API 文档 |
-| `b-Office/history` | 只读版本记录，不是现行开发输入 |
-| `z-Publish` | 当前 `HistoryJanus-vX.Y.Z/` 候选与 `history/` 历史包 |
+| 编号 | `2026-020` |
+| 角色 | 宿主模块（`kind=module`） |
+| 指令域 | `janus`（`janus.<类>.<方法>` 三段式） |
+| 界面 | Aurora 描述化页面 |
+| MCP 投影 | `readonly`；写命令不进 MCP |
+| 版本与宿主下限 | [`JanusVersion.props`](./b-Code-Studio/JanusVersion.props) |
 
-文档入口：[文档中心](./b-Office/文档中心.md)；跨模块入口：[模块 API](./b-Office/package/模块API.md)。
+## 能力
+
+| 类 | 指令 | 用途 |
+| --- | --- | --- |
+| `proj` | `list` / `scan` / `tree` / `diff` / `metas` … | 项目库只读查询 |
+| `proj` | `create` / `commit` / `push` / `pull` / `sync` / `archive` … | 项目写操作（需确认，不进 MCP） |
+| `history` | `list` / `show` / `diff` / `rollback` / `reset` … | 提交历史查看与回退 |
+| `graph` | `summary` / `branches` / `commits` / `node` | 分支图谱 |
+| `gitrule` | `list` / `lfs` / `excludes` | Git 文件规则与本仓实际 LFS 文件 |
+| `github` | `accounts` / `status` / `test` / `remote` / `login` … | GitHub 账号与远端 |
+| `ui` | `describe` / `actions` / `data` … | 页面协议（内部） |
+
+完整命令目录（运行时共 51 条）、参数与返回见 [模块 API](./b-Office/package/模块API.md)。
+
+## 入口
+
+| 入口 | 用途 |
+| --- | --- |
+| [`AGENTS.md`](./AGENTS.md) | AI 工作合同：读取顺序、真值判定、边界 |
+| [`project.manifest.json`](./project.manifest.json) | 项目身份、活动目录、文档与命令 |
+| [文档中心](./b-Office/文档中心.md) | 文档索引与读取顺序 |
+| [项目概览](./b-Office/current/项目概览.md) | 目标、范围与状态 |
+| [技术合同](./b-Office/current/技术合同.md) | 现行需求与架构 |
+| [有效决策](./b-Office/current/有效决策.md) | 仍然有效的关键决策 |
+| [验证合同](./b-Office/current/验证合同.md) | 验证层级、命令与证据 |
+| [模块 API](./b-Office/package/模块API.md) | 跨模块消费合同 |
+| [指令优化规范](./b-Office/current/指令优化规范.md) | 命令命名规则与旧名映射 |
+
+## 目录
+
+| 路径 | 职责 |
+| --- | --- |
+| `b-Code-Studio/` | 业务源码、模块入口与 `eng/` 构建门禁脚本 |
+| `b-Code-Verify/` | Contracts、功能 Smoke 与 ModuleSmoke |
+| `b-Office/` | 项目文档：`current/` 现行合同、`package/` 消费合同、`history/` 只读归档 |
+| `z-Publish/` | 正式快照与 `history/` 归档，由宿主管线写入 |
 
 ## 构建与验证
 
 ```powershell
 dotnet restore .\HistoryJanus.sln --locked-mode -p:NuGetAudit=false
-dotnet build .\HistoryJanus.sln -c Debug --no-restore -p:NuGetAudit=false
-dotnet test .\b-Code-Verify\Contracts\Contracts.csproj -c Debug --no-build --no-restore -p:NuGetAudit=false
-.\b-Code-Studio\eng\Test-QualityGate.ps1
+dotnet build .\HistoryJanus.sln -c Release --no-restore -p:NuGetAudit=false
+dotnet test .\b-Code-Verify\Contracts\Contracts.csproj -c Release -p:NuGetAudit=false
+powershell -NoProfile -ExecutionPolicy Bypass -File .\b-Code-Studio\eng\Test-QualityGate.ps1
 dotnet run --project .\b-Code-Verify\ModuleSmoke\ModuleSmoke.csproj -c Release -- .\z-Publish
 ```
 
-日常开发执行质量门禁、相关 Contracts、Debug 构建、定向功能 Smoke 与 ModuleSmoke；`Test-QualityGate.ps1`
-把抑制标记、千行文件、版本链一致性、Git/规则交互、模块 API 投影、正式树边界和宿主合同七项漂移检查日常化（代码管道化条件 4：
-漂移由检查自动阻断，不积累到发布）。推送到 `2026-020-HistoryJanus` 分支时，GitHub Actions 门禁
-（`.github/workflows/historyjanus-gate.yml`）并行复验锁定还原、双配置构建、Contracts、格式与同一门禁脚本。
-候选验证和正式提升只走宿主 `vulcan.dev.submit` / `finish`。Diana 不发布。
+`Test-QualityGate.ps1` 日常化七项漂移检查：抑制标记、千行文件、版本链一致性、Git/规则交互、模块 API 投影、
+正式树边界与宿主合同。推送时 [`historyjanus-gate.yml`](./.github/workflows/historyjanus-gate.yml) 在 GitHub Actions 上复验。
 
-```powershell
-.\b-Code-Studio\eng\Build-HistoryJanusPackage.ps1
-```
+## 开发与发布
 
-正式快照含 `HistoryJanus.dll`、XML、module manifest、checksum 与 `docs/` 中已发布 Markdown；
-模块 API 的编辑源是 `b-Office/package`，跨项目读取走 `diana.docs.read domain=janus`。正式包不含 Janus EXE
-或 HistoryVulcan 运行库。Janus 本地构建脚本不测试开机自启动，也不启动 HistoryVulcan。
+改动只进 `vulcan.dev.start` 创建的工作区，经宿主 Console CLI 走
+`vulcan.dev.start` → `vulcan.dev.submit`（候选构建并热装送审）→ `vulcan.dev.finish`（批准后并回并写入 `z-Publish`）。
+本仓不自行发布；`Build-HistoryJanusPackage.ps1` 只用于本地候选构建。
 
-## AI 工作边界
+## 要点
 
-- 当前事实以源码、测试、`b-Office/current`、`b-Office/package` 和最新 z 级正式快照为准。
-- 默认不列举、搜索或读取 `b-Office/history`；只有用户明确追溯版本时才读取指定文件。
-- HistoryVulcan 合同只从平级 `2026-023-HistoryVulcan/z-Publish` 消费，不复制其源码或文档。
-- 不提交 `bin`、`obj`、`.vs` 或 `z-Publish`；z 级正式快照进入 Git。
-- 根目录 `AGENTS.md` 是仓库 AI 工作合同；本节保留 Janus 特有的事实边界。
+- 正式快照含 `HistoryJanus.dll`、XML、module manifest、checksum 与 `docs/`，不含 Janus EXE 或 HistoryVulcan 运行库。
+- 跨项目读取已发布 API 走 `diana.docs.read domain=janus`；HistoryVulcan 合同只从平级 `2026-023-HistoryVulcan/z-Publish` 消费。
+- 默认不读 `b-Office/history`，只有明确追溯版本时才读指定文件。
+
+---
+
+作者：Pinavia
