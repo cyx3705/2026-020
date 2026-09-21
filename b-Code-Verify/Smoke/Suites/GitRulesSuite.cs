@@ -6,7 +6,7 @@ namespace HistoryJanus.Smoke.Suites;
 
 /// <summary>
 /// 唯一的规则形态：全库共用的「不纳入仓库」清单，以及它在提交链路里的自动落地。
-/// LFS 不在规则面内——只在提交链路对超过 GitHub 100MB 硬限的具体文件征求同意（DEC-022）。
+/// LFS 是另一块规则，见 LfsRulesSuite（5.11.0 拆开，DEC-032）。
 /// </summary>
 internal static class GitRulesSuite
 {
@@ -180,19 +180,23 @@ internal static class GitRulesSuite
     {
         var service = BuildService(temp, out _);
         var registry = new CommandRegistry();
-        GitRuleCommands.RegisterAll(registry, service, "module:HistoryJanus");
+        GitRuleCommands.RegisterAll(registry, service,
+            new LfsRuleService(new ProjectService(new MemorySettings(), _ => true, temp)), "module:HistoryJanus");
 
         var names = registry.All().Select(descriptor => descriptor.Name)
             .OrderBy(name => name, StringComparer.Ordinal).ToArray();
-        // 5.9.0 增加 janus.gitrule.lfs：规则面的 LFS 行改为列本仓实际走 LFS 的文件，
-        // 事实来自 git lfs ls-files，因此它是一条按项目取的只读命令。
-        True(names.SequenceEqual(["janus.gitrule.excludes", "janus.gitrule.lfs", "janus.gitrule.list"]),
-            $"gitrule exposes exactly three commands, was: {string.Join(", ", names)}");
+        // 5.9.0 增加 janus.gitrule.lfs（只读）；5.11.0 LFS 规则拆成独立子页，
+        // 加上定去向（lfsset）与修复（lfsrepair）两条写命令。
+        True(names.SequenceEqual(["janus.gitrule.excludes", "janus.gitrule.lfs", "janus.gitrule.lfsrepair",
+                "janus.gitrule.lfsset", "janus.gitrule.list"]),
+            $"gitrule exposes exactly five commands, was: {string.Join(", ", names)}");
 
         True(registry.TryGet("janus.gitrule.list", out var list) && list.Readonly,
             "janus.gitrule.list stays readonly");
         True(registry.TryGet("janus.gitrule.lfs", out var lfs) && lfs.Readonly,
             "janus.gitrule.lfs stays readonly");
+        True(registry.TryGet("janus.gitrule.lfsrepair", out var repair) && repair.ConfirmPrompt != null,
+            "repairing a repo requires confirmation");
         True(registry.TryGet("janus.gitrule.excludes", out var excludes)
              && excludes.ConfirmPrompt != null,
             "changing the shared list requires confirmation");

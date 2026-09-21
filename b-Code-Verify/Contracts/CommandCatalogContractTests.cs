@@ -23,7 +23,9 @@ public sealed class CommandCatalogContractTests
     // 新增 excludes 一条，40 → 35（DEC-023）。
     // 5.9.0 新增 proj.diff / proj.discard（提交前看差异、就地丢弃脏工作树，REQ-014）
     // 与 gitrule.lfs（本仓实际走 LFS 的文件，REQ-016），39 → 42。
-    private const int ExpectedCommandCount = 42;
+    // 5.11.0 LFS 规则拆成独立子页：gitrule.lfsset（≥100MB 文件定去向）
+    // 与 gitrule.lfsrepair（不足 100MB 的指针转回普通入库），42 → 44（DEC-032）。
+    private const int ExpectedCommandCount = 44;
 
     // DEC-012：janus 域内五类；新增类需同级决策。
     private static readonly string[] ExpectedClasses =
@@ -49,6 +51,8 @@ public sealed class CommandCatalogContractTests
         "janus.proj.discard",
         "janus.history.rollback", "janus.history.reset", "janus.history.forcepush",
         "janus.gitrule.excludes",
+        // 修复会改 .gitattributes 并把几百个文件重新入库、本地提交。
+        "janus.gitrule.lfsrepair",
     ];
 
     [Fact]

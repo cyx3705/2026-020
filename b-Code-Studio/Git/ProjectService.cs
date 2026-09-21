@@ -108,6 +108,12 @@ public sealed partial class ProjectService
     /// </summary>
     public IExcludeRuleWriter? ExcludeRules { get; set; }
 
+    /// <summary>
+    /// LFS 规则通道（5.11.0）：提交前查违规、按记住的决定处理 ≥100MB 文件。
+    /// 为空时跳过这两步；此时若有超限文件被同意走 LFS，提交失败而不是退回按扩展名 track。
+    /// </summary>
+    public LfsRuleService? LfsRules { get; set; }
+
     public Func<IReadOnlyDictionary<string, string>>? NotesProvider
     {
         get => _tree.NotesProvider;

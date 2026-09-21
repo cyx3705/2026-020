@@ -218,7 +218,17 @@ public sealed partial class ProjectOperationsPanelContractTests
             .GetProperty("columns").EnumerateArray()
             .Select(column => column.GetProperty("key").GetString()!)
             .Append("lifecycleAction")
+            // LFS 文件表的行操作取被点那一行的 name（隐藏字段）与 path。
+            .Concat(Node("projops", "lfs-files").GetProperty("columns").EnumerateArray()
+                .Select(column => column.GetProperty("key").GetString()!))
+            .Append("name")
             .ToHashSet(StringComparer.Ordinal);
+
+        foreach (var rowAction in Node("projops", "lfs-files").GetProperty("rowActions").EnumerateArray())
+        {
+            var id = rowAction.GetProperty("action").GetString()!;
+            Assert.True(declared.Contains(id), $"行操作绑了未声明的动作: {id}");
+        }
 
         foreach (var button in widgets.Where(w => w.GetProperty("kind").GetString() == "button"))
         {
@@ -385,7 +395,8 @@ public sealed partial class ProjectOperationsPanelContractTests
                 .Select(page => page.GetProperty("id").GetString())
                 .ToArray());
 
-        var titles = new[] { "Git 文件规则", "分支历史", "GitHub" };
+        // 5.11.0：「Git 文件规则」拆成入库规则与 LFS 规则两页（DEC-032）。
+        var titles = new[] { "入库规则", "LFS 规则", "分支历史", "GitHub" };
 
         var selector = PanelWidgets(OperationsPanel())
             .Single(w => w.TryGetProperty("id", out var id) && id.GetString() == "section");
@@ -475,9 +486,10 @@ public sealed partial class ProjectOperationsPanelContractTests
         foreach (var (node, view) in new[]
                  {
                      ("history-rows", "history"),
-                     // 5.9.0：规则表的 LFS 那几行读的是**选中项目仓**里实际走 LFS 的文件，
-                     // 因此它也进了这条约束——换项目要重取，而不是让人看着上一个项目的清单。
-                     ("rule-list", "excludes"),
+                     // LFS 两张表读的是**选中项目仓**的实况（5.11.0 从规则表里拆出来），
+                     // 换项目要重取，而不是让人看着上一个项目的清单。
+                     ("lfs-summary", "lfssummary"),
+                     ("lfs-files", "lfs"),
                  })
         {
             var args = Node("projops", node).GetProperty("dataSource").GetProperty("args");
@@ -491,21 +503,31 @@ public sealed partial class ProjectOperationsPanelContractTests
     }
 
     /// <summary>
-    /// 规则表现在**按选中项目取**（5.9.0，REQ-016）。
+    /// 入库规则与 LFS 规则分成两页（5.11.0，DEC-032）。
     ///
-    /// 5.0.0–5.8.1 它不带项目名，因为那时表里只有全库共用的排除清单，读它只碰设置。
-    /// 本版 LFS 那一行由一条对谁都一样的策略（「单文件超过 100MB 转 LFS」）换成
-    /// **这个仓里实际走 LFS 的文件**，事实来自 <c>git lfs ls-files</c>，
-    /// 于是它必须跟着选中项目走——否则看到的是上一个项目的 LFS 清单，
-    /// 而两个项目的清单长得一样合理，没人能看出它是旧的。
+    /// 入库规则是全库共用的清单，**不带项目名**——带了就会在每次换项目时白白重取一次。
+    /// LFS 规则按选中项目取，且不到 100MB 的文件不在入库规则表里出现任何 LFS 字样：
+    /// 两个问题挤在一张表里、靠「类型」一列区分，正是这次拆开的原因。
     /// </summary>
     [Fact]
-    public void TheRuleTableIsScopedToTheSelectedProjectForItsLfsRows()
+    public void RulesAndLfsAreTwoSectionsWithTheirOwnScopes()
     {
-        var args = Node("projops", "rule-list").GetProperty("dataSource").GetProperty("args");
+        var rules = Node("projops", "rule-list").GetProperty("dataSource").GetProperty("args");
+        Assert.Equal("excludes", rules.GetProperty("view").GetString());
+        Assert.False(rules.TryGetProperty("name", out _), "入库规则与选中项目无关");
 
-        Assert.Equal("excludes", args.GetProperty("view").GetString());
-        Assert.Equal("{selection." + Channel + ".name}", args.GetProperty("name").GetString());
+        var lfs = Descend(Node("projops", "janus-sections"))
+            .Single(node => node.TryGetProperty("case", out var c) && c.GetString() == "LFS 规则");
+        Assert.Equal(
+            new[] { "lfs-summary", "lfs-files" },
+            lfs.GetProperty("children").EnumerateArray().Select(n => n.GetProperty("id").GetString()).ToArray());
+
+        var decisions = Node("projops", "lfs-files").GetProperty("rowActions").EnumerateArray()
+            .Select(a => a.GetProperty("action").GetString()).ToArray();
+        Assert.Equal(new[] { "janus.lfs.uselfs", "janus.lfs.untrack", "janus.lfs.clear" }, decisions);
+        Assert.Equal("lfs", Action("janus.lfs.uselfs").GetProperty("args").GetProperty("decision").GetString());
+        Assert.Equal("ignore", Action("janus.lfs.untrack").GetProperty("args").GetProperty("decision").GetString());
+        Assert.Equal("none", Action("janus.lfs.clear").GetProperty("args").GetProperty("decision").GetString());
     }
 
     private static IEnumerable<JsonElement> Buttons(string pageId)

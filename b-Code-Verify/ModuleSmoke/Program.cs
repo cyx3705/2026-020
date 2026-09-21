@@ -53,7 +53,8 @@ using var manifest = JsonDocument.Parse(File.ReadAllText(manifestPath));
 var expectedVersion = manifest.RootElement.GetProperty("version").GetString();
 // 5.6.0：39 条业务命令 + 8 条 UI 命令 + janus.status = 48（命令面与 5.5.1 相同）。
 // 5.9.0：业务命令增至 42（proj.diff / proj.discard / gitrule.lfs），UI 仍 8 条 → 51。
-const int expectedRuntimeCommandCount = 51;
+// 5.11.0：业务命令增至 44（gitrule.lfsset / gitrule.lfsrepair），UI 增 ui.lfsdecide 到 9 条 → 54。
+const int expectedRuntimeCommandCount = 54;
 
 var meta = host.Modules[0];
 if (!meta.ModuleName.Equals("HistoryJanus", StringComparison.Ordinal)

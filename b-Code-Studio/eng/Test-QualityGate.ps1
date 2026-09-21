@@ -216,8 +216,9 @@ $apiCommandNames = @(
 # 5.4.6 增加 janus.ui.refreshrules（REQ-015）：40 → 41。
 # 5.9.0 增加 proj.diff / proj.discard（REQ-014）与 gitrule.lfs（REQ-016）：47 → 50；
 # janus.ui.refreshrules 改名为 janus.ui.sectionenter（REQ-017），UI 投影仍是 8 条。
-if ($businessCommandNames.Count -ne 50 -or $expectedRuntimeCommandNames.Count -ne 51) {
-    $violations.Add("运行时命令总数应为 51（42 条业务命令 + 8 条 Aurora UI 投影命令 + janus.status）；源码为 $($businessCommandNames.Count) + 1")
+# 5.11.0 增加 gitrule.lfsset / gitrule.lfsrepair 与 janus.ui.lfsdecide（DEC-032）：50 → 53。
+if ($businessCommandNames.Count -ne 53 -or $expectedRuntimeCommandNames.Count -ne 54) {
+    $violations.Add("运行时命令总数应为 54（44 条业务命令 + 9 条 Aurora UI 投影命令 + janus.status）；源码为 $($businessCommandNames.Count) + 1")
 }
 if (($expectedRuntimeCommandNames -join ',') -cne ($apiCommandNames -join ',')) {
     $violations.Add("模块API.md 命令清单与源码不一致：API $($apiCommandNames.Count)，运行时 $($expectedRuntimeCommandNames.Count)")

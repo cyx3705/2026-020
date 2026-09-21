@@ -70,8 +70,16 @@ internal static partial class HistoryJanusUiCommands
     /// </summary>
     private const string SectionChannel = "janus.section";
 
-    /// <summary>三个子页面的标题。它们同时是选项框的候选项和 switch 的 case，只写一处。</summary>
-    private const string SectionRules = "Git 文件规则";
+    /// <summary>
+    /// 四个子页面的标题。它们同时是选项框的候选项和 switch 的 case，只写一处。
+    ///
+    /// 5.11.0 起「Git 文件规则」拆成两页：入库规则（全库共用的不纳入仓库清单）
+    /// 与 LFS 规则（按选中项目列出指针文件与 ≥100MB 文件，逐个定去向）。
+    /// 两者原先挤在一张表里，靠「类型」一列区分，而它们回答的是两个问题。
+    /// </summary>
+    private const string SectionRules = "入库规则";
+
+    private const string SectionLfs = "LFS 规则";
 
     private const string SectionHistory = "分支历史";
 
@@ -129,14 +137,14 @@ internal static partial class HistoryJanusUiCommands
                 new ParameterSpec
                 {
                     Name = "view",
-                    Description = "页面视图：projects、graph、history、excludes、github",
+                    Description = "页面视图：projects、graph、history、excludes、lfs、lfssummary、github",
                     Required = true,
                     Position = 0,
                 },
                 new ParameterSpec
                 {
                     Name = "name",
-                    Description = "项目名；history / graph / excludes 需要，由页面按当前选中行填入",
+                    Description = "项目名；history / graph / lfs / lfssummary 需要，由页面按当前选中行填入",
                     Position = 1,
                 },
                 new ParameterSpec
@@ -194,12 +202,28 @@ internal static partial class HistoryJanusUiCommands
                 new ParameterSpec
                 {
                     Name = "section",
-                    Description = $"子页面标题：{SectionRules} / {SectionHistory} / {SectionGitHub}",
+                    Description = $"子页面标题：{SectionRules} / {SectionLfs} / {SectionHistory} / {SectionGitHub}",
                     Required = true,
                     Position = 0,
                 },
             ],
             Handler = context => EnterSectionAsync(context, bus),
+        }, source);
+
+        registry.Register(new CommandDescriptor
+        {
+            Name = "janus.ui.lfsdecide",
+            Domain = Domain,
+            CommandClass = "ui",
+            Summary = "LFS 规则表的行操作：记住一个 ≥100MB 文件的去向并刷新表格",
+            HiddenReason = "界面内部协议；模型请用 janus.gitrule.lfsset",
+            Parameters =
+            [
+                new ParameterSpec { Name = "name", Description = "项目名", Required = true, Position = 0 },
+                new ParameterSpec { Name = "path", Description = "仓库内相对路径", Required = true, Position = 1 },
+                new ParameterSpec { Name = "decision", Description = "lfs / ignore / none", Required = true, Position = 2 },
+            ],
+            Handler = context => DecideLfsAsync(context, bus),
         }, source);
 
         RegisterLifecycleCommands(registry, bus, source, business);
@@ -216,18 +240,45 @@ internal static partial class HistoryJanusUiCommands
     /// 按节点刷、不按页刷：一页上挂着三支，刷整页会把没人看的那两支一起跑掉。
     /// 认不出的标题按成功返回：子页面是界面自己的候选项，多出一个不该让人看见报错。
     /// </summary>
-    private static Task<CommandResult> EnterSectionAsync(CommandContext context, CommandBus bus)
+    private static async Task<CommandResult> EnterSectionAsync(CommandContext context, CommandBus bus)
     {
-        var node = context.GetString("section")?.Trim() switch
+        string[] nodes = context.GetString("section")?.Trim() switch
         {
-            SectionRules => "rule-list",
-            SectionHistory => "history-rows",
-            SectionGitHub => "github-rows",
-            _ => null,
+            SectionRules => ["rule-list"],
+            // 汇总与文件表来自同一次检查；先作废缓存，两张表才会一起看到新的一次。
+            SectionLfs => LfsNodes(),
+            SectionHistory => ["history-rows"],
+            SectionGitHub => ["github-rows"],
+            _ => [],
         };
-        return node == null
-            ? Task.FromResult(CommandResult.Ok("该子页面没有需要重取的表"))
-            : bus.ExecuteAsync($"aurora.ui.refreshdata node={node}", context.Source, context.Cancellation);
+        if (nodes.Length == 0)
+            return CommandResult.Ok("该子页面没有需要重取的表");
+        var last = CommandResult.Ok("");
+        foreach (var node in nodes)
+            last = await bus.ExecuteAsync($"aurora.ui.refreshdata node={node}", context.Source, context.Cancellation);
+        return last;
+    }
+
+    private static string[] LfsNodes()
+    {
+        UiLfsProjection.Invalidate();
+        return ["lfs-summary", "lfs-files"];
+    }
+
+    /// <summary>
+    /// 行操作走这里而不是直接打 <c>janus.gitrule.lfsset</c>：记完决定要让两张表重取，
+    /// 否则人点了「LFS 指针」，那一行的「决定」还写着「未决定」。
+    /// </summary>
+    private static async Task<CommandResult> DecideLfsAsync(CommandContext context, CommandBus bus)
+    {
+        var result = await bus.ExecuteAsync(
+            $"janus.gitrule.lfsset name={CommandParser.QuoteArg(context.RequireString("name"))} " +
+            $"path={CommandParser.QuoteArg(context.RequireString("path"))} " +
+            $"decision={CommandParser.QuoteArg(context.RequireString("decision"))}",
+            context.Source, context.Cancellation);
+        foreach (var node in LfsNodes())
+            await bus.ExecuteAsync($"aurora.ui.refreshdata node={node}", context.Source, context.Cancellation);
+        return result;
     }
 
     private static async Task<CommandResult> LoadDataAsync(
@@ -239,10 +290,16 @@ internal static partial class HistoryJanusUiCommands
         if (view == "graph")
             return await LoadGraphAsync(context, bus);
 
-        // 排除清单存在设置里，读它不碰 Git；LFS 那几行要读选中项目的仓，因此这一支是异步的。
+        // 排除清单存在设置里，读它不碰 Git。
         if (view == "excludes")
-            return Rows(await UiRuleProjection.ExcludesAsync(
-                business(), context.GetString("name"), context.Cancellation));
+            return Rows(UiRuleProjection.Excludes(business()));
+
+        // LFS 两张表按选中项目取；汇总与文件清单共用一次检查（见 UiLfsProjection 的缓存）。
+        if (view is "lfs" or "lfssummary")
+        {
+            var inspected = await UiLfsProjection.InspectAsync(business(), context.GetString("name"));
+            return Rows(view == "lfs" ? UiLfsProjection.Files(inspected) : UiLfsProjection.Summary(inspected));
+        }
 
         if (view is "projects" or "years")
             return await LoadProjectsAsync(context, bus, view == "years");
@@ -456,56 +513,104 @@ internal static partial class HistoryJanusUiCommands
         return row;
     }
 
-    /// <summary>Git 文件规则：全库共用的排除清单，加当前选中项目的 LFS 实况。</summary>
+    /// <summary>入库规则：全库共用的排除清单，与选中项目无关。</summary>
     internal static class UiRuleProjection
     {
         /// <summary>
-        /// 规则表：先列**本仓实际走 LFS 的文件**，再入库例外，最后逐条列不入库的目录与扩展名。
-        ///
-        /// 5.9.0 之前 LFS 那一行写的是一条策略——「单个文件超过 100MB 转 LFS 指针」。
-        /// 那句话对每个仓都一模一样，看完仍然不知道自己这个仓有没有 LFS、有哪几个文件；
-        /// 而 2026-08 的 11GB LFS 占用事故之后，最该一眼看到的恰恰是这份文件清单。
-        /// 策略本身没变，它属于提交链路的逐个确认，不属于规则面。
+        /// 先列入库例外，再逐条列不入库的目录与扩展名。
+        /// 5.11.0 之前这张表开头还有本仓走 LFS 的文件；那是另一个问题，已搬到「LFS 规则」子页。
         /// </summary>
-        public static async Task<IReadOnlyList<IReadOnlyDictionary<string, string>>> ExcludesAsync(
-            StudioBusinessComposition? business,
-            string? project,
-            CancellationToken cancellation)
+        public static IReadOnlyList<IReadOnlyDictionary<string, string>> Excludes(
+            StudioBusinessComposition? business)
         {
             if (business is null)
                 return [Row(("kind", "—"), ("rule", "业务组合尚未装配"))];
 
             var rules = business.GitRules;
-            return (await LfsRowsAsync(rules, project, cancellation))
-                .Append(Row(("kind", "入库"), ("rule", "z-* 目录始终入库")))
+            return new[] { Row(("kind", "入库"), ("rule", "z-* 目录始终入库")) }
                 .Concat(rules.Directories.Select(directory => Row(("kind", "不入库"), ("rule", directory))))
                 .Concat(rules.Suffixes.Select(suffix => Row(("kind", "不入库"), ("rule", suffix))))
                 .ToList();
         }
+    }
 
-        /// <summary>
-        /// LFS 那几行。没选项目、读不到仓、没装 git-lfs、一个文件都没走 LFS——
-        /// 四种情况各说各的，都不要退回那句放之四海而皆准的策略描述。
-        /// </summary>
-        private static async Task<IEnumerable<IReadOnlyDictionary<string, string>>> LfsRowsAsync(
-            GitFileRuleService rules, string? project, CancellationToken cancellation)
+    /// <summary>
+    /// LFS 规则：选中项目的 LFS 指针文件与 ≥100MB 文件，上面一张汇总、下面一张逐个文件。
+    ///
+    /// 两张表来自**同一次**检查——检查要跑 git lfs ls-files 并扫一遍工作区，
+    /// 两张表各跑一遍既慢，又可能在两次之间看到不一样的仓。缓存只活几秒，
+    /// 切子页与行操作都会先作废它。
+    /// </summary>
+    internal static class UiLfsProjection
+    {
+        private static readonly TimeSpan CacheLifetime = TimeSpan.FromSeconds(15);
+        private static readonly object Gate = new();
+        private static (string Project, DateTime At, Task<(bool Success, string Message, LfsInspection? Report)> Task)? _cache;
+
+        public static void Invalidate()
         {
+            lock (Gate)
+                _cache = null;
+        }
+
+        public static Task<(bool Success, string Message, LfsInspection? Report)> InspectAsync(
+            StudioBusinessComposition? business, string? project)
+        {
+            if (business is null)
+                return Task.FromResult<(bool Success, string Message, LfsInspection? Report)>((false, "业务组合尚未装配", null));
             if (string.IsNullOrWhiteSpace(project))
-                return [Row(("kind", "LFS"), ("rule", "（先在项目总览选中一个项目，这里列出本仓走 LFS 的文件）"))];
+                return Task.FromResult<(bool Success, string Message, LfsInspection? Report)>((false, "先在项目总览选中一个项目", null));
+            lock (Gate)
+            {
+                if (_cache is { } hit && hit.Project.Equals(project, StringComparison.OrdinalIgnoreCase)
+                                      && DateTime.UtcNow - hit.At < CacheLifetime)
+                    return hit.Task;
+                // 不带调用方的取消令牌：另一张表还在等同一个结果。
+                var task = business.LfsRules.InspectAsync(project, CancellationToken.None);
+                _cache = (project, DateTime.UtcNow, task);
+                return task;
+            }
+        }
 
-            var (success, message, report) = await rules.ListLfsAsync(project, cancellation);
-            if (!success || report == null)
-                return [Row(("kind", "LFS"), ("rule", $"读取失败：{message}"))];
+        public static IReadOnlyList<IReadOnlyDictionary<string, string>> Summary(
+            (bool Success, string Message, LfsInspection? Report) inspected)
+        {
+            if (!inspected.Success || inspected.Report is not { } report)
+                return [Row(("item", "状态"), ("value", inspected.Message))];
             if (!report.Available)
-                return [Row(("kind", "LFS"), ("rule", "本机未安装 git-lfs，无法确认本仓 LFS 状态"))];
-            if (report.Files.Count == 0)
-                return [Row(("kind", "LFS"), ("rule", $"{report.Project}：本仓没有文件走 LFS"))];
+                return [Row(("item", "状态"), ("value", "本机未安装 git-lfs，无法确认本仓 LFS 状态"))];
 
+            var violations = report.SmallPointerCount + report.ForeignRuleCount;
+            return
+            [
+                Row(("item", "项目"), ("value", report.Project)),
+                Row(("item", "LFS 指针"),
+                    ("value", $"{report.PointerCount} 个，合计 {LfsPolicy.FormatBytes(report.PointerBytes)}" +
+                              (report.MissingEntityCount > 0 ? $"（本机缺实体 {report.MissingEntityCount} 个）" : ""))),
+                Row(("item", "≥100MB 文件"),
+                    ("value", $"{report.OversizeCount} 个：LFS 指针 {report.DecidedLfs}，不纳入 git {report.DecidedIgnore}，未决定 {report.Undecided}")),
+                Row(("item", "合规"),
+                    ("value", violations == 0
+                        ? "✓ 不到 100MB 的文件都没有走 LFS"
+                        : $"✗ 不足 100MB 的指针 {report.SmallPointerCount} 个、托管块外 LFS 规则 {report.ForeignRuleCount} 条；" +
+                          $"提交会被拒，先运行 janus.gitrule.lfsrepair name={report.Project}")),
+            ];
+        }
+
+        public static IReadOnlyList<IReadOnlyDictionary<string, string>> Files(
+            (bool Success, string Message, LfsInspection? Report) inspected)
+        {
+            if (!inspected.Success || inspected.Report is not { Available: true } report)
+                return [];
+            // name 与 path 是行操作要的字段：动作参数的 {name}/{path} 默认取被点那一行。
             return report.Files.Select(file => Row(
-                ("kind", "LFS"),
-                ("rule", file.FormattedSize.Length > 0
-                    ? $"{file.RelativePath}（{file.FormattedSize}）"
-                    : file.RelativePath)));
+                    ("name", report.Project),
+                    ("path", file.Path),
+                    ("size", file.Size),
+                    ("state", file.State),
+                    ("decision", file.Decision),
+                    ("note", file.Note)))
+                .ToList();
         }
     }
 
