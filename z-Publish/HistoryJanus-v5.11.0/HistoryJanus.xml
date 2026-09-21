@@ -729,12 +729,19 @@
             嵌套目录里的 .gitattributes 没有托管块，其中每一条 LFS 行都算。
             </summary>
         </member>
-        <member name="M:HistoryJanus.Git.LfsPolicy.StripForeignLfsRules(System.String,System.Int32@)">
+        <member name="M:HistoryJanus.Git.LfsPolicy.StripForeignLfsRules(System.String,System.Int32@,System.Boolean)">
             <summary>
             去掉托管块之外所有行上的 LFS 属性。**保留 <c>-text</c> 与其它属性**：
             这些多是 CAD/二进制文件，丢了 <c>-text</c>，<c>* text=auto</c> 可能把没有 NUL 字节的
             二进制当文本做换行转换。只剩一个模式、没有任何属性的行整行删除。
             顺手把上一轮「极保守」的说明换成现行规则。
+            </summary>
+        </member>
+        <member name="M:HistoryJanus.Git.LfsPolicy.IsFormatPattern(System.String)">
+            <summary>
+            按格式的规则：模式里有未转义的 <c>*</c> / <c>?</c> / <c>[</c>——
+            例如 <c>*.dll</c>、<c>**/*.png</c>、<c>z-Publish/**/*.dll</c>。
+            不带通配的精确路径（哪怕没有前导斜杠）不算。
             </summary>
         </member>
         <member name="M:HistoryJanus.Git.LfsPolicy.FormatBytes(System.Int64)">
@@ -743,10 +750,10 @@
             </summary>
         </member>
         <member name="T:HistoryJanus.Git.LfsFileRow">
-            <summary>「LFS 规则」表的一行：一个走指针的文件，或一个 ≥100MB 的工作区文件。</summary>
+            <summary>「LFS 规则」表的一行：一个 ≥100MB 的文件（已走指针的，或工作区里的）。</summary>
         </member>
         <member name="M:HistoryJanus.Git.LfsFileRow.#ctor(System.String,System.Int64,System.String,System.String,System.String,System.String)">
-            <summary>「LFS 规则」表的一行：一个走指针的文件，或一个 ≥100MB 的工作区文件。</summary>
+            <summary>「LFS 规则」表的一行：一个 ≥100MB 的文件（已走指针的，或工作区里的）。</summary>
         </member>
         <member name="T:HistoryJanus.Git.LfsInspection">
             <summary>
@@ -802,7 +809,7 @@
             让它经过 LFS 过滤器重新入库。只影响下一次提交，历史不改写。
             </summary>
         </member>
-        <member name="M:HistoryJanus.Git.LfsRuleService.RepairAsync(System.String,System.Boolean,System.Boolean,System.IProgress{System.String},System.Threading.CancellationToken)">
+        <member name="M:HistoryJanus.Git.LfsRuleService.RepairAsync(System.String,System.Boolean,System.Boolean,System.IProgress{System.String},System.Threading.CancellationToken,System.Boolean)">
              <summary>
              一个仓的修复：
              1. 所有 .gitattributes 里托管块之外的 LFS 属性去掉（保留 -text）；
@@ -810,8 +817,21 @@
              3. 不足 100MB 的指针转回普通入库；本机缺实体的先 <c>git lfs pull</c>，取不到的暂留指针并点名；
              4. <paramref name="commit"/> 为真时本地提交，按 300MB 分批，每批一个提交，便于之后分批推送。
             
+             <paramref name="formatOnly"/> 为真时只删**按格式**的规则（<c>*.dll</c> 这类带通配的），
+             精确路径的规则原样保留。
+            
+             哪些文件要转回，一律在改写之后问 <c>git check-attr</c>：规则删掉后不再被任何 LFS 规则覆盖、
+             而索引里还是指针的文件，下一次克隆拿到的就是一段指针文本——这种文件必须同批转回。
+             由 git 自己判定覆盖关系，不在这里重新实现 gitattributes 的匹配。
+            
              不改写历史、不推送。暂存区里已有别的改动时拒绝，免得把别人的东西一起提交。
              </summary>
+        </member>
+        <member name="M:HistoryJanus.Git.LfsRuleService.LfsCoveredAsync(System.String,System.Collections.Generic.IReadOnlyList{System.String},System.Threading.CancellationToken)">
+            <summary>
+            这些路径里哪些仍被 LFS 规则覆盖（<c>git check-attr filter</c> 为 lfs）。
+            路径按参数分批传，不走标准输入——标准输入的代码页不是 UTF-8，中文路径会坏。
+            </summary>
         </member>
         <member name="M:HistoryJanus.Git.LfsRuleService.ListPointersAsync(System.String,System.Threading.CancellationToken)">
             <summary><c>git lfs ls-files --json</c>：路径、实体大小、工作区里是不是实体。</summary>
