@@ -59,7 +59,7 @@ Janus 不自建按钮或滚动控件，不复制前端状态机。
 | `case` | 内容 |
 | --- | --- |
 | `入库规则` | 全库共用的入库/不入库清单（与选中项目无关）；5.12.0 前叫「Git 文件规则」且混着 LFS 行 |
-| `LFS 规则` | **当前选中项目**（5.12.0）：上方控制面板 `janus-lfs` 两行七格「标签 \| 值」——合规（✓/✗）、LFS 指针数、指针总大小；≥100MB 文件数、定为 LFS / 不纳入 / 未决定各几个。下方 `lfs-files` 只列 ≥100MB 的文件，三列：文件、大小、操作；「操作」是多态按钮（`未决定 ○` / `LFS 指针 ●` / `不纳入 ✕`），点一下经动作 `janus.lfs.toggle` 切到另一个去向。已被入库规则排除的文件不列 |
+| `LFS 规则` | **当前选中项目**（5.12.0）：上方控制面板 `janus-lfs` 两行六格「标签 \| 值」——合规（✓/✗）、指针总大小；≥100MB 文件数、定为 LFS / 不纳入 / 未决定各几个。下方 `lfs-files` 只列 ≥100MB 的文件，三列：文件、大小、操作；「操作」是多态按钮（`未决定 ○` / `LFS 指针 ●` / `不纳入 ✕`），点一下经动作 `janus.lfs.toggle` 切到另一个去向。已被入库规则排除的文件不列 |
 | `分支历史` | **当前选中项目**从分叉点到 HEAD 的自有提交（最多 200 条） |
 | `GitHub` | Git、GCM、提交身份、origin 与 SSH 的当前状态（项/值两列） |
 
@@ -112,9 +112,9 @@ GitHub 写操作（登录、注销、提交身份、origin 修改）由页面通
 | `janus.graph.node` | 只读 | 读取单个提交的父边、文件差异摘要；证据槽本阶段为空 |
 | `janus.ui.describe` | 只读 | 返回 Aurora 页面描述协议 V1 |
 | `janus.ui.actions` | 只读 | 返回 Aurora 动作声明协议 V1 |
-| `janus.ui.data` | 只读 | 按 `view` 返回页面数据；`projects` 保留 `name`、`isClean`、`subject` 并增加 `zFolders`、`status`、`statusSymbol`、`lifecycleAction`、`archived`、`lifecycleState`。单个 z/Z 文件夹的 `zFolders` 为真实名称；`status` 为「动作 + 空格 + 符号」，符号固定映射提交 `●`、推送 `↑`、同步 `↔`、归档 `□`、拉取 `↓`、刷新 `?`（远端未确认或尚未查询时动作为「刷新」）。首次由界面（来源 `UI`）取 `projects` 时先返回不查远端的清单，再在后台 fetch 全部项目并重取表格。`excludes` 返回入库规则表：`z-*` 入库例外、逐条不入库目录与扩展名（5.12.0 起不再含 LFS 行，也不要 `name`）。`lfsstat` 按 `item`（`compliance` / `pointers` / `bytes` / `oversize` / `lfs` / `ignore` / `undecided`）返回面板一格的值，形状是只有一行 `value` 的候选集（取不到时为 `—`）；`lfs` 返回文件行（`name`、`path`、`size`、`op`、`next`）。两者共用一次检查。`graph` / `history` / `lfs` / `lfsstat` 缺 `name` 时不取数 |
+| `janus.ui.data` | 只读 | 按 `view` 返回页面数据；`projects` 保留 `name`、`isClean`、`subject` 并增加 `zFolders`、`status`、`statusSymbol`、`lifecycleAction`、`archived`、`lifecycleState`。单个 z/Z 文件夹的 `zFolders` 为真实名称；`status` 为「动作 + 空格 + 符号」，符号固定映射提交 `●`、推送 `↑`、同步 `↔`、归档 `□`、拉取 `↓`、刷新 `?`（远端未确认或尚未查询时动作为「刷新」）。首次由界面（来源 `UI`）取 `projects` 时先返回不查远端的清单，再在后台 fetch 全部项目并重取表格。`excludes` 返回入库规则表：`z-*` 入库例外、逐条不入库目录与扩展名（5.12.0 起不再含 LFS 行，也不要 `name`）。`lfsstat` 按 `item`（`compliance` / `bytes` / `oversize` / `lfs` / `ignore` / `undecided`）返回面板一格的值，形状是只有一行 `value` 的候选集（取不到时为 `—`）；`lfs` 返回文件行（`name`、`path`、`size`、`op`、`next`）。两者共用一次检查。`graph` / `history` / `lfs` / `lfsstat` 缺 `name` 时不取数 |
 | `janus.ui.graphnode` | 只读 | 将描述化图节点 ID 投影为提交详情 |
-| `janus.ui.sectionenter` | 只读 | 子页面切换的落点（5.9.0 取代 `janus.ui.refreshrules`）：按 `section` 重取 `rule-list` / `lfs-files` / `history-rows` / `github-rows`（LFS 面板七格靠通道变化重取）；按节点刷，不按页刷 |
+| `janus.ui.sectionenter` | 只读 | 子页面切换的落点（5.9.0 取代 `janus.ui.refreshrules`）：按 `section` 重取 `rule-list` / `lfs-files` / `history-rows` / `github-rows`（LFS 面板六格靠通道变化重取）；按节点刷，不按页刷 |
 | `janus.ui.lfsdecide` | 本机 UI | LFS 规则表「操作」格的落点：转调 `janus.gitrule.lfsset` 后重取文件表 |
 | `janus.ui.refreshprojects` | 本机 UI | 重新查询远端并刷新项目表 |
 | `janus.ui.projectaction` | 本机 UI | 重新校验行状态后执行提交、推送、同步、归档或拉取；`action=提交` 先弹差异预览再由人选提交或丢弃（需 Aurora ≥ 1.24.0）；`action=刷新` 只带 fetch 复核该项目并回写这一行，仍连不上时返回失败 |
