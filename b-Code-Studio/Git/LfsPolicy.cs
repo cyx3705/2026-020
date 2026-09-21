@@ -247,6 +247,9 @@ public static class LfsPolicy
         var lines = SplitLines(original);
         var start = lines.FindIndex(line => line.Trim() == begin);
         var stop = start >= 0 ? lines.FindIndex(start, line => line.Trim() == end) : -1;
+        // 没有块、也不要块：原样交回，不顺手规整空行。
+        if (body == null && (start < 0 || stop <= start))
+            return original;
         var at = -1;
         if (start >= 0 && stop > start)
         {
@@ -352,6 +355,10 @@ public static class LfsPolicy
             output.RemoveRange(start, LegacyHeader.Length);
             output.InsertRange(start, ReplacementHeader);
         }
+
+        // 什么都没改就原样交回：顺手规整空行也是一次改动，会让合规的仓凭空多一个提交。
+        if (stripped == 0 && start < 0)
+            return attributesText;
 
         while (output.Count > 0 && output[^1].Trim().Length == 0)
             output.RemoveAt(output.Count - 1);

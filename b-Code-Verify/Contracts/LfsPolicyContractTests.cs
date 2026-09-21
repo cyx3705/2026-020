@@ -98,6 +98,17 @@ public sealed class LfsPolicyContractTests
         Assert.Contains("不到 100MB 的文件一律不走 LFS", stripped);
     }
 
+    /// <summary>合规的仓不能因为「顺手规整空行」凭空多一个修复提交。</summary>
+    [Fact]
+    public void ACompliantFileComesBackByteIdentical()
+    {
+        var text = "* text=auto\r\n*.dll -text\r\n\r\n\r\n";
+        Assert.Same(text, LfsPolicy.StripForeignLfsRules(text, out var count));
+        Assert.Equal(0, count);
+        Assert.Same(text, LfsPolicy.WriteLfsBlock(text, []));
+        Assert.Same(text, LfsPolicy.WriteIgnoreBlock(text, []));
+    }
+
     [Fact]
     public void OnlyTopLevelZDirectoriesAreSnapshots()
     {
