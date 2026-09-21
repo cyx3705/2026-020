@@ -1,12 +1,12 @@
-# HistoryJanus 5.11.0 模块 API
+# HistoryJanus 5.12.0 模块 API
 
 本文件是其他模块和项目消费 HistoryJanus 的唯一人工合同。运行时命令目录是参数、确认策略和可用性的最终真值；历史文档和 Janus 内部类型不构成公开 API。
 
 ## 正式消费入口
 
-- 正式快照：`z-Publish/HistoryJanus-v5.11.0/`。
+- 正式快照：`z-Publish/HistoryJanus-v5.12.0/`。
 - 模块名：`HistoryJanus`。
-- 版本：`5.11.0`。
+- 版本：`5.12.0`。
 - 入口：`HistoryJanus.dll`。
 - 宿主基线：HistoryVulcan `5.4.0` current-host 快照（即最低宿主，单点声明在 `b-Code-Studio/JanusVersion.props`），从 `2026-023-HistoryVulcan/z-Publish` 消费；该快照的 `sourceDirty` 仍由 HistoryVulcan manifest 如实标记。
 - 主题：页面使用 `Aurora.Brush.*` 动态资源，跟随宿主深色/浅色切换，不在模块内维护第二套主题。
@@ -16,7 +16,7 @@
 - UI：启用。
 - MCP：只读投影。
 
-本文件描述活动源的 `5.11.0` 候选合同；只有用户另行授权经宿主 `vulcan.dev.submit` / `finish` 正式发布后，同版本 manifest 和二进制才会提升到
+本文件描述活动源的 `5.12.0` 候选合同；只有用户另行授权经宿主 `vulcan.dev.submit` / `finish` 正式发布后，同版本 manifest 和二进制才会提升到
 `z-Publish/HistoryJanus-vX.Y.Z/`。发布前，z 快照自身的 manifest 与 checksum 仍是正式运行版本的真值。
 其他项目从 `z-Publish/HistoryJanus-vX.Y.Z/docs/` 或 `diana.docs.read domain=janus` 读取已发布 API，从该版本化快照读取 `module.manifest.json`、二进制和
 `SHA256SUMS`；不要从 Janus 的 `bin/obj`、HistoryVulcan 工作树或 Janus 历史文档建立依赖。Diana 不发布。
@@ -58,8 +58,8 @@ Janus 不自建按钮或滚动控件，不复制前端状态机。
 
 | `case` | 内容 |
 | --- | --- |
-| `入库规则` | 全库共用的入库/不入库清单（与选中项目无关）；5.11.0 前叫「Git 文件规则」且混着 LFS 行 |
-| `LFS 规则` | **当前选中项目**：上方 `lfs-summary` 汇总（指针数与大小、≥100MB 文件的决定、合规与否），下方 `lfs-files` **只列 ≥100MB 的文件**（已走指针的与工作区里的；不到 100MB 的只在汇总里计为违规）；行操作 `janus.lfs.uselfs` / `janus.lfs.untrack` / `janus.lfs.clear` 给 ≥100MB 的文件定去向 |
+| `入库规则` | 全库共用的入库/不入库清单（与选中项目无关）；5.12.0 前叫「Git 文件规则」且混着 LFS 行 |
+| `LFS 规则` | **当前选中项目**（5.12.0）：上方控制面板 `janus-lfs` 两行七格「标签 \| 值」——合规（✓/✗）、LFS 指针数、指针总大小；≥100MB 文件数、定为 LFS / 不纳入 / 未决定各几个。下方 `lfs-files` 只列 ≥100MB 的文件，三列：文件、大小、操作；「操作」是多态按钮（`未决定 ○` / `LFS 指针 ●` / `不纳入 ✕`），点一下经动作 `janus.lfs.toggle` 切到另一个去向。已被入库规则排除的文件不列 |
 | `分支历史` | **当前选中项目**从分叉点到 HEAD 的自有提交（最多 200 条） |
 | `GitHub` | Git、GCM、提交身份、origin 与 SSH 的当前状态（项/值两列） |
 
@@ -94,7 +94,7 @@ GitHub 写操作（登录、注销、提交身份、origin 修改）由页面通
 | `janus.proj.config` | 只读 | 返回项目命令配置 |
 | `janus.proj.metas` | 只读 | 列出项目 z/Z 级元文件夹 |
 | `janus.proj.refresh` | 本机写入 | fetch 全部项目的 origin/main 并返回生命周期状态 |
-| `janus.proj.sync` | 本机写入 | 仅快进同步并记录已验证 SHA；分叉时拒绝 merge/rebase | 5.11.0 起同步在主线快进之后把 **origin 上本地尚未建立的分支**落成本地分支（`--track` 指向 origin）：本地落后的快进，本地领先/已分叉/正被工作树签出的一律跳过并报原因；有分支未能落地时整条返回失败且不写已验证 SHA。
+| `janus.proj.sync` | 本机写入 | 仅快进同步并记录已验证 SHA；分叉时拒绝 merge/rebase | 5.12.0 起同步在主线快进之后把 **origin 上本地尚未建立的分支**落成本地分支（`--track` 指向 origin）：本地落后的快进，本地领先/已分叉/正被工作树签出的一律跳过并报原因；有分支未能落地时整条返回失败且不写已验证 SHA。
 | `janus.proj.archive` | 确认写入 | 复核干净且两端一致后只保留直属 z/Z 文件夹 |
 | `janus.proj.pull` | 本机写入 | 从归档记录克隆远端并以本地 z/Z 内容覆盖恢复 |
 | `janus.history.list` | 只读 | 列出分支自有提交 |
@@ -102,7 +102,7 @@ GitHub 写操作（登录、注销、提交身份、origin 修改）由页面通
 | `janus.history.diff` | 只读 | 预览历史节点与 HEAD 的差异 |
 | `janus.proj.diff` | 只读 | 读项目脏工作树相对 HEAD 的差异（已暂存与未暂存一起算，未跟踪文件只列路径）；正文超过 200000 字符截断并明说 |
 | `janus.gitrule.list` | 只读 | 查看全库共用的不纳入仓库清单，及各项目托管块落地情况 |
-| `janus.gitrule.lfs` | 只读 | 检查该项目仓的 LFS：`Data` 为 `LfsInspection`（5.11.0 起取代 `LfsReport`）——每行一个走指针的文件或工作区 ≥100MB 的文件，带当前状态、决定与说明；另给指针总数与字节、≥100MB 文件的已定/未定数、不足 100MB 的指针数、本机缺实体数、托管块外 LFS 规则条数。本机没装 git-lfs 时 `Available=false` |
+| `janus.gitrule.lfs` | 只读 | 检查该项目仓的 LFS：`Data` 为 `LfsInspection`（5.12.0 起取代 `LfsReport`）——每行一个走指针的文件或工作区 ≥100MB 的文件，带当前状态、决定与说明；另给指针总数与字节、≥100MB 文件的已定/未定数、不足 100MB 的指针数、本机缺实体数、托管块外 LFS 规则条数。本机没装 git-lfs 时 `Available=false` |
 | `janus.github.status` | 只读 | 服务器 Git、GCM、提交身份、origin 和 SSH 状态 |
 | `janus.github.accounts` | 只读 | 列出 GCM 中已知的 GitHub HTTPS 凭据账号 |
 | `janus.github.test` | 只读 | 检测 GitHub SSH/HTTPS 连接（`transport=auto\|ssh\|https`，`timeout=1..120`），不执行 push |
@@ -112,10 +112,10 @@ GitHub 写操作（登录、注销、提交身份、origin 修改）由页面通
 | `janus.graph.node` | 只读 | 读取单个提交的父边、文件差异摘要；证据槽本阶段为空 |
 | `janus.ui.describe` | 只读 | 返回 Aurora 页面描述协议 V1 |
 | `janus.ui.actions` | 只读 | 返回 Aurora 动作声明协议 V1 |
-| `janus.ui.data` | 只读 | 按 `view` 返回页面数据；`projects` 保留 `name`、`isClean`、`subject` 并增加 `zFolders`、`status`、`statusSymbol`、`lifecycleAction`、`archived`、`lifecycleState`。单个 z/Z 文件夹的 `zFolders` 为真实名称；`status` 为「动作 + 空格 + 符号」，符号固定映射提交 `●`、推送 `↑`、同步 `↔`、归档 `□`、拉取 `↓`、刷新 `?`（远端未确认或尚未查询时动作为「刷新」）。首次由界面（来源 `UI`）取 `projects` 时先返回不查远端的清单，再在后台 fetch 全部项目并重取表格。`excludes` 返回入库规则表：`z-*` 入库例外、逐条不入库目录与扩展名（5.11.0 起不再含 LFS 行，也不要 `name`）。`lfssummary` / `lfs` 返回 LFS 规则的汇总（项/值）与逐文件行（`name`、`path`、`size`、`state`、`decision`、`note`），两者共用一次检查。`graph` / `history` / `lfs` / `lfssummary` 缺 `name` 时不取数 |
+| `janus.ui.data` | 只读 | 按 `view` 返回页面数据；`projects` 保留 `name`、`isClean`、`subject` 并增加 `zFolders`、`status`、`statusSymbol`、`lifecycleAction`、`archived`、`lifecycleState`。单个 z/Z 文件夹的 `zFolders` 为真实名称；`status` 为「动作 + 空格 + 符号」，符号固定映射提交 `●`、推送 `↑`、同步 `↔`、归档 `□`、拉取 `↓`、刷新 `?`（远端未确认或尚未查询时动作为「刷新」）。首次由界面（来源 `UI`）取 `projects` 时先返回不查远端的清单，再在后台 fetch 全部项目并重取表格。`excludes` 返回入库规则表：`z-*` 入库例外、逐条不入库目录与扩展名（5.12.0 起不再含 LFS 行，也不要 `name`）。`lfsstat` 按 `item`（`compliance` / `pointers` / `bytes` / `oversize` / `lfs` / `ignore` / `undecided`）返回面板一格的值，形状是只有一行 `value` 的候选集（取不到时为 `—`）；`lfs` 返回文件行（`name`、`path`、`size`、`op`、`next`）。两者共用一次检查。`graph` / `history` / `lfs` / `lfsstat` 缺 `name` 时不取数 |
 | `janus.ui.graphnode` | 只读 | 将描述化图节点 ID 投影为提交详情 |
-| `janus.ui.sectionenter` | 只读 | 子页面切换的落点（5.9.0 取代 `janus.ui.refreshrules`）：按 `section` 重取 `rule-list` / `lfs-summary`+`lfs-files` / `history-rows` / `github-rows`；按节点刷，不按页刷 |
-| `janus.ui.lfsdecide` | 本机 UI | LFS 规则表的行操作落点：转调 `janus.gitrule.lfsset` 后重取两张 LFS 表 |
+| `janus.ui.sectionenter` | 只读 | 子页面切换的落点（5.9.0 取代 `janus.ui.refreshrules`）：按 `section` 重取 `rule-list` / `lfs-files` / `history-rows` / `github-rows`（LFS 面板七格靠通道变化重取）；按节点刷，不按页刷 |
+| `janus.ui.lfsdecide` | 本机 UI | LFS 规则表「操作」格的落点：转调 `janus.gitrule.lfsset` 后重取文件表 |
 | `janus.ui.refreshprojects` | 本机 UI | 重新查询远端并刷新项目表 |
 | `janus.ui.projectaction` | 本机 UI | 重新校验行状态后执行提交、推送、同步、归档或拉取；`action=提交` 先弹差异预览再由人选提交或丢弃（需 Aurora ≥ 1.24.0）；`action=刷新` 只带 fetch 复核该项目并回写这一行，仍连不上时返回失败 |
 | `janus.ui.openmeta` | 本机 UI | 0 个 z/Z 明确提示，1 个直接打开，多个经 choice 弹窗选择 |
@@ -147,7 +147,7 @@ GitHub 写操作（登录、注销、提交身份、origin 修改）由页面通
 | `janus.gitrule.lfsset` | 给一个 ≥100MB 的文件定去向（`decision=lfs\|ignore\|none`）：`lfs` 写进 `.gitattributes` 的 `HistoryJanus lfs` 托管块，`ignore` 写进 `.gitignore` 末尾的 `HistoryJanus oversize` 托管块；**下次提交生效，历史不改写**。不到 100MB 的文件一律拒绝；`z-*` 快照里的文件不能选 `ignore` |
 | `janus.gitrule.lfsrepair` | 把一个仓修回 LFS 规则（需确认）：去掉托管块外所有 `filter=lfs`（保留 `-text`），不足 100MB 的指针转回普通入库（本机缺实体的先 `git lfs pull`，取不到的暂留指针并点名），≥100MB 的按精确路径保留；`formatOnly=true` 只删按格式的规则（模式带 `*` / `?` / `[`，如 `*.dll`），精确路径保留；无论哪种模式，改写后由 `git check-attr` 判定哪些小指针已失去 LFS 覆盖并同批转回，免得克隆拿到指针文本。`commit=true`（默认）按 300MB 分批本地提交，`dryRun=true` 只报计划（预演会临时写入改写结果再原样恢复）。不改写历史、不推送；暂存区已有改动时拒绝 |
 
-### LFS 规则（5.11.0，DEC-032）
+### LFS 规则（5.12.0，DEC-032）
 
 - **不到 100MB 的文件一律不走 LFS。** 走 LFS 的只能是 ≥100MB 的具体文件，且只能写在 `.gitattributes` 的 `# HistoryJanus lfs begin/end` 托管块里，条目带前导 `/` 锚定到仓库根。
 - 托管块之外出现任何 `filter=lfs`，或托管块里的文件已不足 100MB 且本机有实体，**提交链路拒绝提交**并指向 `janus.gitrule.lfsrepair`。本机只有指针、取不到实体的文件是唯一例外。
