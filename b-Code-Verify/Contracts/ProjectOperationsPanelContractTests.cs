@@ -218,17 +218,12 @@ public sealed partial class ProjectOperationsPanelContractTests
             .GetProperty("columns").EnumerateArray()
             .Select(column => column.GetProperty("key").GetString()!)
             .Append("lifecycleAction")
-            // LFS 文件表的行操作取被点那一行的 name（隐藏字段）与 path。
+            // LFS 文件表的「操作」格取被点那一行的 name、path 与 next（后两者之一是隐藏字段）。
             .Concat(Node("projops", "lfs-files").GetProperty("columns").EnumerateArray()
                 .Select(column => column.GetProperty("key").GetString()!))
             .Append("name")
+            .Append("next")
             .ToHashSet(StringComparer.Ordinal);
-
-        foreach (var rowAction in Node("projops", "lfs-files").GetProperty("rowActions").EnumerateArray())
-        {
-            var id = rowAction.GetProperty("action").GetString()!;
-            Assert.True(declared.Contains(id), $"行操作绑了未声明的动作: {id}");
-        }
 
         foreach (var button in widgets.Where(w => w.GetProperty("kind").GetString() == "button"))
         {
@@ -488,7 +483,6 @@ public sealed partial class ProjectOperationsPanelContractTests
                      ("history-rows", "history"),
                      // LFS 两张表读的是**选中项目仓**的实况（5.11.0 从规则表里拆出来），
                      // 换项目要重取，而不是让人看着上一个项目的清单。
-                     ("lfs-summary", "lfssummary"),
                      ("lfs-files", "lfs"),
                  })
         {
@@ -519,15 +513,44 @@ public sealed partial class ProjectOperationsPanelContractTests
         var lfs = Descend(Node("projops", "janus-sections"))
             .Single(node => node.TryGetProperty("case", out var c) && c.GetString() == "LFS 规则");
         Assert.Equal(
-            new[] { "lfs-summary", "lfs-files" },
+            new[] { "janus-lfs", "lfs-files" },
             lfs.GetProperty("children").EnumerateArray().Select(n => n.GetProperty("id").GetString()).ToArray());
+    }
 
-        var decisions = Node("projops", "lfs-files").GetProperty("rowActions").EnumerateArray()
-            .Select(a => a.GetProperty("action").GetString()).ToArray();
-        Assert.Equal(new[] { "janus.lfs.uselfs", "janus.lfs.untrack", "janus.lfs.clear" }, decisions);
-        Assert.Equal("lfs", Action("janus.lfs.uselfs").GetProperty("args").GetProperty("decision").GetString());
-        Assert.Equal("ignore", Action("janus.lfs.untrack").GetProperty("args").GetProperty("decision").GetString());
-        Assert.Equal("none", Action("janus.lfs.clear").GetProperty("args").GetProperty("decision").GetString());
+    /// <summary>
+    /// LFS 页的信息展示（5.12.0，用户定）：上面一块控制面板**不超过两行**，每格「标签 | 值」，
+    /// 合规只给 ✓ / ✗；下面一张表**只有文件、大小、操作三列**，操作与总览一样是多态按钮。
+    ///
+    /// 面板每格是只有一个候选的选择框，取数必须引用选中项目与子页面两个通道：
+    /// 选择框只在引用的通道变化时重取，漏了子页面那一个，切回本页看到的是旧数。
+    /// </summary>
+    [Fact]
+    public void TheLfsSectionIsAPanelOfTwoRowsAndAThreeColumnTable()
+    {
+        var panel = Node("projops", "janus-lfs");
+        Assert.True(panel.GetProperty("rows").GetArrayLength() <= 2, "LFS 控制面板不超过两行");
+
+        var widgets = PanelWidgets(panel);
+        Assert.Equal(
+            new[] { "合规", "LFS 指针", "大小", "≥100MB", "LFS", "不纳入", "未决定" },
+            widgets.Select(w => w.GetProperty("label").GetString()).ToArray());
+        Assert.All(widgets, widget =>
+        {
+            Assert.Equal("select", widget.GetProperty("mode").GetString());
+            var args = widget.GetProperty("optionsSource").GetProperty("args");
+            Assert.Equal("lfsstat", args.GetProperty("view").GetString());
+            Assert.Equal("{selection." + Channel + ".name}", args.GetProperty("name").GetString());
+            Assert.Equal("{selection." + SectionChannel + ".value}", args.GetProperty("section").GetString());
+        });
+
+        var table = Node("projops", "lfs-files");
+        Assert.Equal(
+            new[] { "path", "size", "op" },
+            table.GetProperty("columns").EnumerateArray().Select(c => c.GetProperty("key").GetString()).ToArray());
+        Assert.False(table.TryGetProperty("rowActions", out _), "去向只由操作格切换，不再挂行操作");
+        var op = table.GetProperty("columns").EnumerateArray().Last();
+        Assert.Equal("janus.lfs.toggle", op.GetProperty("cellAction").GetString());
+        Assert.Equal("{next}", Action("janus.lfs.toggle").GetProperty("args").GetProperty("decision").GetString());
     }
 
     private static IEnumerable<JsonElement> Buttons(string pageId)

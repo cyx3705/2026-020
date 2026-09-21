@@ -18,6 +18,29 @@ internal static partial class HistoryJanusUiCommands
     /// <summary>门禁用：同上。</summary>
     internal static string ActionDeclarations => ActionsJson;
 
+    /// <summary>
+    /// LFS 面板的一格「标签 | 值」：只返回一个候选的选择框。
+    /// 取数引用选中项目与子页面两个通道——引用哪个，哪个一变就重取。
+    /// </summary>
+    private static object LfsStat(string id, string label, string item) => new
+    {
+        kind = "textbox",
+        id,
+        label,
+        mode = "select",
+        optionsSource = new
+        {
+            command = "janus.ui.data",
+            args = new
+            {
+                view = "lfsstat",
+                item,
+                name = SelectedProject,
+                section = "{selection." + SectionChannel + ".value}",
+            },
+        },
+    };
+
     private static readonly string DescriptionJson = JsonSerializer.Serialize(new
     {
         schemaVersion = 1,
@@ -300,12 +323,13 @@ internal static partial class HistoryJanusUiCommands
                                         new { key = "rule", title = "规则", width = "*" },
                                     },
                                 },
-                                // LFS 规则（5.11.0）：按选中项目。上面一张「项 / 值」汇总，
-                                // 下面一张逐个文件——走 LFS 指针的，加上工作区里 ≥100MB 的。
-                                // 汇总不做成说明文字：Aurora 的文字节点是静态的，而这几行是数。
+                                // LFS 规则（5.12.0）：按选中项目。上面一块控制面板，两行「标签 | 值」；
+                                // 下面一张表只列 ≥100MB 的文件，三列：文件、大小、操作。
                                 //
-                                // ≥100MB 的行靠行操作定去向；决定写进仓里的托管块，下次提交生效，
-                                // 历史不改写。不到 100MB 的行点了也会被拒：它们一律不走 LFS。
+                                // 面板里的值用只返回一个候选的选择框显示——Aurora 面板没有取数文字控件
+                                // （用户选定这样凑，不为此改 Aurora）。选择框只在它引用的通道变化时重取，
+                                // 所以取数参数同时引用选中项目与子页面两个通道：换项目、切回本页都会刷新。
+                                // 点「操作」改决定后表格立刻重取，面板的决定计数要等下一次换项目或切页。
                                 new
                                 {
                                     type = "stack",
@@ -315,19 +339,35 @@ internal static partial class HistoryJanusUiCommands
                                     {
                                         new
                                         {
-                                            type = "table",
-                                            id = "lfs-summary",
-                                            dataSource = new
+                                            type = "panel",
+                                            id = "janus-lfs",
+                                            rows = new object[]
                                             {
-                                                command = "janus.ui.data",
-                                                args = new { view = "lfssummary", name = SelectedProject },
-                                            },
-                                            columns = new object[]
-                                            {
-                                                new { key = "item", title = "项", width = "100" },
-                                                new { key = "value", title = "值", width = "*" },
+                                                new
+                                                {
+                                                    mode = "even",
+                                                    widgets = new object[]
+                                                    {
+                                                        LfsStat("lfs-compliance", "合规", "compliance"),
+                                                        LfsStat("lfs-pointers", "LFS 指针", "pointers"),
+                                                        LfsStat("lfs-bytes", "大小", "bytes"),
+                                                    },
+                                                },
+                                                new
+                                                {
+                                                    mode = "even",
+                                                    widgets = new object[]
+                                                    {
+                                                        LfsStat("lfs-oversize", "≥100MB", "oversize"),
+                                                        LfsStat("lfs-decided-lfs", "LFS", "lfs"),
+                                                        LfsStat("lfs-decided-ignore", "不纳入", "ignore"),
+                                                        LfsStat("lfs-undecided", "未决定", "undecided"),
+                                                    },
+                                                },
                                             },
                                         },
+                                        // 「操作」格与总览一样是多态按钮：显示当前决定加符号，
+                                        // 点一下切到另一个去向（未决定 → LFS 指针 ↔ 不纳入 git）。
                                         new
                                         {
                                             type = "table",
@@ -340,16 +380,8 @@ internal static partial class HistoryJanusUiCommands
                                             columns = new object[]
                                             {
                                                 new { key = "path", title = "文件", width = "*" },
-                                                new { key = "size", title = "大小", width = "80" },
-                                                new { key = "state", title = "当前", width = "110" },
-                                                new { key = "decision", title = "决定", width = "80" },
-                                                new { key = "note", title = "说明", width = "220" },
-                                            },
-                                            rowActions = new object[]
-                                            {
-                                                new { action = "janus.lfs.uselfs", title = "LFS 指针" },
-                                                new { action = "janus.lfs.untrack", title = "不纳入 git", style = "danger" },
-                                                new { action = "janus.lfs.clear", title = "清除决定", inline = false },
+                                                new { key = "size", title = "大小", width = "90" },
+                                                new { key = "op", title = "操作", width = "110", cellAction = "janus.lfs.toggle" },
                                             },
                                             view = new { filterable = true, sortable = true, selection = "single" },
                                         },
@@ -500,46 +532,20 @@ internal static partial class HistoryJanusUiCommands
                 },
                 summary = "推送选中项目的分支",
             },
-            // LFS 规则表的三个行操作（5.11.0）。{name} 与 {path} 取被点那一行。
+            // LFS 规则表「操作」格（5.12.0）。{name}/{path}/{next} 取被点那一行：
+            // next 是投影按当前决定算好的下一个去向，页面不自己判断。
             new
             {
-                id = "janus.lfs.uselfs",
-                title = "LFS 指针",
+                id = "janus.lfs.toggle",
+                title = "切换 LFS 去向",
                 command = "janus.ui.lfsdecide",
                 args = new Dictionary<string, string>
                 {
                     ["name"] = "{name}",
                     ["path"] = "{path}",
-                    ["decision"] = "lfs",
+                    ["decision"] = "{next}",
                 },
-                summary = "这个 ≥100MB 的文件走 LFS 指针；下次提交生效，历史不变",
-            },
-            new
-            {
-                id = "janus.lfs.untrack",
-                title = "不纳入 git",
-                command = "janus.ui.lfsdecide",
-                args = new Dictionary<string, string>
-                {
-                    ["name"] = "{name}",
-                    ["path"] = "{path}",
-                    ["decision"] = "ignore",
-                },
-                danger = true,
-                summary = "这个 ≥100MB 的文件不再纳入 git：下次提交移出索引，本地文件保留，历史不变",
-            },
-            new
-            {
-                id = "janus.lfs.clear",
-                title = "清除决定",
-                command = "janus.ui.lfsdecide",
-                args = new Dictionary<string, string>
-                {
-                    ["name"] = "{name}",
-                    ["path"] = "{path}",
-                    ["decision"] = "none",
-                },
-                summary = "撤掉这个文件的决定；下次提交若仍 ≥100MB 会重新弹窗确认",
+                summary = "在 LFS 指针与不纳入 git 之间切换；下次提交生效，历史不变",
             },
             // 切到哪一支就刷哪一支（5.9.0）。它不是按钮，是子页面选项框的
             // commitAction——选项框一变就带着新标题打过来。

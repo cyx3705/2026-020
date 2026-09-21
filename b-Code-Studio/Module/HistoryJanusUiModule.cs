@@ -137,15 +137,25 @@ internal static partial class HistoryJanusUiCommands
                 new ParameterSpec
                 {
                     Name = "view",
-                    Description = "页面视图：projects、graph、history、excludes、lfs、lfssummary、github",
+                    Description = "页面视图：projects、graph、history、excludes、lfs、lfsstat、github",
                     Required = true,
                     Position = 0,
                 },
                 new ParameterSpec
                 {
                     Name = "name",
-                    Description = "项目名；history / graph / lfs / lfssummary 需要，由页面按当前选中行填入",
+                    Description = "项目名；history / graph / lfs / lfsstat 需要，由页面按当前选中行填入",
                     Position = 1,
+                },
+                new ParameterSpec
+                {
+                    Name = "item",
+                    Description = "lfsstat 视图取哪一格：compliance / pointers / bytes / oversize / lfs / ignore / undecided",
+                },
+                new ParameterSpec
+                {
+                    Name = "section",
+                    Description = "lfsstat 视图不用它；页面带上它只为切回子页时触发重取",
                 },
                 new ParameterSpec
                 {
@@ -261,8 +271,9 @@ internal static partial class HistoryJanusUiCommands
 
     private static string[] LfsNodes()
     {
+        // 面板那几格不是表格节点，refreshdata 够不着；它们靠通道变化重取。
         UiLfsProjection.Invalidate();
-        return ["lfs-summary", "lfs-files"];
+        return ["lfs-files"];
     }
 
     /// <summary>
@@ -294,11 +305,13 @@ internal static partial class HistoryJanusUiCommands
         if (view == "excludes")
             return Rows(UiRuleProjection.Excludes(business()));
 
-        // LFS 两张表按选中项目取；汇总与文件清单共用一次检查（见 UiLfsProjection 的缓存）。
-        if (view is "lfs" or "lfssummary")
+        // LFS 面板七格与文件表按选中项目取，共用一次检查（见 UiLfsProjection 的缓存）。
+        if (view is "lfs" or "lfsstat")
         {
             var inspected = await UiLfsProjection.InspectAsync(business(), context.GetString("name"));
-            return Rows(view == "lfs" ? UiLfsProjection.Files(inspected) : UiLfsProjection.Summary(inspected));
+            return Rows(view == "lfs"
+                ? UiLfsProjection.Files(inspected)
+                : UiLfsProjection.Stat(inspected, context.GetString("item")));
         }
 
         if (view is "projects" or "years")
@@ -572,45 +585,56 @@ internal static partial class HistoryJanusUiCommands
             }
         }
 
-        public static IReadOnlyList<IReadOnlyDictionary<string, string>> Summary(
-            (bool Success, string Message, LfsInspection? Report) inspected)
+        /// <summary>
+        /// 面板一格的值，作为**唯一一个候选**交给选择框。合规只给 ✓ / ✗。
+        /// 取不到时给「—」而不是空：空候选会让选择框留着上一个项目的值。
+        /// </summary>
+        public static IReadOnlyList<IReadOnlyDictionary<string, string>> Stat(
+            (bool Success, string Message, LfsInspection? Report) inspected, string? item)
         {
-            if (!inspected.Success || inspected.Report is not { } report)
-                return [Row(("item", "状态"), ("value", inspected.Message))];
-            if (!report.Available)
-                return [Row(("item", "状态"), ("value", "本机未安装 git-lfs，无法确认本仓 LFS 状态"))];
-
-            var violations = report.SmallPointerCount + report.ForeignRuleCount;
-            return
-            [
-                Row(("item", "项目"), ("value", report.Project)),
-                Row(("item", "说明"), ("value", "下表只列 ≥100MB 的文件；不到 100MB 的一律不走 LFS")),
-                Row(("item", "LFS 指针"),
-                    ("value", $"{report.PointerCount} 个，合计 {LfsPolicy.FormatBytes(report.PointerBytes)}" +
-                              (report.MissingEntityCount > 0 ? $"（本机缺实体 {report.MissingEntityCount} 个）" : ""))),
-                Row(("item", "≥100MB 文件"),
-                    ("value", $"{report.OversizeCount} 个：LFS 指针 {report.DecidedLfs}，不纳入 git {report.DecidedIgnore}，未决定 {report.Undecided}")),
-                Row(("item", "合规"),
-                    ("value", violations == 0
-                        ? "✓ 不到 100MB 的文件都没有走 LFS"
-                        : $"✗ 不足 100MB 的指针 {report.SmallPointerCount} 个、托管块外 LFS 规则 {report.ForeignRuleCount} 条；" +
-                          $"提交会被拒，先运行 janus.gitrule.lfsrepair name={report.Project}")),
-            ];
+            if (!inspected.Success || inspected.Report is not { Available: true } report)
+                return [Row(("value", "—"))];
+            var value = item?.Trim().ToLowerInvariant() switch
+            {
+                "compliance" => report.SmallPointerCount + report.ForeignRuleCount == 0 ? "✓" : "✗",
+                "pointers" => report.PointerCount.ToString(),
+                "bytes" => LfsPolicy.FormatBytes(report.PointerBytes),
+                "oversize" => report.OversizeCount.ToString(),
+                "lfs" => report.DecidedLfs.ToString(),
+                "ignore" => report.DecidedIgnore.ToString(),
+                "undecided" => report.Undecided.ToString(),
+                _ => "—",
+            };
+            return [Row(("value", value))];
         }
 
+        /// <summary>
+        /// 文件表三列：文件、大小、操作。「操作」是多态按钮的文字——当前决定加符号；
+        /// <c>next</c> 是点一下要切到的去向，与 <c>name</c> 一起作为动作参数，不显示。
+        /// 已被入库规则排除的文件不列：它们本来就不进仓库，与 LFS 无关。
+        /// </summary>
         public static IReadOnlyList<IReadOnlyDictionary<string, string>> Files(
             (bool Success, string Message, LfsInspection? Report) inspected)
         {
             if (!inspected.Success || inspected.Report is not { Available: true } report)
                 return [];
-            // name 与 path 是行操作要的字段：动作参数的 {name}/{path} 默认取被点那一行。
-            return report.Files.Select(file => Row(
-                    ("name", report.Project),
-                    ("path", file.Path),
-                    ("size", file.Size),
-                    ("state", file.State),
-                    ("decision", file.Decision),
-                    ("note", file.Note)))
+            return report.Files
+                .Where(file => file.Decision != "—")
+                .Select(file =>
+                {
+                    var (op, next) = file.Decision switch
+                    {
+                        "LFS 指针" => ("LFS 指针 ●", "ignore"),
+                        "不纳入 git" => ("不纳入 ✕", "lfs"),
+                        _ => ("未决定 ○", "lfs"),
+                    };
+                    return Row(
+                        ("name", report.Project),
+                        ("path", file.Path),
+                        ("size", file.Size),
+                        ("op", op),
+                        ("next", next));
+                })
                 .ToList();
         }
     }

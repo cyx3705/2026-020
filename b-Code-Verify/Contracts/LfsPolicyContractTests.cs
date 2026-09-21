@@ -1,4 +1,5 @@
 using HistoryJanus.Git;
+using HistoryJanus.Module;
 using Xunit;
 
 namespace HistoryJanus.Contracts;
@@ -137,6 +138,32 @@ public sealed class LfsPolicyContractTests
         Assert.True(LfsPolicy.IsSnapshotPath("Z-HistoryVulcan/host/a.dll"));
         Assert.False(LfsPolicy.IsSnapshotPath("z-file.bin"));
         Assert.False(LfsPolicy.IsSnapshotPath("b-Code/z-Publish/a.dll"));
+    }
+
+    /// <summary>
+    /// 「操作」格：显示当前决定加符号，点一下切到另一个去向（5.12.0）。
+    /// 未决定先落到 LFS 指针——它保留文件，误点的代价最小。已被入库规则排除的文件不列。
+    /// </summary>
+    [Fact]
+    public void TheOperationCellCyclesBetweenTheTwoDestinations()
+    {
+        var report = new LfsInspection("p", true,
+        [
+            new LfsFileRow("a.bin", 1, "", "未跟踪", "未决定", ""),
+            new LfsFileRow("b.bin", 1, "", "LFS 指针", "LFS 指针", ""),
+            new LfsFileRow("c.bin", 1, "", "普通入库", "不纳入 git", ""),
+            new LfsFileRow("bin/d.bin", 1, "", "已被排除", "—", ""),
+        ], 1, 1, 4, 1, 1, 1, 0, 0, 0);
+        var rows = HistoryJanusUiCommands.UiLfsProjection.Files((true, "", report));
+
+        Assert.Equal(new[] { "a.bin", "b.bin", "c.bin" }, rows.Select(r => r["path"]).ToArray());
+        Assert.Equal(new[] { "未决定 ○", "LFS 指针 ●", "不纳入 ✕" }, rows.Select(r => r["op"]).ToArray());
+        Assert.Equal(new[] { "lfs", "ignore", "lfs" }, rows.Select(r => r["next"]).ToArray());
+
+        Assert.Equal("✓", HistoryJanusUiCommands.UiLfsProjection.Stat((true, "", report), "compliance")[0]["value"]);
+        var dirty = report with { SmallPointerCount = 2 };
+        Assert.Equal("✗", HistoryJanusUiCommands.UiLfsProjection.Stat((true, "", dirty), "compliance")[0]["value"]);
+        Assert.Equal("—", HistoryJanusUiCommands.UiLfsProjection.Stat((false, "x", null), "pointers")[0]["value"]);
     }
 
     private static int Count(string text, string token)
