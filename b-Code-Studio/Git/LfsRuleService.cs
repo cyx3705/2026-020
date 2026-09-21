@@ -383,7 +383,10 @@ public sealed class LfsRuleService
         if (pointers == null)
             return (false, $"{name}: 读取 LFS 清单失败", null);
 
-        var smallMissing = pointers.Where(p => p.Size < LfsPolicy.ThresholdBytes && !p.Checkout)
+        // 「缺实体」只认工作区里确实是指针文本的文件。lfs 也把「本地改过的真实文件」报成未检出，
+        // 那种文件下次提交自然以真实内容入库，不能被钉成 LFS 例外（否则提交前门会拦它）。
+        bool PointerOnDisk(LfsPointer p) => WorktreeLfsHelper.IsLfsPointerFile(FullPath(root, p.Path));
+        var smallMissing = pointers.Where(p => p.Size < LfsPolicy.ThresholdBytes && !p.Checkout && PointerOnDisk(p))
             .Select(p => p.Path).ToList();
         if (!dryRun && smallMissing.Count > 0)
         {
@@ -395,7 +398,7 @@ public sealed class LfsRuleService
         }
 
         var large = pointers.Where(p => p.Size >= LfsPolicy.ThresholdBytes).Select(p => p.Path).ToList();
-        var missing = pointers.Where(p => p.Size < LfsPolicy.ThresholdBytes && !p.Checkout)
+        var missing = pointers.Where(p => p.Size < LfsPolicy.ThresholdBytes && !p.Checkout && PointerOnDisk(p))
             .Select(p => p.Path).ToList();
 
         // 托管块：原有条目里仍然 ≥100MB（或还没提交、只在工作区里）的留下，加上现存的大指针与缺实体的例外。
