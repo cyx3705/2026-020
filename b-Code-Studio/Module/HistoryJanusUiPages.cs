@@ -352,14 +352,15 @@ internal static partial class HistoryJanusUiCommands
                                                     {
                                                         LfsStat("lfs-compliance", "合规", "compliance", 28),
                                                         LfsStat("lfs-bytes", "大小", "bytes", 80),
+                                                        LfsStat("lfs-oversize", "≥100MB", "oversize", 28),
                                                     },
                                                 },
+                                                // 第二行是 ≥100MB 那几个文件的去向，与上一行的数量一一对应。
                                                 new
                                                 {
                                                     mode = "even",
                                                     widgets = new object[]
                                                     {
-                                                        LfsStat("lfs-oversize", "≥100MB", "oversize", 28),
                                                         LfsStat("lfs-decided-lfs", "LFS", "lfs", 28),
                                                         LfsStat("lfs-decided-ignore", "不纳入", "ignore", 28),
                                                         LfsStat("lfs-undecided", "未决定", "undecided", 28),

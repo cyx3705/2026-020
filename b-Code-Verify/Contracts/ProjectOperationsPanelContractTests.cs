@@ -529,6 +529,8 @@ public sealed partial class ProjectOperationsPanelContractTests
     {
         var panel = Node("projops", "janus-lfs");
         Assert.True(panel.GetProperty("rows").GetArrayLength() <= 2, "LFS 控制面板不超过两行");
+        // 上下各三格（用户定）：上面合规、大小、≥100MB；下面是 ≥100MB 文件的三种去向。
+        Assert.All(panel.GetProperty("rows").EnumerateArray(), row => Assert.Equal(3, row.GetProperty("widgets").GetArrayLength()));
 
         var widgets = PanelWidgets(panel);
         Assert.Equal(
