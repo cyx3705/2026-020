@@ -211,10 +211,11 @@
         <member name="P:HistoryJanus.Module.HistoryJanusUiCommands.ActionDeclarations">
             <summary>门禁用：同上。</summary>
         </member>
-        <member name="M:HistoryJanus.Module.HistoryJanusUiCommands.LfsStat(System.String,System.String,System.String)">
+        <member name="M:HistoryJanus.Module.HistoryJanusUiCommands.LfsStat(System.String,System.String,System.String,System.Int32)">
             <summary>
             LFS 面板的一格「标签 | 值」：只返回一个候选的选择框。
             取数引用选中项目与子页面两个通道——引用哪个，哪个一变就重取。
+            值多是个位数：最窄宽度按内容给，不用 Aurora 默认的 120——那样两行六格排不下，会折成四行。
             </summary>
         </member>
         <member name="M:HistoryJanus.Module.HistoryJanusUiCommands.UiProjectProjection.Newest(System.Collections.Generic.IEnumerable{HistoryJanus.Git.WorktreeInfo})">

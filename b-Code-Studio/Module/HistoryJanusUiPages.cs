@@ -21,13 +21,15 @@ internal static partial class HistoryJanusUiCommands
     /// <summary>
     /// LFS 面板的一格「标签 | 值」：只返回一个候选的选择框。
     /// 取数引用选中项目与子页面两个通道——引用哪个，哪个一变就重取。
+    /// 值多是个位数：最窄宽度按内容给，不用 Aurora 默认的 120——那样两行六格排不下，会折成四行。
     /// </summary>
-    private static object LfsStat(string id, string label, string item) => new
+    private static object LfsStat(string id, string label, string item, int minWidth) => new
     {
         kind = "textbox",
         id,
         label,
         mode = "select",
+        minWidth,
         optionsSource = new
         {
             command = "janus.ui.data",
@@ -348,8 +350,8 @@ internal static partial class HistoryJanusUiCommands
                                                     mode = "even",
                                                     widgets = new object[]
                                                     {
-                                                        LfsStat("lfs-compliance", "合规", "compliance"),
-                                                        LfsStat("lfs-bytes", "大小", "bytes"),
+                                                        LfsStat("lfs-compliance", "合规", "compliance", 28),
+                                                        LfsStat("lfs-bytes", "大小", "bytes", 80),
                                                     },
                                                 },
                                                 new
@@ -357,10 +359,10 @@ internal static partial class HistoryJanusUiCommands
                                                     mode = "even",
                                                     widgets = new object[]
                                                     {
-                                                        LfsStat("lfs-oversize", "≥100MB", "oversize"),
-                                                        LfsStat("lfs-decided-lfs", "LFS", "lfs"),
-                                                        LfsStat("lfs-decided-ignore", "不纳入", "ignore"),
-                                                        LfsStat("lfs-undecided", "未决定", "undecided"),
+                                                        LfsStat("lfs-oversize", "≥100MB", "oversize", 28),
+                                                        LfsStat("lfs-decided-lfs", "LFS", "lfs", 28),
+                                                        LfsStat("lfs-decided-ignore", "不纳入", "ignore", 28),
+                                                        LfsStat("lfs-undecided", "未决定", "undecided", 28),
                                                     },
                                                 },
                                             },

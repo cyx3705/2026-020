@@ -537,6 +537,8 @@ public sealed partial class ProjectOperationsPanelContractTests
         Assert.All(widgets, widget =>
         {
             Assert.Equal("select", widget.GetProperty("mode").GetString());
+            // 值多是个位数：不声明最窄宽度就按 120 算，两行排不下会折成四行。
+            Assert.True(widget.GetProperty("minWidth").GetInt32() <= 80, "LFS 面板每格最窄宽度按内容给");
             var args = widget.GetProperty("optionsSource").GetProperty("args");
             Assert.Equal("lfsstat", args.GetProperty("view").GetString());
             Assert.Equal("{selection." + Channel + ".name}", args.GetProperty("name").GetString());
