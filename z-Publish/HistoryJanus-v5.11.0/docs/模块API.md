@@ -59,7 +59,7 @@ Janus 不自建按钮或滚动控件，不复制前端状态机。
 | `case` | 内容 |
 | --- | --- |
 | `入库规则` | 全库共用的入库/不入库清单（与选中项目无关）；5.11.0 前叫「Git 文件规则」且混着 LFS 行 |
-| `LFS 规则` | **当前选中项目**：上方 `lfs-summary` 汇总（指针数与大小、≥100MB 文件的决定、合规与否），下方 `lfs-files` 逐个列出走 LFS 指针的文件与工作区里 ≥100MB 的文件；行操作 `janus.lfs.uselfs` / `janus.lfs.untrack` / `janus.lfs.clear` 给 ≥100MB 的文件定去向 |
+| `LFS 规则` | **当前选中项目**：上方 `lfs-summary` 汇总（指针数与大小、≥100MB 文件的决定、合规与否），下方 `lfs-files` **只列 ≥100MB 的文件**（已走指针的与工作区里的；不到 100MB 的只在汇总里计为违规）；行操作 `janus.lfs.uselfs` / `janus.lfs.untrack` / `janus.lfs.clear` 给 ≥100MB 的文件定去向 |
 | `分支历史` | **当前选中项目**从分叉点到 HEAD 的自有提交（最多 200 条） |
 | `GitHub` | Git、GCM、提交身份、origin 与 SSH 的当前状态（项/值两列） |
 
@@ -145,7 +145,7 @@ GitHub 写操作（登录、注销、提交身份、origin 修改）由页面通
 | `janus.history.forcepush` | 强制推送历史状态 |
 | `janus.gitrule.excludes` | 改写全库共用的不纳入仓库清单（整体替换，需确认） |
 | `janus.gitrule.lfsset` | 给一个 ≥100MB 的文件定去向（`decision=lfs\|ignore\|none`）：`lfs` 写进 `.gitattributes` 的 `HistoryJanus lfs` 托管块，`ignore` 写进 `.gitignore` 末尾的 `HistoryJanus oversize` 托管块；**下次提交生效，历史不改写**。不到 100MB 的文件一律拒绝；`z-*` 快照里的文件不能选 `ignore` |
-| `janus.gitrule.lfsrepair` | 把一个仓修回 LFS 规则（需确认）：去掉托管块外所有 `filter=lfs`（保留 `-text`），不足 100MB 的指针转回普通入库（本机缺实体的先 `git lfs pull`，取不到的暂留指针并点名），≥100MB 的按精确路径保留；`commit=true`（默认）按 300MB 分批本地提交，`dryRun=true` 只报计划。不改写历史、不推送；暂存区已有改动时拒绝 |
+| `janus.gitrule.lfsrepair` | 把一个仓修回 LFS 规则（需确认）：去掉托管块外所有 `filter=lfs`（保留 `-text`），不足 100MB 的指针转回普通入库（本机缺实体的先 `git lfs pull`，取不到的暂留指针并点名），≥100MB 的按精确路径保留；`formatOnly=true` 只删按格式的规则（模式带 `*` / `?` / `[`，如 `*.dll`），精确路径保留；无论哪种模式，改写后由 `git check-attr` 判定哪些小指针已失去 LFS 覆盖并同批转回，免得克隆拿到指针文本。`commit=true`（默认）按 300MB 分批本地提交，`dryRun=true` 只报计划（预演会临时写入改写结果再原样恢复）。不改写历史、不推送；暂存区已有改动时拒绝 |
 
 ### LFS 规则（5.11.0，DEC-032）
 

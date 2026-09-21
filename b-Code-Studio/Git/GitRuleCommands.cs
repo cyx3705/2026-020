@@ -101,6 +101,13 @@ public static class GitRuleCommands
             },
             new ParameterSpec
             {
+                Name = "formatOnly",
+                Description = "只删按格式的规则（*.dll 这类带通配的），精确路径的规则保留；失去覆盖的小指针同批转回",
+                Type = ParamType.Bool,
+                Default = "false",
+            },
+            new ParameterSpec
+            {
                 Name = "dryRun",
                 Description = "只报告计划，不改文件、不动索引",
                 Type = ParamType.Bool,
@@ -111,7 +118,9 @@ public static class GitRuleCommands
         Level = CommandLevel.Ask,
         ConfirmPrompt = ctx =>
             $"确认修复项目 {ctx.GetString("name")} 的 LFS 规则？\n\n" +
-            "• 去掉 lfs 托管块之外的所有 filter=lfs（保留 -text）\n" +
+            (ctx.GetBool("formatOnly")
+                ? "• 只去掉按格式的 filter=lfs（*.dll 这类），精确路径保留（保留 -text）\n"
+                : "• 去掉 lfs 托管块之外的所有 filter=lfs（保留 -text）\n") +
             "• 不足 100MB 的 LFS 指针转回普通入库；本机缺实体的先 git lfs pull，取不到的暂留指针\n" +
             "• ≥100MB 的按精确路径继续走 LFS\n" +
             (ctx.GetBool("commit", true) ? "• 本地提交，按 300MB 分批\n" : "• 只暂存，不提交\n") +
@@ -120,7 +129,7 @@ public static class GitRuleCommands
         {
             var (success, message, report) = await service.RepairAsync(
                 ctx.RequireString("name"), ctx.GetBool("commit", true), ctx.GetBool("dryRun"),
-                ctx.Progress, ctx.Cancellation);
+                ctx.Progress, ctx.Cancellation, ctx.GetBool("formatOnly"));
             return success ? CommandResult.Ok(message, report) : CommandResult.Fail(message);
         },
     };

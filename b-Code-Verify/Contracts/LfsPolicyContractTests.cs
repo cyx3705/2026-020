@@ -98,6 +98,27 @@ public sealed class LfsPolicyContractTests
         Assert.Contains("不到 100MB 的文件一律不走 LFS", stripped);
     }
 
+    /// <summary>「按格式」= 模式里有未转义的通配；精确路径（哪怕不带前导斜杠）不算。</summary>
+    [Fact]
+    public void FormatOnlyStripsWildcardRulesAndLeavesExactPaths()
+    {
+        Assert.True(LfsPolicy.IsFormatPattern("*.dll"));
+        Assert.True(LfsPolicy.IsFormatPattern("z-Publish/**/*.dll"));
+        Assert.True(LfsPolicy.IsFormatPattern("a/file?.bin"));
+        Assert.False(LfsPolicy.IsFormatPattern("Logo.png"));
+        Assert.False(LfsPolicy.IsFormatPattern("b-Module/0000.asm"));
+        Assert.False(LfsPolicy.IsFormatPattern("/a/\\[x\\].bin"));
+
+        var text = "# 极保守 LFS 策略：不按扩展名批量套 LFS。\n" +
+                   "*.dll filter=lfs diff=lfs merge=lfs -text\n" +
+                   "b-Module/0000.asm filter=lfs diff=lfs merge=lfs -text\n";
+        var stripped = LfsPolicy.StripForeignLfsRules(text, out var count, formatOnly: true);
+        Assert.Equal(1, count);
+        Assert.Contains("*.dll -text\n", stripped);
+        Assert.Contains("b-Module/0000.asm filter=lfs", stripped);
+        Assert.Contains("极保守", stripped);
+    }
+
     /// <summary>合规的仓不能因为「顺手规整空行」凭空多一个修复提交。</summary>
     [Fact]
     public void ACompliantFileComesBackByteIdentical()

@@ -18,6 +18,7 @@ internal static class LfsRulesSuite
         try
         {
             await TestRepairConvertsSmallPointersAsync(temp);
+            await TestFormatOnlyRepairKeepsExactRulesAsync(temp);
             await TestCommitRefusesForeignLfsRulesAsync(temp);
             await TestDecisionsApplyOnNextCommitAsync(temp);
         }
@@ -58,6 +59,33 @@ internal static class LfsRulesSuite
         Equal((int.Parse(before) + 1).ToString(), Run(project, ["rev-list", "--count", "HEAD"]).Trim(),
             "the repair adds one commit on top; history is not rewritten");
         True((await service.CheckPolicyAsync(project)).Success, "the repaired repo passes the policy gate");
+
+        DeleteTree(root);
+    }
+
+    /// <summary>
+    /// 只删按格式的规则：<c>*.bin</c> 删掉，被它覆盖的小指针同批转回（否则克隆拿到的是指针文本）；
+    /// 精确路径那一条连同它的指针原样留着，等全量修复。
+    /// </summary>
+    private static async Task TestFormatOnlyRepairKeepsExactRulesAsync(string temp)
+    {
+        var (root, project, service, _) = await NewLibraryAsync(temp, "format");
+        await File.WriteAllTextAsync(Path.Combine(project, ".gitattributes"),
+            "*.bin filter=lfs diff=lfs merge=lfs -text\nkeep.dat filter=lfs diff=lfs merge=lfs -text\n");
+        await File.WriteAllBytesAsync(Path.Combine(project, "small.bin"), Enumerable.Repeat((byte)7, 1024).ToArray());
+        await File.WriteAllBytesAsync(Path.Combine(project, "keep.dat"), Enumerable.Repeat((byte)9, 2048).ToArray());
+        Run(project, ["add", "-A"]);
+        Run(project, ["commit", "-m", "legacy lfs"]);
+
+        var repaired = await service.RepairAsync(Project, commit: true, dryRun: false, progress: null, formatOnly: true);
+        True(repaired.Success, $"format-only repair succeeds: {repaired.Message}");
+        Equal("1024", Run(project, ["cat-file", "-s", "HEAD:small.bin"]).Trim(),
+            "a file covered only by the wildcard is committed with its real content");
+        True(long.Parse(Run(project, ["cat-file", "-s", "HEAD:keep.dat"]).Trim()) < 300,
+            "a file under an exact-path rule stays a pointer");
+        var attributes = await File.ReadAllTextAsync(Path.Combine(project, ".gitattributes"));
+        Contains(attributes, "*.bin -text", "the wildcard rule loses only its LFS attributes");
+        Contains(attributes, "keep.dat filter=lfs", "the exact-path rule is untouched");
 
         DeleteTree(root);
     }

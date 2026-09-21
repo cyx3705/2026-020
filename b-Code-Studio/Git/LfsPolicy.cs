@@ -320,7 +320,7 @@ public static class LfsPolicy
     /// 二进制当文本做换行转换。只剩一个模式、没有任何属性的行整行删除。
     /// 顺手把上一轮「极保守」的说明换成现行规则。
     /// </summary>
-    public static string StripForeignLfsRules(string attributesText, out int stripped)
+    public static string StripForeignLfsRules(string attributesText, out int stripped, bool formatOnly = false)
     {
         stripped = 0;
         var newline = attributesText.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
@@ -331,7 +331,8 @@ public static class LfsPolicy
         {
             var trimmed = line.Trim();
             if (trimmed == AttributesBegin) inside = true;
-            if (inside || ParseAttributesLine(line) is not { } entry || !entry.Attributes.Any(IsLfsAttribute))
+            if (inside || ParseAttributesLine(line) is not { } entry || !entry.Attributes.Any(IsLfsAttribute)
+                || formatOnly && !IsFormatPattern(entry.Pattern))
             {
                 output.Add(line);
                 if (trimmed == AttributesEnd) inside = false;
@@ -349,7 +350,8 @@ public static class LfsPolicy
             output.Add(patternText + " " + string.Join(' ', kept));
         }
 
-        var start = FindSequence(output, LegacyHeader);
+        // 只删按格式的规则时，精确路径仍然留着，那段「已有指针逐条保留」的说明仍是实情，不换。
+        var start = formatOnly ? -1 : FindSequence(output, LegacyHeader);
         if (start >= 0)
         {
             output.RemoveRange(start, LegacyHeader.Length);
@@ -363,6 +365,21 @@ public static class LfsPolicy
         while (output.Count > 0 && output[^1].Trim().Length == 0)
             output.RemoveAt(output.Count - 1);
         return output.Count == 0 ? string.Empty : string.Join(newline, output) + newline;
+    }
+
+    /// <summary>
+    /// 按格式的规则：模式里有未转义的 <c>*</c> / <c>?</c> / <c>[</c>——
+    /// 例如 <c>*.dll</c>、<c>**/*.png</c>、<c>z-Publish/**/*.dll</c>。
+    /// 不带通配的精确路径（哪怕没有前导斜杠）不算。
+    /// </summary>
+    public static bool IsFormatPattern(string pattern)
+    {
+        for (var i = 0; i < pattern.Length; i++)
+        {
+            if (pattern[i] == '\\') { i++; continue; }
+            if (pattern[i] is '*' or '?' or '[') return true;
+        }
+        return false;
     }
 
     private static int QuotedLength(string raw)

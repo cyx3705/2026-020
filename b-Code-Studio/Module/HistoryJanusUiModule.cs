@@ -584,6 +584,7 @@ internal static partial class HistoryJanusUiCommands
             return
             [
                 Row(("item", "项目"), ("value", report.Project)),
+                Row(("item", "说明"), ("value", "下表只列 ≥100MB 的文件；不到 100MB 的一律不走 LFS")),
                 Row(("item", "LFS 指针"),
                     ("value", $"{report.PointerCount} 个，合计 {LfsPolicy.FormatBytes(report.PointerBytes)}" +
                               (report.MissingEntityCount > 0 ? $"（本机缺实体 {report.MissingEntityCount} 个）" : ""))),

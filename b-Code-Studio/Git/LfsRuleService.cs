@@ -4,7 +4,7 @@ using System.Text.Json;
 
 namespace HistoryJanus.Git;
 
-/// <summary>「LFS 规则」表的一行：一个走指针的文件，或一个 ≥100MB 的工作区文件。</summary>
+/// <summary>「LFS 规则」表的一行：一个 ≥100MB 的文件（已走指针的，或工作区里的）。</summary>
 public sealed record LfsFileRow(
     string Path,
     long SizeBytes,
@@ -133,7 +133,9 @@ public sealed class LfsRuleService
                         : "提交时会逐个弹窗确认；也可以在这里先定");
         }
 
-        var files = rows.Values.OrderByDescending(row => row.SizeBytes).ToList();
+        // 表里只列 ≥100MB 的文件（用户定）：小文件不该走 LFS，它们只以违规计数出现在汇总里。
+        var files = rows.Values.Where(row => row.SizeBytes >= LfsPolicy.ThresholdBytes)
+            .OrderByDescending(row => row.SizeBytes).ToList();
         var inspection = new LfsInspection(
             name, true, files,
             pointers.Count, pointers.Sum(pointer => pointer.Size),
@@ -342,11 +344,18 @@ public sealed class LfsRuleService
     /// 3. 不足 100MB 的指针转回普通入库；本机缺实体的先 <c>git lfs pull</c>，取不到的暂留指针并点名；
     /// 4. <paramref name="commit"/> 为真时本地提交，按 300MB 分批，每批一个提交，便于之后分批推送。
     ///
+    /// <paramref name="formatOnly"/> 为真时只删**按格式**的规则（<c>*.dll</c> 这类带通配的），
+    /// 精确路径的规则原样保留。
+    ///
+    /// 哪些文件要转回，一律在改写之后问 <c>git check-attr</c>：规则删掉后不再被任何 LFS 规则覆盖、
+    /// 而索引里还是指针的文件，下一次克隆拿到的就是一段指针文本——这种文件必须同批转回。
+    /// 由 git 自己判定覆盖关系，不在这里重新实现 gitattributes 的匹配。
+    ///
     /// 不改写历史、不推送。暂存区里已有别的改动时拒绝，免得把别人的东西一起提交。
     /// </summary>
     public async Task<(bool Success, string Message, LfsRepairReport? Report)> RepairAsync(
         string project, bool commit, bool dryRun, IProgress<string>? progress,
-        CancellationToken cancellation = default)
+        CancellationToken cancellation = default, bool formatOnly = false)
     {
         var resolved = await _projects.ResolveWorktreeAsync(project).ConfigureAwait(false);
         if (!resolved.Success || resolved.Worktree == null)
@@ -388,7 +397,6 @@ public sealed class LfsRuleService
         var large = pointers.Where(p => p.Size >= LfsPolicy.ThresholdBytes).Select(p => p.Path).ToList();
         var missing = pointers.Where(p => p.Size < LfsPolicy.ThresholdBytes && !p.Checkout)
             .Select(p => p.Path).ToList();
-        var convert = pointers.Where(p => p.Size < LfsPolicy.ThresholdBytes && p.Checkout).ToList();
 
         // 托管块：原有条目里仍然 ≥100MB（或还没提交、只在工作区里）的留下，加上现存的大指针与缺实体的例外。
         var attributesText = await ReadAsync(root, AttributesFile, cancellation);
@@ -406,7 +414,7 @@ public sealed class LfsRuleService
         foreach (var file in attributeFiles)
         {
             var before = await ReadAsync(root, file, cancellation);
-            var after = LfsPolicy.StripForeignLfsRules(before, out var count);
+            var after = LfsPolicy.StripForeignLfsRules(before, out var count, formatOnly);
             if (file.Equals(AttributesFile, StringComparison.OrdinalIgnoreCase))
                 after = LfsPolicy.WriteLfsBlock(after, keep);
             stripped += count;
@@ -420,9 +428,31 @@ public sealed class LfsRuleService
                 rewrites[AttributesFile] = (attributesText, after);
         }
 
+        // 先把改写落盘，再让 git 说哪些小指针已不被任何 LFS 规则覆盖。预演也这样做，结束后原样写回。
+        List<LfsPointer> convert;
+        try
+        {
+            foreach (var (file, (_, after)) in rewrites)
+                await File.WriteAllTextAsync(FullPath(root, file), after, new UTF8Encoding(false), cancellation);
+            var covered = await LfsCoveredAsync(root,
+                pointers.Where(p => p.Size < LfsPolicy.ThresholdBytes && p.Checkout).Select(p => p.Path).ToList(),
+                cancellation).ConfigureAwait(false);
+            if (covered == null)
+                return (false, $"{name}: git check-attr 失败，无法判断哪些文件失去 LFS 规则", null);
+            convert = pointers.Where(p => p.Size < LfsPolicy.ThresholdBytes && p.Checkout
+                                          && !covered.Contains(p.Path)).ToList();
+        }
+        finally
+        {
+            if (dryRun)
+                foreach (var (file, (before, _)) in rewrites)
+                    await File.WriteAllTextAsync(FullPath(root, file), before, new UTF8Encoding(false), CancellationToken.None);
+        }
+
+        var what = formatOnly ? "按格式的 LFS 规则" : "托管块外 LFS 规则";
         var convertedBytes = convert.Sum(p => p.Size);
         var batches = Batch(convert, ProjectService.PushChunkBudgetBytes);
-        var plan = $"{name}: 去掉托管块外 LFS 规则 {stripped} 条；{convert.Count} 个不足 100MB 的文件转回普通入库" +
+        var plan = $"{name}: 去掉{what} {stripped} 条；{convert.Count} 个不足 100MB 的文件转回普通入库" +
                    $"（{LfsPolicy.FormatBytes(convertedBytes)}，{Math.Max(batches.Count, rewrites.Count > 0 ? 1 : 0)} 批）；" +
                    $"≥100MB 继续走 LFS {large.Count} 个；本机缺实体暂留指针 {missing.Count} 个";
 
@@ -431,8 +461,6 @@ public sealed class LfsRuleService
                 new LfsRepairReport(name, dryRun, stripped, dryRun ? convert.Count : 0, dryRun ? convertedBytes : 0,
                     large.Count, missing, 0, plan));
 
-        foreach (var (file, (_, after)) in rewrites)
-            await File.WriteAllTextAsync(FullPath(root, file), after, new UTF8Encoding(false), cancellation);
         var addAttributes = await GitRunner.RunAsync(root,
             ["add", "--", .. rewrites.Keys.Select(Literal)], cancellation).ConfigureAwait(false);
         if (!addAttributes.Success)
@@ -453,7 +481,9 @@ public sealed class LfsRuleService
             progress?.Report($"[{name}] 第 {i + 1}/{total} 批：{batch.Count} 个文件，{LfsPolicy.FormatBytes(batch.Sum(p => p.Size))}");
             if (!commit)
                 continue;
-            var message = $"LFS 修复：{batch.Count} 个不足 100MB 的文件转回普通入库（第 {i + 1}/{total} 批）";
+            var message = formatOnly
+                ? $"LFS 修复：删除按格式的 LFS 规则，{batch.Count} 个不足 100MB 的文件转回普通入库（第 {i + 1}/{total} 批）"
+                : $"LFS 修复：{batch.Count} 个不足 100MB 的文件转回普通入库（第 {i + 1}/{total} 批）";
             var committed = await GitRunner.RunAsync(root, ["commit", "-m", message], cancellation)
                 .ConfigureAwait(false);
             if (!committed.Success)
@@ -461,12 +491,39 @@ public sealed class LfsRuleService
             commits++;
         }
 
+        // 复查：索引里还是指针、却已不被任何 LFS 规则覆盖的小文件必须为零。
+        // 只删格式规则时，精确路径覆盖的小指针按设计还留着，不算失败。
         var after2 = await ListPointersAsync(root, cancellation).ConfigureAwait(false) ?? [];
-        var left = after2.Count(p => p.Size < LfsPolicy.ThresholdBytes && p.Checkout);
+        var smallLeft = after2.Where(p => p.Size < LfsPolicy.ThresholdBytes && p.Checkout).Select(p => p.Path).ToList();
+        var stillCovered = await LfsCoveredAsync(root, smallLeft, cancellation).ConfigureAwait(false) ?? [];
+        var left = smallLeft.Count(path => !stillCovered.Contains(path));
         var detail = plan + (commit ? $"；已本地提交 {commits} 次，未推送" : "；已暂存，未提交") +
-                     (left > 0 ? $"；⚠ 仍有 {left} 个小文件是指针" : "");
+                     (left > 0 ? $"；⚠ 仍有 {left} 个小文件是指针却已没有 LFS 规则" : "");
         return (left == 0, detail,
             new LfsRepairReport(name, false, stripped, convert.Count, convertedBytes, large.Count, missing, commits, detail));
+    }
+
+    /// <summary>
+    /// 这些路径里哪些仍被 LFS 规则覆盖（<c>git check-attr filter</c> 为 lfs）。
+    /// 路径按参数分批传，不走标准输入——标准输入的代码页不是 UTF-8，中文路径会坏。
+    /// </summary>
+    private static async Task<HashSet<string>?> LfsCoveredAsync(
+        string root, IReadOnlyList<string> paths, CancellationToken cancellation)
+    {
+        var covered = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < paths.Count; i += 100)
+        {
+            var chunk = paths.Skip(i).Take(100).ToList();
+            var result = await GitRunner.RunAsync(root,
+                ["check-attr", "-z", "filter", "--", .. chunk], cancellation).ConfigureAwait(false);
+            if (!result.Success)
+                return null;
+            var parts = result.Output.Split('\0');
+            for (var j = 0; j + 2 < parts.Length; j += 3)
+                if (parts[j + 2] == "lfs")
+                    covered.Add(parts[j].Trim('\n', '\r'));
+        }
+        return covered;
     }
 
     private static List<List<LfsPointer>> Batch(IEnumerable<LfsPointer> files, long budget)
