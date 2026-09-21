@@ -532,7 +532,7 @@ public sealed partial class ProjectOperationsPanelContractTests
 
         var widgets = PanelWidgets(panel);
         Assert.Equal(
-            new[] { "合规", "LFS 指针", "大小", "≥100MB", "LFS", "不纳入", "未决定" },
+            new[] { "合规", "大小", "≥100MB", "LFS", "不纳入", "未决定" },
             widgets.Select(w => w.GetProperty("label").GetString()).ToArray());
         Assert.All(widgets, widget =>
         {

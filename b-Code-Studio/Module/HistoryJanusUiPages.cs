@@ -349,7 +349,6 @@ internal static partial class HistoryJanusUiCommands
                                                     widgets = new object[]
                                                     {
                                                         LfsStat("lfs-compliance", "合规", "compliance"),
-                                                        LfsStat("lfs-pointers", "LFS 指针", "pointers"),
                                                         LfsStat("lfs-bytes", "大小", "bytes"),
                                                     },
                                                 },

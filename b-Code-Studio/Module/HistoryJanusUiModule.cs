@@ -150,7 +150,7 @@ internal static partial class HistoryJanusUiCommands
                 new ParameterSpec
                 {
                     Name = "item",
-                    Description = "lfsstat 视图取哪一格：compliance / pointers / bytes / oversize / lfs / ignore / undecided",
+                    Description = "lfsstat 视图取哪一格：compliance / bytes / oversize / lfs / ignore / undecided",
                 },
                 new ParameterSpec
                 {
@@ -305,7 +305,7 @@ internal static partial class HistoryJanusUiCommands
         if (view == "excludes")
             return Rows(UiRuleProjection.Excludes(business()));
 
-        // LFS 面板七格与文件表按选中项目取，共用一次检查（见 UiLfsProjection 的缓存）。
+        // LFS 面板六格与文件表按选中项目取，共用一次检查（见 UiLfsProjection 的缓存）。
         if (view is "lfs" or "lfsstat")
         {
             var inspected = await UiLfsProjection.InspectAsync(business(), context.GetString("name"));
@@ -597,7 +597,6 @@ internal static partial class HistoryJanusUiCommands
             var value = item?.Trim().ToLowerInvariant() switch
             {
                 "compliance" => report.SmallPointerCount + report.ForeignRuleCount == 0 ? "✓" : "✗",
-                "pointers" => report.PointerCount.ToString(),
                 "bytes" => LfsPolicy.FormatBytes(report.PointerBytes),
                 "oversize" => report.OversizeCount.ToString(),
                 "lfs" => report.DecidedLfs.ToString(),

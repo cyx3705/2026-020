@@ -163,7 +163,7 @@ public sealed class LfsPolicyContractTests
         Assert.Equal("✓", HistoryJanusUiCommands.UiLfsProjection.Stat((true, "", report), "compliance")[0]["value"]);
         var dirty = report with { SmallPointerCount = 2 };
         Assert.Equal("✗", HistoryJanusUiCommands.UiLfsProjection.Stat((true, "", dirty), "compliance")[0]["value"]);
-        Assert.Equal("—", HistoryJanusUiCommands.UiLfsProjection.Stat((false, "x", null), "pointers")[0]["value"]);
+        Assert.Equal("—", HistoryJanusUiCommands.UiLfsProjection.Stat((false, "x", null), "bytes")[0]["value"]);
     }
 
     private static int Count(string text, string token)
