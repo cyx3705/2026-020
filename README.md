@@ -2,8 +2,6 @@
 
 > 项目、Git 与 GitHub 治理：项目库、提交同步与分支图谱
 
-![OneHistory Logo](./Logo.png)
-
 ## 定位
 
 HistoryJanus 是运行在 HistoryVulcan 中的项目与 Git 治理模块：管理 HistoryClio 项目库的登记、提交、同步、归档，
@@ -85,6 +83,9 @@ dotnet run --project .\b-Code-Verify\ModuleSmoke\ModuleSmoke.csproj -c Release -
 - 跨项目读取已发布 API 走 `diana.docs.read domain=janus`；HistoryVulcan 合同只从平级 `2026-023-HistoryVulcan/z-Publish` 消费。
 - 默认不读 `b-Office/history`，只有明确追溯版本时才读指定文件。
 
----
+## 保留内容
+- 本模板项目介绍：此为最初的准备的项目模板
+    每个分支项目都会由他去继承
+- 作者：Pinavia - 2025
 
-作者：Pinavia
+![logo](./Logo.png)
