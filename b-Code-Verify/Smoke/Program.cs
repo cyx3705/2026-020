@@ -17,6 +17,7 @@ var suites = new (string Name, Func<string[], Task> Run)[]
     ("VersionProjection", VersionProjectionSuite.RunAsync),
     ("TestArchitecture", TestArchitectureSuite.RunAsync),
     ("GitRules", GitRulesSuite.RunAsync),
+    ("LfsRules", LfsRulesSuite.RunAsync),
     ("BranchHistory", BranchHistorySuite.RunAsync),
     ("BranchGraph", BranchGraphSuite.RunAsync),
     ("SubmoduleSafety", SubmoduleSafetySuite.RunAsync),

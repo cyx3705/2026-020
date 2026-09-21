@@ -48,28 +48,6 @@ public static class WorktreeLfsHelper
         return false;
     }
 
-    public static async Task<(bool Success, string Message)> SetupLfsForFilesAsync(
-        string worktreePath, IEnumerable<string> relativePaths)
-    {
-        var installResult = await GitRunner.RunAsync(worktreePath, ["lfs", "install"]);
-        if (!installResult.Success)
-            return (false, "git lfs install 失败:\n" + installResult.Output);
-
-        foreach (var relativePath in relativePaths)
-        {
-            var normalized = relativePath.Replace('\\', '/');
-            var trackResult = await GitRunner.RunAsync(worktreePath, ["lfs", "track", normalized]);
-            if (!trackResult.Success)
-                return (false, $"git lfs track 失败({normalized}):\n" + trackResult.Output);
-        }
-
-        var addAttrResult = await GitRunner.RunAsync(worktreePath, ["add", ".gitattributes"]);
-        if (!addAttrResult.Success)
-            return (false, "添加 .gitattributes 失败:\n" + addAttrResult.Output);
-
-        return (true, string.Empty);
-    }
-
     public static async Task<bool> IsGitLfsAvailableAsync(string worktreePath)
     {
         var result = await GitRunner.RunAsync(worktreePath, ["lfs", "version"]);

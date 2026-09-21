@@ -16,6 +16,7 @@ public sealed class StudioBusinessComposition
         ProjectService projects,
         HistoryRecorder history,
         GitFileRuleService gitRules,
+        LfsRuleService lfsRules,
         BranchHistoryService branchHistory,
         GitHubConnectionService gitHub,
         GraphService graph)
@@ -23,6 +24,7 @@ public sealed class StudioBusinessComposition
         Projects = projects;
         History = history;
         GitRules = gitRules;
+        LfsRules = lfsRules;
         BranchHistory = branchHistory;
         GitHub = gitHub;
         Graph = graph;
@@ -33,6 +35,8 @@ public sealed class StudioBusinessComposition
     public HistoryRecorder History { get; }
 
     public GitFileRuleService GitRules { get; }
+
+    public LfsRuleService LfsRules { get; }
 
     public BranchHistoryService BranchHistory { get; }
 
@@ -75,6 +79,9 @@ public static class StudioBusinessCompositionFactory
         var gitRules = new GitFileRuleService(projects, settings);
         // 排除规则由提交链路自动落地，不再需要人工下发命令。
         projects.ExcludeRules = gitRules;
+        // LFS 规则同样在提交链路里执行：查违规、按记住的决定处理 ≥100MB 文件。
+        var lfsRules = new LfsRuleService(projects);
+        projects.LfsRules = lfsRules;
         var branchHistory = new BranchHistoryService(projects);
         // GitHub 事实读取指向当前选中项目仓；无选中时回退库根（非 git 仓则诊断失败）
         var gitHub = new GitHubConnectionService(
@@ -83,7 +90,7 @@ public static class StudioBusinessCompositionFactory
 
         ProjectCommands.RegisterAll(registry, projects, history, commandSource);
         BranchHistoryCommands.RegisterAll(registry, branchHistory, history, commandSource);
-        GitRuleCommands.RegisterAll(registry, gitRules, commandSource);
+        GitRuleCommands.RegisterAll(registry, gitRules, lfsRules, commandSource);
         GitHubCommands.RegisterAll(registry, gitHub, commandSource);
         GraphCommands.RegisterAll(registry, graph, commandSource);
         // 业务模块不注册诊断或自动化辅助指令：日志承压由宿主 vulcan.log.flood 承担，
@@ -93,6 +100,7 @@ public static class StudioBusinessCompositionFactory
             projects,
             history,
             gitRules,
+            lfsRules,
             branchHistory,
             gitHub,
             graph);

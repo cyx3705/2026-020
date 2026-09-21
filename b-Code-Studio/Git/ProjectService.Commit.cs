@@ -242,12 +242,22 @@ public sealed partial class ProjectService
                 progress?.Report($"[{worktree.BranchName}] {ensured.Message}");
         }
 
+        // 不到 100MB 的文件一律不走 LFS：有违规就不提交，指向修复命令。
+        (HashSet<string> Lfs, HashSet<string> Ignore) decided = ([], []);
+        if (LfsRules != null)
+        {
+            var policy = await LfsRules.CheckPolicyAsync(worktree.WorktreePath, cancellation);
+            if (!policy.Success)
+                return (null, new CommitReport(CommitOutcome.Failed, $"[{worktree.BranchName}] {policy.Message}"));
+            decided = await LfsRules.ReadDecisionsAsync(worktree.WorktreePath, cancellation);
+        }
+
         progress?.Report($"[{worktree.BranchName}] 扫描文件大小...");
         var warnBytes = WarnBytes;
         var (checkStatus, largeFiles) = await Task.Run(() =>
             WorktreeFileScanner.ScanDirectory(worktree.WorktreePath, warnBytes, GitHubFileLimitBytes,
                 excludedDirectories), cancellation);
-        // LFS 极保守：只有触到 GitHub 100MB 硬限的文件才考虑，且逐个文件按精确路径 track。
+        // 只有触到 GitHub 100MB 硬限的文件才考虑 LFS，且逐个文件按精确路径写进 lfs 托管块。
         // 不按扩展名批量套 LFS——4.x 那套 137 条通配把文本也塞进 LFS，是 11GB 占用的根因。
         var oversized = largeFiles.Where(file => file.SizeBytes >= GitHubFileLimitBytes).ToList();
         var needsLfs = new List<LargeFileEntry>();
@@ -258,6 +268,17 @@ public sealed partial class ProjectService
                     $"发现 {oversized.Count} 个超过 GitHub 100MB 硬限的文件，但未检测到 Git LFS，无法处理"));
             foreach (var file in oversized)
             {
+                // 在「LFS 规则」子页上已经定过的，按决定走，不再弹窗。
+                if (decided.Ignore.Contains(file.RelativePath))
+                {
+                    progress?.Report($"   [不纳入 git] {file.RelativePath}({file.FormattedSize})按已记住的决定处理");
+                    continue;
+                }
+                // 已被入库规则排除、本来就不会进仓库的文件，不该为它问 LFS。
+                var ignored = await GitRunner.RunAsync(worktree.WorktreePath,
+                    ["check-ignore", "-q", "--", file.RelativePath], cancellation);
+                if (ignored.ExitCode == 0)
+                    continue;
                 if (!await WorktreeLfsHelper.IsFileManagedByLfsAsync(worktree.WorktreePath, file.RelativePath))
                     needsLfs.Add(file);
                 else
@@ -290,11 +311,24 @@ public sealed partial class ProjectService
     {
         if (plan.NeedsLfs.Count > 0)
         {
+            // 只按精确路径写进 lfs 托管块，不再 git lfs track——那条命令写出的行不带前导斜杠，
+            // 会匹配任意层级的同名文件。
             progress?.Report($"[{plan.Worktree.BranchName}] 配置 Git LFS...");
-            var setup = await WorktreeLfsHelper.SetupLfsForFilesAsync(plan.Worktree.WorktreePath,
-                plan.NeedsLfs.Select(file => file.RelativePath));
+            var setup = LfsRules == null
+                ? (Success: false, Message: "LFS 规则服务未装配")
+                : await LfsRules.RecordLfsAsync(plan.Worktree.WorktreePath,
+                    plan.NeedsLfs.Select(file => file.RelativePath), cancellation);
             if (!setup.Success)
                 return new CommitReport(CommitOutcome.Failed, $"Git LFS 配置失败:\n{setup.Message}",
+                    BeforeSha: plan.BeforeSha, AfterSha: plan.BeforeSha);
+        }
+
+        // 把「LFS 规则」子页上记住的决定落进索引：不纳入 git 的移出索引，LFS 的转成指针。
+        if (LfsRules != null)
+        {
+            var decisions = await LfsRules.StageDecisionsAsync(plan.Worktree.WorktreePath, progress, cancellation);
+            if (!decisions.Success)
+                return new CommitReport(CommitOutcome.Failed, decisions.Message,
                     BeforeSha: plan.BeforeSha, AfterSha: plan.BeforeSha);
         }
 

@@ -259,14 +259,14 @@ internal static partial class HistoryJanusUiCommands
                                             label = "子页面",
                                             mode = "select",
                                             channel = SectionChannel,
-                                            options = new[] { SectionRules, SectionHistory, SectionGitHub },
+                                            options = new[] { SectionRules, SectionLfs, SectionHistory, SectionGitHub },
                                             commitAction = "janus.section.enter",
                                         },
                                     },
                                 },
                             },
                         },
-                        // 三块子内容。case 与上面选项框的候选项是同一组常量，
+                        // 四块子内容。case 与上面选项框的候选项是同一组常量，
                         // 因此改标题只改常量，两处不会各说各话。
                         //
                         // 没被切到过的那几支不取数：Aurora 只把当前这一支挂上可视树。
@@ -279,12 +279,11 @@ internal static partial class HistoryJanusUiCommands
                             source = "{selection." + SectionChannel + ".value}",
                             children = new object[]
                             {
-                                // 一张表说完两件事：本仓哪几个文件在走 LFS、什么不入库。
+                                // 入库规则：全库共用的清单，什么进仓库、什么不进。
                                 // 目录与扩展名同表，靠末尾的 / 与开头的 * 自己区分。
+                                // 与选中项目无关，所以取数参数里没有项目名。
                                 //
-                                // 没有「刷新规则」按钮了：切到这一支就重取（见 section 那一行的
-                                // commitAction）。LFS 那几行按**当前选中项目**取，
-                                // 所以换项目时 Aurora 也会自己重取——取数参数引用了选中通道。
+                                // 没有「刷新规则」按钮：切到这一支就重取（见 section 那一行的 commitAction）。
                                 new
                                 {
                                     type = "table",
@@ -293,12 +292,67 @@ internal static partial class HistoryJanusUiCommands
                                     dataSource = new
                                     {
                                         command = "janus.ui.data",
-                                        args = new { view = "excludes", name = SelectedProject },
+                                        args = new { view = "excludes" },
                                     },
                                     columns = new object[]
                                     {
                                         new { key = "kind", title = "类型", width = "70" },
                                         new { key = "rule", title = "规则", width = "*" },
+                                    },
+                                },
+                                // LFS 规则（5.11.0）：按选中项目。上面一张「项 / 值」汇总，
+                                // 下面一张逐个文件——走 LFS 指针的，加上工作区里 ≥100MB 的。
+                                // 汇总不做成说明文字：Aurora 的文字节点是静态的，而这几行是数。
+                                //
+                                // ≥100MB 的行靠行操作定去向；决定写进仓里的托管块，下次提交生效，
+                                // 历史不改写。不到 100MB 的行点了也会被拒：它们一律不走 LFS。
+                                new
+                                {
+                                    type = "stack",
+                                    @case = SectionLfs,
+                                    gap = "normal",
+                                    children = new object[]
+                                    {
+                                        new
+                                        {
+                                            type = "table",
+                                            id = "lfs-summary",
+                                            dataSource = new
+                                            {
+                                                command = "janus.ui.data",
+                                                args = new { view = "lfssummary", name = SelectedProject },
+                                            },
+                                            columns = new object[]
+                                            {
+                                                new { key = "item", title = "项", width = "100" },
+                                                new { key = "value", title = "值", width = "*" },
+                                            },
+                                        },
+                                        new
+                                        {
+                                            type = "table",
+                                            id = "lfs-files",
+                                            dataSource = new
+                                            {
+                                                command = "janus.ui.data",
+                                                args = new { view = "lfs", name = SelectedProject },
+                                            },
+                                            columns = new object[]
+                                            {
+                                                new { key = "path", title = "文件", width = "*" },
+                                                new { key = "size", title = "大小", width = "80" },
+                                                new { key = "state", title = "当前", width = "110" },
+                                                new { key = "decision", title = "决定", width = "80" },
+                                                new { key = "note", title = "说明", width = "220" },
+                                            },
+                                            rowActions = new object[]
+                                            {
+                                                new { action = "janus.lfs.uselfs", title = "LFS 指针" },
+                                                new { action = "janus.lfs.untrack", title = "不纳入 git", style = "danger" },
+                                                new { action = "janus.lfs.clear", title = "清除决定", inline = false },
+                                            },
+                                            view = new { filterable = true, sortable = true, selection = "single" },
+                                        },
                                     },
                                 },
                                 new
@@ -445,6 +499,47 @@ internal static partial class HistoryJanusUiCommands
                     ["name"] = SelectedProject,
                 },
                 summary = "推送选中项目的分支",
+            },
+            // LFS 规则表的三个行操作（5.11.0）。{name} 与 {path} 取被点那一行。
+            new
+            {
+                id = "janus.lfs.uselfs",
+                title = "LFS 指针",
+                command = "janus.ui.lfsdecide",
+                args = new Dictionary<string, string>
+                {
+                    ["name"] = "{name}",
+                    ["path"] = "{path}",
+                    ["decision"] = "lfs",
+                },
+                summary = "这个 ≥100MB 的文件走 LFS 指针；下次提交生效，历史不变",
+            },
+            new
+            {
+                id = "janus.lfs.untrack",
+                title = "不纳入 git",
+                command = "janus.ui.lfsdecide",
+                args = new Dictionary<string, string>
+                {
+                    ["name"] = "{name}",
+                    ["path"] = "{path}",
+                    ["decision"] = "ignore",
+                },
+                danger = true,
+                summary = "这个 ≥100MB 的文件不再纳入 git：下次提交移出索引，本地文件保留，历史不变",
+            },
+            new
+            {
+                id = "janus.lfs.clear",
+                title = "清除决定",
+                command = "janus.ui.lfsdecide",
+                args = new Dictionary<string, string>
+                {
+                    ["name"] = "{name}",
+                    ["path"] = "{path}",
+                    ["decision"] = "none",
+                },
+                summary = "撤掉这个文件的决定；下次提交若仍 ≥100MB 会重新弹窗确认",
             },
             // 切到哪一支就刷哪一支（5.9.0）。它不是按钮，是子页面选项框的
             // commitAction——选项框一变就带着新标题打过来。

@@ -18,18 +18,6 @@ public sealed record ExcludeRuleReport(
     IReadOnlyList<string> Directories,
     IReadOnlyList<ExcludeRuleState> Projects);
 
-/// <summary>某个仓里一个走 LFS 指针的文件。</summary>
-public sealed record LfsTrackedFile(string RelativePath, string FormattedSize);
-
-/// <summary>
-/// 某个仓的 LFS 实况。<see cref="Available"/> 为假说明本机没装 git-lfs，
-/// 这与「装了但一个文件都没走 LFS」是两回事，规则面要分开说。
-/// </summary>
-public sealed record LfsReport(
-    string Project,
-    bool Available,
-    IReadOnlyList<LfsTrackedFile> Files);
-
 /// <summary>
 /// 提交链路刷写 .gitignore 托管块的窄接口。
 /// 单独抽出来只为打断依赖环：GitFileRuleService 需要 ProjectService 解析项目路径，
@@ -47,8 +35,8 @@ public interface IExcludeRuleWriter
 /// 4.x 曾按格式逐条维护 Git/LFS/LF 三态规则表，并要求人工执行 sync 下发。
 /// 实践证明那套规则面本身就是故障源：137 条按扩展名的 LFS 通配把 *.asm / *.baml
 /// 这类文本也塞进 LFS，最终 11 GB LFS 占用、推送被 GitHub pre-receive 拒收。
-/// 5.0.0 起规则只回答一个问题——这个后缀/目录要不要进仓库；LFS 完全退出规则面，
-/// 只在提交链路里对超过 GitHub 100MB 硬限的**具体文件**征求人工同意。
+/// 5.0.0 起规则只回答一个问题——这个后缀/目录要不要进仓库。LFS 是另一块规则，
+/// 按具体文件、按仓管理，见 <see cref="LfsRuleService"/>（5.11.0 起拆成独立子页）。
 ///
 /// 清单存在设置里而不是各仓文件里：全库一致才不消耗认知，且提交链路会自动把它
 /// 幂等刷进各仓 .gitignore 托管块，不再需要任何手动下发命令。
@@ -164,64 +152,6 @@ public sealed class GitFileRuleService : IExcludeRuleWriter
         {
             _writeGate.Release();
         }
-    }
-
-    /// <summary>
-    /// 只读：**这个仓里实际走 LFS 指针的是哪几个文件**。
-    ///
-    /// 规则面上原先写的是一条策略——「单个文件超过 100MB 转 LFS」。那句话对每个仓
-    /// 都一样，因此看了也不知道自己这个仓到底有没有 LFS、有哪几个；而这恰恰是
-    /// 2026-08 那次 11GB LFS 占用事故之后最该一眼看到的事实。现在改为直接列文件。
-    /// </summary>
-    public async Task<(bool Success, string Message, LfsReport? Report)> ListLfsAsync(
-        string? project, CancellationToken cancellation = default)
-    {
-        var resolved = await _projects.ResolveWorktreeAsync(project ?? "").ConfigureAwait(false);
-        if (!resolved.Success || resolved.Worktree == null)
-            return (false, resolved.Message, null);
-
-        var repository = resolved.Worktree.WorktreePath;
-        if (!await WorktreeLfsHelper.IsGitLfsAvailableAsync(repository).ConfigureAwait(false))
-            return (true, "本机未安装 git-lfs", new LfsReport(resolved.Worktree.BranchName, false, []));
-
-        // -s 给出「路径 (大小)」；大小是 LFS 自己记的实体大小，不必再逐个 stat 工作树。
-        var listed = await GitRunner.RunAsync(repository, ["lfs", "ls-files", "-s"], cancellation)
-            .ConfigureAwait(false);
-        if (!listed.Success)
-            return (false, $"读取 LFS 清单失败:\n{listed.Output}", null);
-
-        var files = listed.Output
-            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Select(ParseLfsLine)
-            .Where(file => file.RelativePath.Length > 0)
-            .OrderBy(file => file.RelativePath, StringComparer.OrdinalIgnoreCase)
-            .ToList();
-        return (true,
-            files.Count == 0
-                ? $"{resolved.Worktree.BranchName}: 本仓没有文件走 LFS"
-                : $"{resolved.Worktree.BranchName}: {files.Count} 个文件走 LFS",
-            new LfsReport(resolved.Worktree.BranchName, true, files));
-    }
-
-    /// <summary>
-    /// <c>git lfs ls-files -s</c> 的一行形如
-    /// <c>2f1a3b4c5d * z-Publish/big.zip (128 MB)</c>。
-    /// 只取路径与括号里的大小；对不上格式就只留整行当路径，不猜。
-    /// </summary>
-    private static LfsTrackedFile ParseLfsLine(string line)
-    {
-        var marker = line.IndexOf(' ');
-        var rest = marker < 0 ? line : line[(marker + 1)..].TrimStart();
-        if (rest.StartsWith("* ", StringComparison.Ordinal) || rest.StartsWith("- ", StringComparison.Ordinal))
-            rest = rest[2..];
-        var size = "";
-        var open = rest.LastIndexOf(" (", StringComparison.Ordinal);
-        if (open > 0 && rest.EndsWith(')'))
-        {
-            size = rest[(open + 2)..^1];
-            rest = rest[..open];
-        }
-        return new LfsTrackedFile(rest.Trim(), size);
     }
 
     /// <summary>
