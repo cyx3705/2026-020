@@ -518,28 +518,27 @@ public sealed partial class ProjectOperationsPanelContractTests
     }
 
     /// <summary>
-    /// LFS 页的信息展示（5.12.0，用户定）：上面一块控制面板**不超过两行**，每格「标签 | 值」，
-    /// 合规只给 ✓ / ✗；下面一张表**只有文件、大小、操作三列**，操作与总览一样是多态按钮。
+    /// LFS 页的信息展示（5.12.0 起，用户定）：上面一块控制面板，每格「标签 | 值」，合规只给 ✓ / ✗；
+    /// 5.12.1 起面板**只有一行**合规、大小、≥100MB——LFS / 不纳入 / 未决定三格删了，去向在表里看。
+    /// 下面一张表**只有文件、大小、操作三列**，操作与总览一样是多态按钮。
     ///
     /// 面板每格是只有一个候选的选择框，取数必须引用选中项目与子页面两个通道：
     /// 选择框只在引用的通道变化时重取，漏了子页面那一个，切回本页看到的是旧数。
     /// </summary>
     [Fact]
-    public void TheLfsSectionIsAPanelOfTwoRowsAndAThreeColumnTable()
+    public void TheLfsSectionIsAOneRowPanelAndAThreeColumnTable()
     {
         var panel = Node("projops", "janus-lfs");
-        Assert.True(panel.GetProperty("rows").GetArrayLength() <= 2, "LFS 控制面板不超过两行");
-        // 上下各三格（用户定）：上面合规、大小、≥100MB；下面是 ≥100MB 文件的三种去向。
-        Assert.All(panel.GetProperty("rows").EnumerateArray(), row => Assert.Equal(3, row.GetProperty("widgets").GetArrayLength()));
+        Assert.Equal(1, panel.GetProperty("rows").GetArrayLength());
 
         var widgets = PanelWidgets(panel);
         Assert.Equal(
-            new[] { "合规", "大小", "≥100MB", "LFS", "不纳入", "未决定" },
+            new[] { "合规", "大小", "≥100MB" },
             widgets.Select(w => w.GetProperty("label").GetString()).ToArray());
         Assert.All(widgets, widget =>
         {
             Assert.Equal("select", widget.GetProperty("mode").GetString());
-            // 值多是个位数：不声明最窄宽度就按 120 算，两行排不下会折成四行。
+            // 值多是个位数：不声明最窄宽度就按 120 算，一行三格会折行。
             Assert.True(widget.GetProperty("minWidth").GetInt32() <= 80, "LFS 面板每格最窄宽度按内容给");
             var args = widget.GetProperty("optionsSource").GetProperty("args");
             Assert.Equal("lfsstat", args.GetProperty("view").GetString());

@@ -21,7 +21,7 @@ internal static partial class HistoryJanusUiCommands
     /// <summary>
     /// LFS 面板的一格「标签 | 值」：只返回一个候选的选择框。
     /// 取数引用选中项目与子页面两个通道——引用哪个，哪个一变就重取。
-    /// 值多是个位数：最窄宽度按内容给，不用 Aurora 默认的 120——那样两行六格排不下，会折成四行。
+    /// 值多是个位数：最窄宽度按内容给，不用 Aurora 默认的 120——那样一行三格会折行。
     /// </summary>
     private static object LfsStat(string id, string label, string item, int minWidth) => new
     {
@@ -325,13 +325,14 @@ internal static partial class HistoryJanusUiCommands
                                         new { key = "rule", title = "规则", width = "*" },
                                     },
                                 },
-                                // LFS 规则（5.12.0）：按选中项目。上面一块控制面板，两行「标签 | 值」；
-                                // 下面一张表只列 ≥100MB 的文件，三列：文件、大小、操作。
+                                // LFS 规则（5.12.0；5.12.1 起面板只剩一行）：按选中项目。上面一块控制面板，
+                                // 一行三格「标签 | 值」；下面一张表列出全部 ≥100MB 的文件，三列：文件、大小、操作。
+                                // 每个文件的去向就在表里「操作」格上看，面板不再重复计数（用户定）。
                                 //
                                 // 面板里的值用只返回一个候选的选择框显示——Aurora 面板没有取数文字控件
                                 // （用户选定这样凑，不为此改 Aurora）。选择框只在它引用的通道变化时重取，
                                 // 所以取数参数同时引用选中项目与子页面两个通道：换项目、切回本页都会刷新。
-                                // 点「操作」改决定后表格立刻重取，面板的决定计数要等下一次换项目或切页。
+
                                 new
                                 {
                                     type = "stack",
@@ -355,21 +356,10 @@ internal static partial class HistoryJanusUiCommands
                                                         LfsStat("lfs-oversize", "≥100MB", "oversize", 28),
                                                     },
                                                 },
-                                                // 第二行是 ≥100MB 那几个文件的去向，与上一行的数量一一对应。
-                                                new
-                                                {
-                                                    mode = "even",
-                                                    widgets = new object[]
-                                                    {
-                                                        LfsStat("lfs-decided-lfs", "LFS", "lfs", 28),
-                                                        LfsStat("lfs-decided-ignore", "不纳入", "ignore", 28),
-                                                        LfsStat("lfs-undecided", "未决定", "undecided", 28),
-                                                    },
-                                                },
                                             },
                                         },
-                                        // 「操作」格与总览一样是多态按钮：显示当前决定加符号，
-                                        // 点一下切到另一个去向（未决定 → LFS 指针 ↔ 不纳入 git）。
+                                        // 「操作」格与总览一样是多态按钮（5.12.1）：未决显示「未决」，点了弹窗二选一；
+                                        // 未纳入显示「纳入」，点了走 LFS 指针；已纳入显示「取消纳入」，点了取消 LFS 指针。
                                         new
                                         {
                                             type = "table",
@@ -534,8 +524,8 @@ internal static partial class HistoryJanusUiCommands
                 },
                 summary = "推送选中项目的分支",
             },
-            // LFS 规则表「操作」格（5.12.0）。{name}/{path}/{next} 取被点那一行：
-            // next 是投影按当前决定算好的下一个去向，页面不自己判断。
+            // LFS 规则表「操作」格（5.12.0；5.12.1 改文字与去向）。{name}/{path}/{next} 取被点那一行：
+            // next 是投影按当前决定算好的下一步，页面不自己判断（choose = 弹窗让人定）。
             new
             {
                 id = "janus.lfs.toggle",
@@ -547,7 +537,7 @@ internal static partial class HistoryJanusUiCommands
                     ["path"] = "{path}",
                     ["decision"] = "{next}",
                 },
-                summary = "在 LFS 指针与不纳入 git 之间切换；下次提交生效，历史不变",
+                summary = "未决的弹窗定去向；未纳入的纳入 LFS 指针；已纳入的取消纳入。下次提交生效，历史不变",
             },
             // 切到哪一支就刷哪一支（5.9.0）。它不是按钮，是子页面选项框的
             // commitAction——选项框一变就带着新标题打过来。

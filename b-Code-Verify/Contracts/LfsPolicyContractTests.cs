@@ -141,11 +141,12 @@ public sealed class LfsPolicyContractTests
     }
 
     /// <summary>
-    /// 「操作」格：显示当前决定加符号，点一下切到另一个去向（5.12.0）。
-    /// 未决定先落到 LFS 指针——它保留文件，误点的代价最小。已被入库规则排除的文件不列。
+    /// 「操作」格（5.12.1，用户定）：列出全部 ≥100MB 的文件。未决显示「未决」、点了弹窗定；
+    /// 未纳入显示「纳入」、点了走 LFS 指针；已纳入显示「取消纳入」、点了不再走 LFS 指针。
+    /// 被入库规则排除的也列出，显示「已排除」。
     /// </summary>
     [Fact]
-    public void TheOperationCellCyclesBetweenTheTwoDestinations()
+    public void TheOperationCellNamesWhatAClickDoes()
     {
         var report = new LfsInspection("p", true,
         [
@@ -156,14 +157,16 @@ public sealed class LfsPolicyContractTests
         ], 1, 1, 4, 1, 1, 1, 0, 0, 0);
         var rows = HistoryJanusUiCommands.UiLfsProjection.Files((true, "", report));
 
-        Assert.Equal(new[] { "a.bin", "b.bin", "c.bin" }, rows.Select(r => r["path"]).ToArray());
-        Assert.Equal(new[] { "未决定 ○", "LFS 指针 ●", "不纳入 ✕" }, rows.Select(r => r["op"]).ToArray());
-        Assert.Equal(new[] { "lfs", "ignore", "lfs" }, rows.Select(r => r["next"]).ToArray());
+        Assert.Equal(new[] { "a.bin", "b.bin", "c.bin", "bin/d.bin" }, rows.Select(r => r["path"]).ToArray());
+        Assert.Equal(new[] { "未决", "取消纳入", "纳入", "已排除" }, rows.Select(r => r["op"]).ToArray());
+        Assert.Equal(new[] { "choose", "ignore", "lfs", "excluded" }, rows.Select(r => r["next"]).ToArray());
 
         Assert.Equal("✓", HistoryJanusUiCommands.UiLfsProjection.Stat((true, "", report), "compliance")[0]["value"]);
         var dirty = report with { SmallPointerCount = 2 };
         Assert.Equal("✗", HistoryJanusUiCommands.UiLfsProjection.Stat((true, "", dirty), "compliance")[0]["value"]);
         Assert.Equal("—", HistoryJanusUiCommands.UiLfsProjection.Stat((false, "x", null), "bytes")[0]["value"]);
+        // 去向计数的三格 5.12.1 已删：再有人按旧名取，只给「—」。
+        Assert.Equal("—", HistoryJanusUiCommands.UiLfsProjection.Stat((true, "", report), "undecided")[0]["value"]);
     }
 
     private static int Count(string text, string token)
