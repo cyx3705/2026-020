@@ -150,7 +150,7 @@ internal static partial class HistoryJanusUiCommands
                 new ParameterSpec
                 {
                     Name = "item",
-                    Description = "lfsstat 视图取哪一格：compliance / bytes / oversize / lfs / ignore / undecided",
+                    Description = "lfsstat 视图取哪一格：compliance / bytes / oversize",
                 },
                 new ParameterSpec
                 {
@@ -231,7 +231,7 @@ internal static partial class HistoryJanusUiCommands
             [
                 new ParameterSpec { Name = "name", Description = "项目名", Required = true, Position = 0 },
                 new ParameterSpec { Name = "path", Description = "仓库内相对路径", Required = true, Position = 1 },
-                new ParameterSpec { Name = "decision", Description = "lfs / ignore / none", Required = true, Position = 2 },
+                new ParameterSpec { Name = "decision", Description = "lfs / ignore / none；choose = 弹窗二选一；excluded = 已被入库规则排除（只回说明）", Required = true, Position = 2 },
             ],
             Handler = context => DecideLfsAsync(context, bus),
         }, source);
@@ -276,16 +276,42 @@ internal static partial class HistoryJanusUiCommands
         return ["lfs-files"];
     }
 
+    // LFS 文件表「操作」格的 next（5.12.1）：前两个直接是 lfsset 的 decision，后两个只在界面里用。
+    internal const string LfsNextLfs = "lfs";
+    internal const string LfsNextIgnore = "ignore";
+    internal const string LfsNextChoose = "choose";
+    internal const string LfsNextExcluded = "excluded";
+
     /// <summary>
-    /// 行操作走这里而不是直接打 <c>janus.gitrule.lfsset</c>：记完决定要让两张表重取，
-    /// 否则人点了「LFS 指针」，那一行的「决定」还写着「未决定」。
+    /// 行操作走这里而不是直接打 <c>janus.gitrule.lfsset</c>：记完决定要让表格重取，
+    /// 否则人点了「纳入」，那一格还写着「纳入」。
+    /// 未决的先弹窗让人二选一（5.12.1）；<c>z-*</c> 快照里的文件只能走 LFS 指针，弹窗只给这一项。
     /// </summary>
     private static async Task<CommandResult> DecideLfsAsync(CommandContext context, CommandBus bus)
     {
+        var name = context.RequireString("name");
+        var path = context.RequireString("path");
+        var decision = context.RequireString("decision").Trim().ToLowerInvariant();
+        if (decision == LfsNextExcluded)
+            return CommandResult.Fail($"{path} 已被入库规则排除，不进仓库，谈不上纳入 LFS；要入库先到「入库规则」里去掉对应条目");
+        if (decision == LfsNextChoose)
+        {
+            var options = new List<object> { new { label = "纳入 LFS 指针", value = LfsNextLfs } };
+            if (!LfsPolicy.IsSnapshotPath(path))
+                options.Add(new { label = "不纳入 git（本地文件保留）", value = LfsNextIgnore });
+            var choice = await bus.ExecuteAsync(
+                $"aurora.ui.dialog kind=choice title={Quote("LFS 去向")} body={Quote(path)} " +
+                $"options={Quote(JsonSerializer.Serialize(options))} primary=确定 cancel=取消",
+                context.Source, context.Cancellation);
+            if (!choice.Success)
+                return choice;
+            decision = DialogValue(choice);
+            if (decision is not (LfsNextLfs or LfsNextIgnore))
+                return CommandResult.Fail($"未知的去向：{decision}");
+        }
+
         var result = await bus.ExecuteAsync(
-            $"janus.gitrule.lfsset name={CommandParser.QuoteArg(context.RequireString("name"))} " +
-            $"path={CommandParser.QuoteArg(context.RequireString("path"))} " +
-            $"decision={CommandParser.QuoteArg(context.RequireString("decision"))}",
+            $"janus.gitrule.lfsset name={Quote(name)} path={Quote(path)} decision={Quote(decision)}",
             context.Source, context.Cancellation);
         foreach (var node in LfsNodes())
             await bus.ExecuteAsync($"aurora.ui.refreshdata node={node}", context.Source, context.Cancellation);
@@ -305,7 +331,7 @@ internal static partial class HistoryJanusUiCommands
         if (view == "excludes")
             return Rows(UiRuleProjection.Excludes(business()));
 
-        // LFS 面板六格与文件表按选中项目取，共用一次检查（见 UiLfsProjection 的缓存）。
+        // LFS 面板三格与文件表按选中项目取，共用一次检查（见 UiLfsProjection 的缓存）。
         if (view is "lfs" or "lfsstat")
         {
             var inspected = await UiLfsProjection.InspectAsync(business(), context.GetString("name"));
@@ -599,18 +625,18 @@ internal static partial class HistoryJanusUiCommands
                 "compliance" => report.SmallPointerCount + report.ForeignRuleCount == 0 ? "✓" : "✗",
                 "bytes" => LfsPolicy.FormatBytes(report.PointerBytes),
                 "oversize" => report.OversizeCount.ToString(),
-                "lfs" => report.DecidedLfs.ToString(),
-                "ignore" => report.DecidedIgnore.ToString(),
-                "undecided" => report.Undecided.ToString(),
                 _ => "—",
             };
             return [Row(("value", value))];
         }
 
         /// <summary>
-        /// 文件表三列：文件、大小、操作。「操作」是多态按钮的文字——当前决定加符号；
-        /// <c>next</c> 是点一下要切到的去向，与 <c>name</c> 一起作为动作参数，不显示。
-        /// 已被入库规则排除的文件不列：它们本来就不进仓库，与 LFS 无关。
+        /// 文件表三列：文件、大小、操作；列出全部 ≥100MB 的文件（5.12.1，用户定）。
+        /// 「操作」是多态按钮的文字，<c>next</c> 是点一下要做的事，与 <c>name</c> 一起作为动作参数，不显示：
+        /// 未决 → <c>choose</c>（弹窗二选一）；未纳入（不纳入 git）→「纳入」，<c>lfs</c>；
+        /// 已纳入（LFS 指针）→「取消纳入」，<c>ignore</c>。
+        /// 已被入库规则排除的文件也列出，显示「已排除」，<c>next=excluded</c>：
+        /// 定 LFS 对它不起作用（提交时 <c>git add</c> 跳过被排除的文件），要改得先改入库规则。
         /// </summary>
         public static IReadOnlyList<IReadOnlyDictionary<string, string>> Files(
             (bool Success, string Message, LfsInspection? Report) inspected)
@@ -618,14 +644,14 @@ internal static partial class HistoryJanusUiCommands
             if (!inspected.Success || inspected.Report is not { Available: true } report)
                 return [];
             return report.Files
-                .Where(file => file.Decision != "—")
                 .Select(file =>
                 {
                     var (op, next) = file.Decision switch
                     {
-                        "LFS 指针" => ("LFS 指针 ●", "ignore"),
-                        "不纳入 git" => ("不纳入 ✕", "lfs"),
-                        _ => ("未决定 ○", "lfs"),
+                        "LFS 指针" => ("取消纳入", LfsNextIgnore),
+                        "不纳入 git" => ("纳入", LfsNextLfs),
+                        "—" => ("已排除", LfsNextExcluded),
+                        _ => ("未决", LfsNextChoose),
                     };
                     return Row(
                         ("name", report.Project),

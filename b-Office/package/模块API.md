@@ -1,12 +1,12 @@
-# HistoryJanus 5.12.0 模块 API
+# HistoryJanus 5.12.1 模块 API
 
 本文件是其他模块和项目消费 HistoryJanus 的唯一人工合同。运行时命令目录是参数、确认策略和可用性的最终真值；历史文档和 Janus 内部类型不构成公开 API。
 
 ## 正式消费入口
 
-- 正式快照：`z-Publish/HistoryJanus-v5.12.0/`。
+- 正式快照：`z-Publish/HistoryJanus-v5.12.1/`。
 - 模块名：`HistoryJanus`。
-- 版本：`5.12.0`。
+- 版本：`5.12.1`。
 - 入口：`HistoryJanus.dll`。
 - 宿主基线：HistoryVulcan `5.4.0` current-host 快照（即最低宿主，单点声明在 `b-Code-Studio/JanusVersion.props`），从 `2026-023-HistoryVulcan/z-Publish` 消费；该快照的 `sourceDirty` 仍由 HistoryVulcan manifest 如实标记。
 - 主题：页面使用 `Aurora.Brush.*` 动态资源，跟随宿主深色/浅色切换，不在模块内维护第二套主题。
@@ -16,7 +16,7 @@
 - UI：启用。
 - MCP：只读投影。
 
-本文件描述活动源的 `5.12.0` 候选合同；只有用户另行授权经宿主 `vulcan.dev.submit` / `finish` 正式发布后，同版本 manifest 和二进制才会提升到
+本文件描述活动源的 `5.12.1` 候选合同；只有用户另行授权经宿主 `vulcan.dev.submit` / `finish` 正式发布后，同版本 manifest 和二进制才会提升到
 `z-Publish/HistoryJanus-vX.Y.Z/`。发布前，z 快照自身的 manifest 与 checksum 仍是正式运行版本的真值。
 其他项目从 `z-Publish/HistoryJanus-vX.Y.Z/docs/` 或 `diana.docs.read domain=janus` 读取已发布 API，从该版本化快照读取 `module.manifest.json`、二进制和
 `SHA256SUMS`；不要从 Janus 的 `bin/obj`、HistoryVulcan 工作树或 Janus 历史文档建立依赖。Diana 不发布。
@@ -59,7 +59,7 @@ Janus 不自建按钮或滚动控件，不复制前端状态机。
 | `case` | 内容 |
 | --- | --- |
 | `入库规则` | 全库共用的入库/不入库清单（与选中项目无关）；5.12.0 前叫「Git 文件规则」且混着 LFS 行 |
-| `LFS 规则` | **当前选中项目**（5.12.0）：上方控制面板 `janus-lfs` 两行各三格「标签 | 值」——合规（✓/✗）、指针总大小、≥100MB 文件数；定为 LFS / 不纳入 / 未决定各几个。\| 值」——合规（✓/✗）、指针总大小；≥100MB 文件数、定为 LFS / 不纳入 / 未决定各几个。下方 `lfs-files` 只列 ≥100MB 的文件，三列：文件、大小、操作；「操作」是多态按钮（`未决定 ○` / `LFS 指针 ●` / `不纳入 ✕`），点一下经动作 `janus.lfs.toggle` 切到另一个去向。已被入库规则排除的文件不列 |
+| `LFS 规则` | **当前选中项目**（5.12.1）：上方控制面板 `janus-lfs` 一行三格「标签 \| 值」——合规（✓/✗）、指针总大小、≥100MB 文件数（5.12.0 的第二行 LFS / 不纳入 / 未决定三格已删）。下方 `lfs-files` 列出全部 ≥100MB 的文件（含被入库规则排除的），三列：文件、大小、操作；「操作」是多态按钮，经动作 `janus.lfs.toggle`：`未决` 点了弹窗二选一（纳入 LFS 指针 / 不纳入 git，`z-*` 快照只给前者），`纳入` 点了走 LFS 指针，`取消纳入` 点了改为不纳入 git，`已排除` 点了只提示先改入库规则 |
 | `分支历史` | **当前选中项目**从分叉点到 HEAD 的自有提交（最多 200 条） |
 | `GitHub` | Git、GCM、提交身份、origin 与 SSH 的当前状态（项/值两列） |
 
@@ -112,7 +112,7 @@ GitHub 写操作（登录、注销、提交身份、origin 修改）由页面通
 | `janus.graph.node` | 只读 | 读取单个提交的父边、文件差异摘要；证据槽本阶段为空 |
 | `janus.ui.describe` | 只读 | 返回 Aurora 页面描述协议 V1 |
 | `janus.ui.actions` | 只读 | 返回 Aurora 动作声明协议 V1 |
-| `janus.ui.data` | 只读 | 按 `view` 返回页面数据；`projects` 保留 `name`、`isClean`、`subject` 并增加 `zFolders`、`status`、`statusSymbol`、`lifecycleAction`、`archived`、`lifecycleState`。单个 z/Z 文件夹的 `zFolders` 为真实名称；`status` 为「动作 + 空格 + 符号」，符号固定映射提交 `●`、推送 `↑`、同步 `↔`、归档 `□`、拉取 `↓`、刷新 `?`（远端未确认或尚未查询时动作为「刷新」）。首次由界面（来源 `UI`）取 `projects` 时先返回不查远端的清单，再在后台 fetch 全部项目并重取表格。`excludes` 返回入库规则表：`z-*` 入库例外、逐条不入库目录与扩展名（5.12.0 起不再含 LFS 行，也不要 `name`）。`lfsstat` 按 `item`（`compliance` / `bytes` / `oversize` / `lfs` / `ignore` / `undecided`）返回面板一格的值，形状是只有一行 `value` 的候选集（取不到时为 `—`）；`lfs` 返回文件行（`name`、`path`、`size`、`op`、`next`）。两者共用一次检查。`graph` / `history` / `lfs` / `lfsstat` 缺 `name` 时不取数 |
+| `janus.ui.data` | 只读 | 按 `view` 返回页面数据；`projects` 保留 `name`、`isClean`、`subject` 并增加 `zFolders`、`status`、`statusSymbol`、`lifecycleAction`、`archived`、`lifecycleState`。单个 z/Z 文件夹的 `zFolders` 为真实名称；`status` 为「动作 + 空格 + 符号」，符号固定映射提交 `●`、推送 `↑`、同步 `↔`、归档 `□`、拉取 `↓`、刷新 `?`（远端未确认或尚未查询时动作为「刷新」）。首次由界面（来源 `UI`）取 `projects` 时先返回不查远端的清单，再在后台 fetch 全部项目并重取表格。`excludes` 返回入库规则表：`z-*` 入库例外、逐条不入库目录与扩展名（5.12.0 起不再含 LFS 行，也不要 `name`）。`lfsstat` 按 `item`（`compliance` / `bytes` / `oversize`；5.12.1 起 `lfs` / `ignore` / `undecided` 删除，取之给 `—`）返回面板一格的值，形状是只有一行 `value` 的候选集（取不到时为 `—`）；`lfs` 返回文件行（`name`、`path`、`size`、`op`、`next`；`next` 为 `choose` / `lfs` / `ignore` / `excluded`）。两者共用一次检查。`graph` / `history` / `lfs` / `lfsstat` 缺 `name` 时不取数 |
 | `janus.ui.graphnode` | 只读 | 将描述化图节点 ID 投影为提交详情 |
 | `janus.ui.sectionenter` | 只读 | 子页面切换的落点（5.9.0 取代 `janus.ui.refreshrules`）：按 `section` 重取 `rule-list` / `lfs-files` / `history-rows` / `github-rows`（LFS 面板六格靠通道变化重取）；按节点刷，不按页刷 |
 | `janus.ui.lfsdecide` | 本机 UI | LFS 规则表「操作」格的落点：转调 `janus.gitrule.lfsset` 后重取文件表 |
