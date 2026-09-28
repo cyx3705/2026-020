@@ -72,7 +72,6 @@ public sealed partial class ProjectService
 {
     public const string KeyLibraryRoot = "proj.libraryroot";
     public const string KeyWorktreeRoot = "proj.worktreeroot";
-    public const string KeyAiWorktreeRoot = "proj.aiworktreeroot";
     public const string KeyBaseBranch = "proj.basebranch";
     public const string KeyWarnMb = "proj.warnmb";
     public const string KeyRejectMb = "proj.rejectmb";
@@ -137,18 +136,13 @@ public sealed partial class ProjectService
             if (!string.IsNullOrWhiteSpace(current))
                 return current;
             var legacy = _settings.Get(KeyWorktreeRoot);
-            if (!string.IsNullOrWhiteSpace(legacy)
-                && !legacy.TrimEnd('\\', '/').Equals(
-                    ProjectRepoLayout.LegacyVestaLibrary, StringComparison.OrdinalIgnoreCase))
+            if (!string.IsNullOrWhiteSpace(legacy))
                 return legacy;
             return ProjectRepoLayout.DefaultLibraryRoot;
         }
     }
 
     public string WorktreeRoot => LibraryRoot;
-
-    public string AiWorktreeRoot =>
-        _settings.Get(KeyAiWorktreeRoot) ?? @"F:\ai工作区";
 
     public string BaseBranch => _settings.Get(KeyBaseBranch) ?? ProjectRepoLayout.DefaultTemplate;
 
@@ -172,7 +166,6 @@ public sealed partial class ProjectService
     public void EnsureDefaultSettings()
     {
         SetIfMissing(KeyLibraryRoot, ProjectRepoLayout.DefaultLibraryRoot);
-        SetIfMissing(KeyAiWorktreeRoot, @"F:\ai工作区");
         SetIfMissing(KeyBaseBranch, ProjectRepoLayout.DefaultTemplate);
         SetIfMissing(KeyWarnMb, "50");
         SetIfMissing(KeyRejectMb, "100");
@@ -190,7 +183,6 @@ public sealed partial class ProjectService
         var sb = new StringBuilder();
         sb.AppendLine("proj.* 当前配置(app.set 键=值 可修改,即时生效):");
         sb.AppendLine($"  {KeyLibraryRoot}  = {LibraryRoot}");
-        sb.AppendLine($"  {KeyAiWorktreeRoot} = {AiWorktreeRoot}");
         sb.AppendLine($"  {KeyBaseBranch}   = {BaseBranch}（模板项目名）");
         sb.AppendLine($"  {KeyWarnMb}       = {WarnBytes / 1024 / 1024} MB(警告阈值)");
         sb.AppendLine($"  {KeyRejectMb}     = {RejectBytes / 1024 / 1024} MB(LFS 阈值)");
