@@ -12,7 +12,6 @@ namespace HistoryJanus.Git;
 internal static class ProjectRepoLayout
 {
     public const string DefaultLibraryRoot = @"C:\OneHistory\HistoryClio";
-    public const string LegacyVestaLibrary = @"C:\OneHistory\HistoryVesta";
     public const string MainlineBranch = "main";
     public const string DefaultTemplate = "0000-000-Template";
 

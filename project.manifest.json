@@ -15,7 +15,7 @@
       "appshell-module"
     ],
     "status": "active",
-    "version": "5.12.1",
+    "version": "5.12.2",
     "branch": "main"
   },
   "paths": {
@@ -73,9 +73,9 @@
     ".NET 8 SDK and Windows Desktop Runtime",
     "Git command-line client"
   ],
-    "contextExclusions": [
-      "b-Office/history/**",
-      "z-Publish/**",
+  "contextExclusions": [
+    "b-Office/history/**",
+    "z-Publish/**",
     "**/bin/**",
     "**/obj/**",
     "**/node_modules/**",
