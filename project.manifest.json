@@ -81,5 +81,73 @@
     "**/node_modules/**",
     "**/.vs/**",
     "artifacts/**"
-  ]
+  ],
+  "publish": {
+    "versionProps": "b-Code-Studio\\JanusVersion.props",
+    "versionProperty": "HistoryJanusVersion",
+    "sourceManifest": "b-Code-Studio\\Module\\module.manifest.json",
+    "package": {
+      "project": "b-Code-Studio\\Module\\HistoryJanus.Module.csproj",
+      "files": [
+        "HistoryJanus.dll",
+        "HistoryJanus.xml",
+        "module.manifest.json"
+      ]
+    },
+    "validation": [
+      {
+        "tool": "dotnet.exe",
+        "configurations": [
+          "Debug",
+          "Release"
+        ],
+        "arguments": [
+          "test",
+          "b-Code-Verify\\Contracts\\Contracts.csproj",
+          "-c",
+          "{configuration}",
+          "-p:NuGetAudit=false"
+        ],
+        "description": "Run module contracts ({configuration})"
+      },
+      {
+        "tool": "dotnet.exe",
+        "configurations": [
+          "Debug",
+          "Release"
+        ],
+        "arguments": [
+          "run",
+          "--project",
+          "b-Code-Verify\\Smoke\\Smoke.csproj",
+          "-c",
+          "{configuration}",
+          "-p:NuGetAudit=false",
+          "--",
+          "--candidate-root",
+          "{candidateRoot}"
+        ],
+        "description": "Run module Smoke ({configuration})"
+      },
+      {
+        "tool": "dotnet.exe",
+        "configurations": [
+          "Debug",
+          "Release"
+        ],
+        "arguments": [
+          "run",
+          "--project",
+          "b-Code-Verify\\ModuleSmoke\\ModuleSmoke.csproj",
+          "-c",
+          "{configuration}",
+          "-p:NuGetAudit=false",
+          "--",
+          "{moduleOutput}"
+        ],
+        "description": "Run module loader Smoke ({configuration})",
+        "moduleOutputRoot": "b-Code-Studio\\Module\\bin"
+      }
+    ]
+  }
 }
