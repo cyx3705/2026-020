@@ -130,9 +130,8 @@ internal static class VersionProjectionSuite
             .Select(item => (string?)item.Attribute("Include"))
             .Where(item => item is not null)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        True(moduleReferences.SetEquals(
-                ["HistoryVulcan.Core", "HistoryVulcan.Services"]),
-            "module consumption: module references only public HistoryVulcan host contracts");
+        True(moduleReferences.SetEquals(["HistoryVulcan.Core"]),
+            "module consumption: module references only the HistoryVulcan contract assembly (host 5.9.0 unified contract)");
         Equal(0, moduleProject.Descendants("PackageReference").Count(),
             "module consumption: module does not restore legacy HistoryVulcan packages");
 

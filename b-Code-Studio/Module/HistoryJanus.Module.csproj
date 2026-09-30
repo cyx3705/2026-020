@@ -19,10 +19,6 @@
       <HintPath>$(HistoryVulcanHostRoot)\HistoryVulcan.Core.dll</HintPath>
       <Private>false</Private>
     </Reference>
-    <Reference Include="HistoryVulcan.Services">
-      <HintPath>$(HistoryVulcanHostRoot)\HistoryVulcan.Services.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
   </ItemGroup>
 
   <!-- The module is UI-framework agnostic. Aurora pulls the serialized page

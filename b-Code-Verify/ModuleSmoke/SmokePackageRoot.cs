@@ -8,6 +8,11 @@ internal sealed class SmokePackageRoot : IDisposable
     private readonly string? _temporary;
     public string Root { get; }
 
+    /// <summary>交给宿主 --probe 的单包目录：输入本身就是包时是它，否则是运行区根下的 HistoryJanus。</summary>
+    public string Package => File.Exists(Path.Combine(Root, "module.manifest.json"))
+        ? Root
+        : Path.Combine(Root, "HistoryJanus");
+
     public SmokePackageRoot(string input)
     {
         var manifestPath = Path.Combine(input, "module.manifest.json");

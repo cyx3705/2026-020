@@ -27,9 +27,9 @@ public sealed class HistoryJanusUiModule : IModuleContextAware
         {
             var settings = new ModuleSettings();
             var log = new ModuleLog();
-            var dataDirectory = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "HistoryVulcan", "Modules", "HistoryJanus", "data");
+            // 5.13.0：数据目录由宿主给（宿主 5.9.0 统一契约），不再自己拼 %AppData% 下的包槽位路径。
+            var dataDirectory = context.Environment.DataDirectory;
+            LegacyDataMigration.CopyOnce(dataDirectory, log);
 
             _business = StudioBusinessCompositionFactory.Register(
                 registry,
