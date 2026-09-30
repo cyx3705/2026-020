@@ -12,8 +12,12 @@
     <Reference Include="HistoryVulcan.Core">
       <HintPath>$(HistoryVulcanHostRoot)\HistoryVulcan.Core.dll</HintPath>
     </Reference>
-    <Reference Include="HistoryVulcan.Services">
-      <HintPath>$(HistoryVulcanHostRoot)\HistoryVulcan.Services.dll</HintPath>
-    </Reference>
+  </ItemGroup>
+  <ItemGroup>
+    <!-- 装载冒烟调同一份宿主的 HistoryVulcan.Cli.exe（probe 开关）；管线在工作区里会传 HistoryVulcanPackageRoot。 -->
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>HistoryVulcanHostRoot</_Parameter1>
+      <_Parameter2>$([System.IO.Path]::GetFullPath('$(HistoryVulcanHostRoot)'))</_Parameter2>
+    </AssemblyAttribute>
   </ItemGroup>
 </Project>

@@ -1,76 +1,65 @@
-﻿using System.IO;
+using System.Diagnostics;
+using System.IO;
+using System.Reflection;
+using System.Text;
 using System.Text.Json;
-using HistoryVulcan.Core;
-using HistoryVulcan.Core.Commands;
-using HistoryVulcan.Core.Logging;
-using HistoryVulcan.Core.Modules;
-using HistoryVulcan.Core.Storage;
-using HistoryVulcan.Services.Modules;
 
-// 5.7.0：同时接受运行区根目录、单包和管线传入的 bin 输出。
-// bin 经 SmokePackageRoot 包装为带校验和的隔离运行区，仍走正式发现器与装载器。
+// 5.13.0：装载冒烟改走宿主命令行 `HistoryVulcan.Cli.exe --probe`（宿主 5.9.0 统一契约，DEC-070）。
+// 此前直接 new 宿主的 ModuleHost，宿主实现程序集 Services 因此成了本仓的编译期依赖；宿主两次改内部都把这里打得编不过。
+// 现在只看宿主给出的装载结果与指令结果（JSON 形状），宿主内部怎么改都不影响本仓。
+// 重载、卸载后注册表是否干净是宿主的行为，由宿主自己的测试守住，这里不再重复。
+//
+// 5.7.0：同时接受运行区根目录、单包和管线传入的 bin 输出；bin 经 SmokePackageRoot 包装为带校验和的包。
 if (args.Length != 1)
 {
     Console.Error.WriteLine("usage: ModuleSmoke <runtime-package-root|package|build-output>");
     return 2;
 }
 
-var packageRoot = Path.GetFullPath(args[0]);
-if (!Directory.Exists(packageRoot))
+var input = Path.GetFullPath(args[0]);
+if (!Directory.Exists(input))
 {
-    Console.Error.WriteLine($"runtime package root not found: {packageRoot}");
+    Console.Error.WriteLine($"runtime package root not found: {input}");
     return 2;
 }
 
-AppIdentity.Use(typeof(Program).Assembly);
-var log = new MemoryLog();
-var registry = new CommandRegistry();
-var bus = new CommandBus(registry, log);
-
-using var smokePackages = new SmokePackageRoot(packageRoot);
-using var host = new ModuleHost(new RuntimeModuleDiscoverySource(smokePackages.Root), log)
-{
-    EnableUiModules = true,
-    EnableFileWatching = false,
-};
-
-// 宿主 5.4：Attach 只接注册表与总线；设置与数据目录由模块自持，宿主不再注入。
-host.Attach(registry, bus);
-host.Start();
-
-if (host.Modules.Count != 1)
-{
-    foreach (var entry in log.Snapshot())
-        Console.Error.WriteLine($"[{entry.Level}] [{entry.Category}] {entry.Message}");
-    foreach (var diagnostic in host.DiscoveryDiagnostics)
-        Console.Error.WriteLine($"[discovery] {diagnostic.Code} {diagnostic.Path}: {diagnostic.Message}");
-    throw new InvalidOperationException($"expected one module, got {host.Modules.Count}");
-}
-
-var manifestPath = host.Modules[0].ManifestPath
-                   ?? throw new InvalidOperationException("discovered module carries no manifest path");
-using var manifest = JsonDocument.Parse(File.ReadAllText(manifestPath));
+using var smokePackages = new SmokePackageRoot(input);
+var package = smokePackages.Package;
+using var manifest = JsonDocument.Parse(File.ReadAllText(Path.Combine(package, "module.manifest.json")));
 var expectedVersion = manifest.RootElement.GetProperty("version").GetString();
+
 // 5.6.0：39 条业务命令 + 8 条 UI 命令 + janus.status = 48（命令面与 5.5.1 相同）。
 // 5.9.0：业务命令增至 42（proj.diff / proj.discard / gitrule.lfs），UI 仍 8 条 → 51。
 // 5.11.0：业务命令增至 44（gitrule.lfsset / gitrule.lfsrepair），UI 增 ui.lfsdecide 到 9 条 → 54。
 const int expectedRuntimeCommandCount = 54;
 
-var meta = host.Modules[0];
-if (!meta.ModuleName.Equals("HistoryJanus", StringComparison.Ordinal)
-    || !meta.Version.Equals(expectedVersion, StringComparison.Ordinal)
-    || meta.CommandCount != expectedRuntimeCommandCount)
+var listed = Probe(package, "vulcan.command.list domain=janus");
+var module = listed.GetProperty("data").GetProperty("module");
+if (!module.GetProperty("attached").GetBoolean())
 {
+    foreach (var line in listed.GetProperty("diagnostics").EnumerateArray())
+        Console.Error.WriteLine($"[discovery] {line.GetString()}");
     throw new InvalidOperationException(
-        $"unexpected module metadata: {meta.ModuleName} {meta.Version} " +
-        $"(manifest declares {expectedVersion}) commands={meta.CommandCount}");
+        "module did not attach: " + string.Join("; ", module.GetProperty("attachFailures").EnumerateArray().Select(item => item.GetString())));
 }
 
+if (module.GetProperty("name").GetString() != "HistoryJanus"
+    || module.GetProperty("version").GetString() != expectedVersion
+    || module.GetProperty("commandCount").GetInt32() != expectedRuntimeCommandCount)
+{
+    throw new InvalidOperationException(
+        $"unexpected module metadata: {module.GetProperty("name")} {module.GetProperty("version")} " +
+        $"(manifest declares {expectedVersion}) commands={module.GetProperty("commandCount")}");
+}
+
+// 指令属性从目录行读（JSON 字段名），不再查宿主注册表。
+var rows = listed.GetProperty("data").GetProperty("result").GetProperty("data").EnumerateArray()
+    .ToDictionary(row => row.GetProperty("commandName").GetString()!, row => row, StringComparer.Ordinal);
 foreach (var name in new[] { "janus.ui.describe", "janus.ui.actions", "janus.ui.data", "janus.ui.graphnode", "janus.ui.sectionenter" })
 {
-    if (!registry.TryGet(name, out var descriptor)
-        || !descriptor.Readonly
-        || !descriptor.HiddenReason!.Contains("界面", StringComparison.Ordinal))
+    if (!rows.TryGetValue(name, out var row)
+        || !row.GetProperty("readonly").GetBoolean()
+        || row.GetProperty("hiddenReason").GetString()?.Contains("界面", StringComparison.Ordinal) != true)
     {
         throw new InvalidOperationException($"descriptive UI command contract is invalid: {name}");
     }
@@ -78,25 +67,22 @@ foreach (var name in new[] { "janus.ui.describe", "janus.ui.actions", "janus.ui.
 
 foreach (var name in new[] { "janus.ui.refreshprojects", "janus.ui.projectaction", "janus.ui.openmeta" })
 {
-    if (!registry.TryGet(name, out var descriptor)
-        || descriptor.Readonly
-        || !descriptor.HiddenReason!.Contains("界面", StringComparison.Ordinal))
+    if (!rows.TryGetValue(name, out var row)
+        || row.GetProperty("readonly").GetBoolean()
+        || row.GetProperty("hiddenReason").GetString()?.Contains("界面", StringComparison.Ordinal) != true)
     {
         throw new InvalidOperationException($"local UI command contract is invalid: {name}");
     }
 }
 
-string[] pageIds = [];
-var describe = await bus.ExecuteAsync("janus.ui.describe", "ModuleSmoke");
-if (!describe.Success)
-    throw new InvalidOperationException(describe.Message);
-using (var description = JsonDocument.Parse(describe.Message))
+string[] pageIds;
+var describe = Result(Probe(package, "janus.ui.describe"));
+using (var description = JsonDocument.Parse(describe))
 {
     var root = description.RootElement;
     if (root.GetProperty("schemaVersion").GetInt32() != 1
         || root.GetProperty("owner").GetString() != "HistoryJanus")
         throw new InvalidOperationException("invalid page description identity");
-
     var ids = root.GetProperty("pages").EnumerateArray()
         .Select(page => page.GetProperty("id").GetString())
         .ToArray();
@@ -107,9 +93,7 @@ using (var description = JsonDocument.Parse(describe.Message))
     pageIds = ids!;
 }
 
-var actions = await bus.ExecuteAsync("janus.ui.actions", "ModuleSmoke");
-if (!actions.Success)
-    throw new InvalidOperationException($"invalid action declaration: {actions.Message}");
+var actions = Result(Probe(package, "janus.ui.actions"));
 foreach (var action in new[]
          {
              "janus.project.rename",
@@ -122,15 +106,12 @@ foreach (var action in new[]
              "janus.graph.node.detail",
          })
 {
-    if (!actions.Message.Contains(action, StringComparison.Ordinal))
-        throw new InvalidOperationException($"action declaration is missing {action}: {actions.Message}");
+    if (!actions.Contains(action, StringComparison.Ordinal))
+        throw new InvalidOperationException($"action declaration is missing {action}: {actions}");
 }
 
-var data = await bus.ExecuteAsync("janus.ui.data view=projects", "ModuleSmoke");
-if (!data.Success)
-    throw new InvalidOperationException($"page data command failed: {data.Message}");
-
-using (var projectDocument = JsonDocument.Parse(data.Message))
+var data = Result(Probe(package, "janus.ui.data view=projects"));
+using (var projectDocument = JsonDocument.Parse(data))
 {
     var firstProject = projectDocument.RootElement.EnumerateArray().FirstOrDefault();
     if (firstProject.ValueKind != JsonValueKind.Object
@@ -143,48 +124,50 @@ using (var projectDocument = JsonDocument.Parse(data.Message))
     }
 }
 
-var commandCount = registry.All().Count;
-host.Reload();
-if (registry.All().Count != commandCount
-    || !registry.TryGet("janus.ui.describe", out _)
-    || !registry.TryGet("janus.proj.list", out _))
-{
-    throw new InvalidOperationException("module reload did not replace the command snapshot cleanly");
-}
-
-// 卸载走 ModuleHost.Unload：5.1.x 拿掉了 ChangeDirectory，运行区根目录在构造时定死，
-// 「换一个空目录再看命令还在不在」这条老写法没有对应面了，而它要证的事没变——
-// 模块下去之后登记表里不许留 janus.*。
-host.Unload("HistoryJanus");
-if (registry.All().Any(command => command.Name.StartsWith("janus.", StringComparison.Ordinal)))
-    throw new InvalidOperationException("module unload left Janus commands in the host registry");
-
 Console.WriteLine(
-    $"PASS module={meta.ModuleName} version={meta.Version} commands={commandCount} " +
-    $"pages={string.Join(",", pageIds)} protocol=V1");
+    $"PASS module={module.GetProperty("name")} version={module.GetProperty("version")} " +
+    $"commands={module.GetProperty("commandCount")} pages={string.Join(",", pageIds)} protocol=V1 host=--probe");
 return 0;
 
-sealed class MemorySettings : ISettingsService
+// 成功指令的正文；失败直接抛出，信息里带宿主给的原因。
+static string Result(JsonElement envelope)
 {
-    private readonly Dictionary<string, string> _values = new(StringComparer.OrdinalIgnoreCase);
-
-    public string? Get(string key) => _values.GetValueOrDefault(key);
-    public int GetInt(string key, int fallback) => int.TryParse(Get(key), out var value) ? value : fallback;
-    public void Set(string key, string value) => _values[key] = value;
-    public IReadOnlyList<KeyValuePair<string, string>> All() => _values.ToList();
+    var result = envelope.GetProperty("data").GetProperty("result");
+    var message = result.GetProperty("message").GetString() ?? "";
+    if (!result.GetProperty("success").GetBoolean())
+        throw new InvalidOperationException(message);
+    return message;
 }
 
-sealed class MemoryLog : IShellLog
+// 调已发布宿主的 `HistoryVulcan.Cli.exe --probe <包> --cli <指令> --format json`。
+// 宿主根目录在构建时写进本程序集（csproj 的 HistoryVulcanHostRoot），管线在工作区里会传 HistoryVulcanPackageRoot。
+static JsonElement Probe(string package, string command)
 {
-    private readonly List<ShellLogEntry> _entries = [];
+    var hostRoot = Assembly.GetExecutingAssembly()
+        .GetCustomAttributes<AssemblyMetadataAttribute>()
+        .FirstOrDefault(item => item.Key == "HistoryVulcanHostRoot")?.Value;
+    if (string.IsNullOrEmpty(hostRoot))
+        throw new InvalidOperationException("构建时没有写入 HistoryVulcanHostRoot。");
+    var cli = Path.Combine(hostRoot, "HistoryVulcan.Cli.exe");
+    if (!File.Exists(cli))
+        throw new InvalidOperationException($"找不到宿主命令行：{cli}（宿主 5.9.0 起提供 --probe）");
 
-    public event EventHandler<ShellLogEntry>? EntryAdded;
-    public IReadOnlyList<ShellLogEntry> Snapshot() => _entries;
-
-    public void Log(ShellLogLevel level, string category, string message)
+    var start = new ProcessStartInfo(cli)
     {
-        var entry = new ShellLogEntry(DateTime.Now, level, category, message);
-        _entries.Add(entry);
-        EntryAdded?.Invoke(this, entry);
-    }
+        RedirectStandardOutput = true,
+        RedirectStandardError = true,
+        UseShellExecute = false,
+        StandardOutputEncoding = Encoding.UTF8,
+    };
+    foreach (var argument in new[] { "--probe", package, "--format", "json", "--cli" }.Concat(command.Split(' ')))
+        start.ArgumentList.Add(argument);
+
+    using var process = Process.Start(start)!;
+    var output = process.StandardOutput.ReadToEnd();
+    var error = process.StandardError.ReadToEnd();
+    process.WaitForExit();
+    if (!output.TrimStart().StartsWith('{'))
+        throw new InvalidOperationException($"--probe 没有输出 JSON（退出码 {process.ExitCode}）：{output}{error}");
+    using var document = JsonDocument.Parse(output);
+    return document.RootElement.Clone();
 }
