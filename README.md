@@ -33,7 +33,7 @@ Git 文件规则与 LFS，GitHub 账号与远端，以及分支图谱与提交�
 | `github` | `accounts` / `status` / `test` / `remote` / `login` … | GitHub 账号与远端 |
 | `ui` | `describe` / `actions` / `data` … | 页面协议（内部） |
 
-完整命令目录（运行时共 51 条）、参数与返回见 [模块 API](./b-Office/package/模块API.md)。
+完整命令目录与参数是注册时的自描述：`diana.docs.read domain=janus`（宿主 6.1.0 起没有消费文档）。
 
 ## 入口
 
@@ -46,7 +46,6 @@ Git 文件规则与 LFS，GitHub 账号与远端，以及分支图谱与提交�
 | [技术合同](./b-Office/current/技术合同.md) | 现行需求与架构 |
 | [有效决策](./b-Office/current/有效决策.md) | 仍然有效的关键决策 |
 | [验证合同](./b-Office/current/验证合同.md) | 验证层级、命令与证据 |
-| [模块 API](./b-Office/package/模块API.md) | 跨模块消费合同 |
 | [指令优化规范](./b-Office/current/指令优化规范.md) | 命令命名规则与旧名映射 |
 
 ## 目录
@@ -55,7 +54,7 @@ Git 文件规则与 LFS，GitHub 账号与远端，以及分支图谱与提交�
 | --- | --- |
 | `b-Code-Studio/` | 业务源码、模块入口与 `eng/` 构建门禁脚本 |
 | `b-Code-Verify/` | Contracts、功能 Smoke 与 ModuleSmoke |
-| `b-Office/` | 项目文档：`current/` 现行合同、`package/` 消费合同、`history/` 只读归档 |
+| `b-Office/` | 项目文档：`current/` 现行合同、`history/` 只读归档 |
 | `z-Publish/` | 正式快照与 `history/` 归档，由宿主管线写入 |
 
 ## 构建与验证
@@ -79,8 +78,8 @@ dotnet run --project .\b-Code-Verify\ModuleSmoke\ModuleSmoke.csproj -c Release -
 
 ## 要点
 
-- 正式快照含 `HistoryJanus.dll`、XML、module manifest、checksum 与 `docs/`，不含 Janus EXE 或 HistoryVulcan 运行库。
-- 跨项目读取已发布 API 走 `diana.docs.read domain=janus`；HistoryVulcan 合同只从平级 `2026-023-HistoryVulcan/z-Publish` 消费。
+- 正式快照含 `HistoryJanus.dll`、XML、module manifest 与 checksum，不含 docs、Janus EXE 或 HistoryVulcan 运行库。
+- 跨项目查 Janus 指令走 `diana.docs.read domain=janus`；HistoryVulcan 合同只从平级 `2026-023-HistoryVulcan/z-Publish` 消费。
 - 默认不读 `b-Office/history`，只有明确追溯版本时才读指定文件。
 
 ## 保留内容

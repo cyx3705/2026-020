@@ -213,10 +213,11 @@ internal static class VersionProjectionSuite
 
         var officeRoot = Path.Combine(ParentDir, "b-Office");
         var currentRoot = Path.Combine(officeRoot, "current");
-        var packageRoot = Path.Combine(officeRoot, "package");
         var historyRoot = Path.Combine(officeRoot, "history");
-        True(Directory.Exists(currentRoot) && Directory.Exists(packageRoot) && Directory.Exists(historyRoot),
-            "documentation follows the current/package/history contract");
+        // 宿主 6.1.0（DEC-072）：消费文档退役，说明书只来自指令注册时的自描述。
+        True(Directory.Exists(currentRoot) && Directory.Exists(historyRoot)
+             && !Directory.Exists(Path.Combine(officeRoot, "package")),
+            "documentation follows the current/history contract without a package directory");
         True(!Directory.Exists(Path.Combine(officeRoot, "HistoryJanus")),
             "documentation: the drifted HistoryJanus document directory is removed");
         True(!Directory.Exists(Path.Combine(officeRoot, "meta"))
@@ -226,22 +227,15 @@ internal static class VersionProjectionSuite
         var currentDocuments = Directory.EnumerateFiles(currentRoot, "*.md")
             .Select(Path.GetFileName)
             .ToHashSet(StringComparer.Ordinal);
-        var packageDocuments = Directory.EnumerateFiles(packageRoot, "*.md")
-            .Select(Path.GetFileName)
-            .ToHashSet(StringComparer.Ordinal);
         True(currentDocuments.SetEquals(
-                ["项目概览.md", "技术合同.md", "有效决策.md", "验证合同.md", "指令优化规范.md",
-                    "AI开发工作流与分支图谱计划.md"]),
+                ["项目概览.md", "技术合同.md", "有效决策.md", "验证合同.md", "指令优化规范.md"]),
             "current contains the AIReady meta documents plus the command naming guide");
-        True(packageDocuments.SetEquals(["模块API.md"]),
-            "package contains only the Janus module API contract");
         var documentationCenter = Path.Combine(officeRoot, "文档中心.md");
         True(File.Exists(documentationCenter), "b-Office has a root documentation center");
         Equal(0, Directory.EnumerateFiles(officeRoot, "README.md", SearchOption.AllDirectories).Count(),
             "b-Office subdirectories contain no independent README");
 
-        foreach (var path in Directory.EnumerateFiles(currentRoot, "*.md")
-                     .Concat(Directory.EnumerateFiles(packageRoot, "*.md")))
+        foreach (var path in Directory.EnumerateFiles(currentRoot, "*.md"))
         {
             True(!File.ReadAllLines(path).Any(line =>
                     line.StartsWith("> 适用版本：", StringComparison.Ordinal)
@@ -252,18 +246,6 @@ internal static class VersionProjectionSuite
         True(!officeNavigation.Contains("> 当前版本：", StringComparison.Ordinal),
             "documentation center has no hand-synchronized current version");
 
-        var moduleManual = File.ReadAllText(Path.Combine(packageRoot, "模块API.md"));
-        foreach (var forbidden in new[]
-                 {
-                     "计划为 4.0",
-                     "下一代合同",
-                     "下一条公共契约线",
-                     "多来源/外部只读模块目录装载合同",
-                 })
-        {
-            True(!moduleManual.Contains(forbidden, StringComparison.Ordinal),
-                $"module manual does not predeclare HistoryVulcan roadmap: {forbidden}");
-        }
     }
 
     private static string? ReadCandidateRoot(IReadOnlyList<string> args)
@@ -305,15 +287,8 @@ internal static class VersionProjectionSuite
                 };
                 True(required.All(candidatePackageFiles.Contains),
                     "version projection: supplied candidate has the runtime snapshot files");
-                True(candidatePackageFiles.Any(path =>
-                        path.StartsWith("docs/", StringComparison.OrdinalIgnoreCase)
-                        && path.EndsWith(".md", StringComparison.OrdinalIgnoreCase)),
-                    "version projection: supplied candidate contains Markdown docs");
-                True(candidatePackageFiles.All(path =>
-                        required.Contains(path, StringComparer.Ordinal)
-                        || (path.StartsWith("docs/", StringComparison.OrdinalIgnoreCase)
-                            && path.EndsWith(".md", StringComparison.OrdinalIgnoreCase))),
-                    "version projection: supplied candidate is runtime files plus Markdown docs");
+                True(candidatePackageFiles.All(path => required.Contains(path, StringComparer.Ordinal)),
+                    "version projection: supplied candidate is exactly the runtime files (no docs/ since host 6.1.0)");
             }
 
             return Task.CompletedTask;
@@ -351,15 +326,11 @@ internal static class VersionProjectionSuite
                 };
                 True(required.All(candidatePackageFiles.Contains),
                     "version projection: versioned candidate has the runtime snapshot files");
-                True(candidatePackageFiles.Any(path =>
-                        path.StartsWith("docs/", StringComparison.OrdinalIgnoreCase)
-                        && path.EndsWith(".md", StringComparison.OrdinalIgnoreCase)),
-                    "version projection: versioned candidate contains Markdown docs");
                 True(candidatePackageFiles.All(path =>
                         required.Contains(path, StringComparer.Ordinal)
                         || (path.StartsWith("docs/", StringComparison.OrdinalIgnoreCase)
                             && path.EndsWith(".md", StringComparison.OrdinalIgnoreCase))),
-                    "version projection: versioned candidate is runtime files plus Markdown docs");
+                    "version projection: versioned candidate is runtime files (plus legacy docs from before host 6.1.0)");
             }
         }
 
