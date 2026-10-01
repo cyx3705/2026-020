@@ -26,12 +26,6 @@ if (-not $OutputRoot.StartsWith($repoPrefix, [StringComparison]::OrdinalIgnoreCa
 
 $moduleProject = Join-Path $componentRoot 'Module\HistoryJanus.Module.csproj'
 $moduleManifestSource = Join-Path $componentRoot 'Module\module.manifest.json'
-$apiDocuments = @(Get-ChildItem -LiteralPath (Join-Path $repoRoot 'b-Office\package') -Filter '*.md' -File)
-if ($apiDocuments.Count -ne 1) {
-    throw 'b-Office/package must contain exactly one API Markdown document'
-}
-$apiDocumentSource = $apiDocuments[0].FullName
-$apiDocumentName = $apiDocuments[0].Name
 $historyVulcanRoot = if ([string]::IsNullOrWhiteSpace($HistoryVulcanPackageRoot)) {
     [IO.Path]::GetFullPath((Join-Path $repoRoot '..\2026-023-HistoryVulcan\z-Publish'))
 }
@@ -70,8 +64,7 @@ function Assert-ModulePackage {
         'HistoryJanus.dll',
         'HistoryJanus.xml',
         'module.manifest.json',
-        'SHA256SUMS',
-        "docs/$apiDocumentName"
+        'SHA256SUMS'
     ) | Sort-Object
     $rootPrefix = [IO.Path]::GetFullPath($Root).TrimEnd('\') + '\'
     $historyPrefix = $rootPrefix + 'history\'
@@ -178,9 +171,8 @@ try {
     Copy-Item -LiteralPath (Join-Path $releaseRoot 'HistoryJanus.dll') -Destination $stage
     Copy-Item -LiteralPath (Join-Path $releaseRoot 'HistoryJanus.xml') -Destination $stage
     Copy-Item -LiteralPath $moduleManifestSource -Destination (Join-Path $stage 'module.manifest.json')
-    New-Item -ItemType Directory -Force -Path (Join-Path $stage 'docs') | Out-Null
-    Copy-Item -LiteralPath $apiDocumentSource -Destination (Join-Path $stage "docs\$apiDocumentName")
-    $relativeFiles = @('HistoryJanus.dll', 'HistoryJanus.xml', 'module.manifest.json', "docs/$apiDocumentName")
+    # 宿主 6.1.0（DEC-072）起包里不带 docs/：说明书只来自指令注册时的自描述。
+    $relativeFiles = @('HistoryJanus.dll', 'HistoryJanus.xml', 'module.manifest.json')
     $checksumLines = foreach ($relative in $relativeFiles) {
         $path = Join-Path $stage $relative.Replace('/', '\')
         "$((Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash)  $relative"

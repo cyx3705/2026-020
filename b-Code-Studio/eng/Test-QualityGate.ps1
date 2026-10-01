@@ -144,21 +144,8 @@ if ($gitHubRunnerText -notmatch 'timeoutSeconds' -or $smokeRunnerText -notmatch 
     $violations.Add('GitHub diagnostics and Smoke hang-detection timeouts must remain explicit')
 }
 
-# --- 5. 消费合同投影：API 版本、页面描述和命令必须与当前源码事实一致 ----------------------
-$apiPath = Join-Path $root 'b-Office\package\模块API.md'
-$apiText = [IO.File]::ReadAllText($apiPath)
-if ($apiText -notmatch "(?m)^# HistoryJanus $([regex]::Escape($sourceVersion)) 模块 API$") {
-    $violations.Add("模块API.md 标题版本未对齐 $sourceVersion")
-}
-if ($apiText -notmatch "(?m)^- 版本：``$([regex]::Escape($sourceVersion))``。$") {
-    $violations.Add("模块API.md 正式消费版本未对齐 $sourceVersion")
-}
-# 文档只需声明一个宿主基线版本，不再要求与钉版本逐字相等：
-# 基线是「我对着哪一版验证的」这一事实，宿主升版不该逼着每个模块改文档。
-if ($apiText -notmatch "(?m)^- 宿主基线：HistoryVulcan ``\d+\.\d+\.\d+`` ") {
-    $violations.Add("模块API.md 未声明宿主基线版本")
-}
-
+# --- 5. 页面与命令的源码事实 ------------------------------------------------------------
+# 宿主 6.1.0（DEC-072）起没有 模块API.md：说明书来自指令注册时的自描述，这里只核对源码本身。
 $uiSource = (Get-ChildItem -LiteralPath (Join-Path $componentRoot 'Module') -Filter 'HistoryJanusUi*.cs' -File |
     Sort-Object Name |
     ForEach-Object { [IO.File]::ReadAllText($_.FullName) }) -join "`n"
@@ -168,9 +155,6 @@ $pageIds = @('overview', 'graph', 'projops')
 foreach ($pageId in $pageIds) {
     if ($uiSource -notmatch ('id = "' + [regex]::Escape($pageId) + '"')) {
         $violations.Add("HistoryJanusUiModule.cs missing descriptive page $pageId")
-    }
-    if ($apiText -notmatch ('(?m)^\|\s*`' + [regex]::Escape($pageId) + '`\s*\|')) {
-        $violations.Add("模块API.md missing descriptive page $pageId")
     }
 }
 if ($uiSource -notmatch 'schemaVersion = 1') {
@@ -191,9 +175,8 @@ foreach ($page in $expectedScenePlacements.GetEnumerator()) {
     }
 }
 foreach ($uiCommand in @('janus.ui.describe', 'janus.ui.actions', 'janus.ui.data', 'janus.ui.graphnode', 'janus.ui.sectionenter', 'janus.ui.refreshprojects', 'janus.ui.projectaction', 'janus.ui.openmeta')) {
-    if ($uiSource -notmatch ('Name = "' + [regex]::Escape($uiCommand) + '"') -or
-        $apiText -notmatch ('(?m)^\|\s*`' + [regex]::Escape($uiCommand) + '`\s*\|')) {
-        $violations.Add("Aurora UI command missing from source or API contract: $uiCommand")
+    if ($uiSource -notmatch ('Name = "' + [regex]::Escape($uiCommand) + '"')) {
+        $violations.Add("Aurora UI command missing from source: $uiCommand")
     }
 }
 
@@ -208,11 +191,6 @@ $businessCommandNames = @(
 )
 $businessCommandNames = @($businessCommandNames | Sort-Object -Unique)
 $expectedRuntimeCommandNames = @($businessCommandNames + 'janus.status' | Sort-Object -Unique)
-$apiCommandNames = @(
-    [regex]::Matches($apiText, '(?m)^\|\s*`(?<name>janus(?:\.[a-z0-9]+){1,2})`\s*\|') |
-        ForEach-Object { $_.Groups['name'].Value } |
-        Sort-Object -Unique
-)
 # 5.4.6 增加 janus.ui.refreshrules（REQ-015）：40 → 41。
 # 5.9.0 增加 proj.diff / proj.discard（REQ-014）与 gitrule.lfs（REQ-016）：47 → 50；
 # janus.ui.refreshrules 改名为 janus.ui.sectionenter（REQ-017），UI 投影仍是 8 条。
@@ -220,11 +198,9 @@ $apiCommandNames = @(
 if ($businessCommandNames.Count -ne 53 -or $expectedRuntimeCommandNames.Count -ne 54) {
     $violations.Add("运行时命令总数应为 54（44 条业务命令 + 9 条 Aurora UI 投影命令 + janus.status）；源码为 $($businessCommandNames.Count) + 1")
 }
-if (($expectedRuntimeCommandNames -join ',') -cne ($apiCommandNames -join ',')) {
-    $violations.Add("模块API.md 命令清单与源码不一致：API $($apiCommandNames.Count)，运行时 $($expectedRuntimeCommandNames.Count)")
-}
 
-# --- 6. 候选边界（QA-004 日常化）：事务候选或版本化运行包 + docs/*.md + 独立 history ---
+# --- 6. 候选边界（QA-004 日常化）：事务候选或版本化运行包 + 独立 history ---
+# 宿主 6.1.0 起新候选恰好是运行文件；6.1.0 之前发布、仍躺在 z-Publish 里的旧包允许残留 docs/*.md，下次发版自然消失。
 # 普通模块发布形状是 z-Publish/HistoryJanus-v<version>/；构建脚本的
 # -OutputRoot 只接收事务 staging 根，不能据此把正式消费根误判成平铺包。
 $packageRoot = Join-Path $root 'z-Publish'
@@ -240,26 +216,8 @@ if (-not $inspectPublishedRoot) {
             ForEach-Object { $_.FullName.Substring($candidatePrefix.Length).Replace('\', '/') } |
             Sort-Object)
         $runtimeFiles = @('HistoryJanus.dll', 'HistoryJanus.xml', 'module.manifest.json', 'SHA256SUMS')
-        $docsRoot = Join-Path $candidatePath 'docs'
-        $docsFiles = if (Test-Path -LiteralPath $docsRoot -PathType Container) {
-            @(Get-ChildItem -LiteralPath $docsRoot -Recurse -File -Force |
-                ForEach-Object {
-                    if ([IO.Path]::GetExtension($_.Name) -ne '.md') {
-                        [void]$violations.Add("CandidateRoot/docs may contain only Markdown: $($_.Name)")
-                    }
-                    $_.FullName.Substring($candidatePrefix.Length).Replace('\', '/')
-                } | Sort-Object)
-        }
-        else {
-            [void]$violations.Add('CandidateRoot/docs is missing')
-            @()
-        }
-        if ($docsFiles.Count -eq 0) {
-            [void]$violations.Add('CandidateRoot/docs must contain at least one Markdown document')
-        }
-        $expectedFiles = @($runtimeFiles + $docsFiles) | Sort-Object
-        if (($candidateFiles -join "`n") -cne ($expectedFiles -join "`n")) {
-            $violations.Add("CandidateRoot file set is invalid: $($candidateFiles -join ', ')")
+        if (($candidateFiles -join "`n") -cne (($runtimeFiles | Sort-Object) -join "`n")) {
+            $violations.Add("CandidateRoot file set is invalid (runtime files only, no docs/): $($candidateFiles -join ', ')")
         }
         foreach ($file in $runtimeFiles) {
             if (-not (Test-Path -LiteralPath (Join-Path $candidatePath $file) -PathType Leaf)) {
@@ -350,23 +308,7 @@ if ($inspectPublishedRoot -and (Test-Path -LiteralPath $packageRoot)) {
             ForEach-Object { $_.FullName.Substring($candidatePrefix.Length).Replace('\', '/') } |
             Sort-Object)
         $runtimeFiles = @('HistoryJanus.dll', 'HistoryJanus.xml', 'module.manifest.json', 'SHA256SUMS')
-        $docsRoot = Join-Path $candidateRoot 'docs'
-        if (-not (Test-Path -LiteralPath $docsRoot -PathType Container)) {
-            $violations.Add("$expectedCandidateName/docs must be a directory of Markdown")
-            $docsFiles = @()
-        }
-        else {
-            $docsFiles = @(Get-ChildItem -LiteralPath $docsRoot -Recurse -File -Force |
-                ForEach-Object {
-                    if ([IO.Path]::GetExtension($_.Name) -ne '.md') {
-                        [void]$violations.Add("$expectedCandidateName/docs may contain only Markdown: $($_.Name)")
-                    }
-                    $_.FullName.Substring($candidatePrefix.Length).Replace('\', '/')
-                } | Sort-Object)
-            if ($docsFiles.Count -eq 0) {
-                [void]$violations.Add("$expectedCandidateName/docs must contain at least one Markdown document")
-            }
-        }
+        $docsFiles = @($candidateFiles | Where-Object { $_ -like 'docs/*.md' })
         $allowedFiles = @($runtimeFiles + $docsFiles)
         foreach ($file in @($candidateFiles | Where-Object { $_ -notin $allowedFiles })) {
             $violations.Add("Unexpected file in $expectedCandidateName candidate: $file")

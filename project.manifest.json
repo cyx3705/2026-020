@@ -22,8 +22,7 @@
     "activeRoots": [
       "b-Code-Studio",
       "b-Code-Verify",
-      "b-Office/current",
-      "b-Office/package"
+      "b-Office/current"
     ],
     "sourceRoots": [
       "b-Code-Studio",
@@ -51,9 +50,7 @@
   },
   "documents": {
     "center": "b-Office/文档中心.md",
-    "package": "b-Office/package/模块API.md",
     "structure": "b-Office/文档中心.md",
-    "aiDevelopmentPlan": "b-Office/current/AI开发工作流与分支图谱计划.md",
     "overview": "b-Office/current/项目概览.md",
     "technicalContract": "b-Office/current/技术合同.md",
     "decisions": "b-Office/current/有效决策.md",
