@@ -1,6 +1,5 @@
 using HistoryVulcan.Core;
 using HistoryVulcan.Core.Logging;
-using HistoryVulcan.Core.Storage;
 using HistoryJanus.Git;
 
 namespace HistoryJanus.Smoke;
@@ -180,19 +179,12 @@ internal sealed class MemorySettings : ISettingsService
     public IReadOnlyList<KeyValuePair<string, string>> All() => _values.ToList();
 }
 
-/// <summary>内存日志;供需要检查回显与结果日志的用例使用。</summary>
-internal sealed class MemoryLog : IShellLog
+/// <summary>内存日志：记下模块写的每一条（宿主 6.0.0 起日志只写）。</summary>
+internal sealed class MemoryLog : IModuleLog
 {
-    private readonly List<ShellLogEntry> _entries = [];
+    private readonly List<(ShellLogLevel Level, string Category, string Message)> _entries = [];
 
-    public event EventHandler<ShellLogEntry>? EntryAdded;
+    public IReadOnlyList<(ShellLogLevel Level, string Category, string Message)> Entries => _entries.ToList();
 
-    public void Log(ShellLogLevel level, string category, string message)
-    {
-        var entry = new ShellLogEntry(DateTime.UtcNow, level, category, message);
-        _entries.Add(entry);
-        EntryAdded?.Invoke(this, entry);
-    }
-
-    public IReadOnlyList<ShellLogEntry> Snapshot() => _entries.ToList();
+    public void Log(ShellLogLevel level, string category, string message) => _entries.Add((level, category, message));
 }

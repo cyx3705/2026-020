@@ -13,14 +13,14 @@ namespace HistoryJanus.Views;
 /// <summary>项目创建、提交推送和所选项目的三状态 Git 文件格式规则。</summary>
 public partial class ProjectOperationsView : UserControl
 {
-    private readonly Func<CommandBus?> _busAccessor;
+    private readonly Func<ICommandBus?> _busAccessor;
     private readonly ProjectSelectionState _selection;
     private readonly Func<string, bool> _isProtected;
     private List<string> _projectNames = [];
     private bool _projectOperationRunning;
     private string? _nameBoxProject;
 
-    public ProjectOperationsView(Func<CommandBus?> busAccessor, ProjectSelectionState selection,
+    public ProjectOperationsView(Func<ICommandBus?> busAccessor, ProjectSelectionState selection,
         Func<string, bool> isProtected, Func<GitHubConnectionService?> gitHubAccessor)
     {
         InitializeComponent();

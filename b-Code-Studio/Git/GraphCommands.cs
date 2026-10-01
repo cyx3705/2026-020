@@ -6,14 +6,13 @@ namespace HistoryJanus.Git;
 public static class GraphCommands
 {
     public static void RegisterAll(
-        CommandRegistry registry,
-        GraphService service,
-        string source = "app")
+        ICommandRegistrar registry,
+        GraphService service)
     {
-        registry.Register(BuildSummary(service), source);
-        registry.Register(BuildBranches(service), source);
-        registry.Register(BuildCommits(service), source);
-        registry.Register(BuildNode(service), source);
+        registry.Register(BuildSummary(service));
+        registry.Register(BuildBranches(service));
+        registry.Register(BuildCommits(service));
+        registry.Register(BuildNode(service));
     }
 
     private static CommandDescriptor BuildSummary(GraphService service) => new()

@@ -28,11 +28,11 @@ public sealed class HistoryRecorder
 
     private readonly string _pushPath;
     private readonly string _notesPath;
-    private readonly IShellLog _log;
+    private readonly IModuleLog _log;
     private readonly object _pushGate = new();
     private readonly object _notesGate = new();
 
-    public HistoryRecorder(string dataDirectory, IShellLog log)
+    public HistoryRecorder(string dataDirectory, IModuleLog log)
     {
         var state = Path.Combine(dataDirectory, "state");
         _pushPath = Path.Combine(state, "push-history.jsonl");

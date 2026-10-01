@@ -180,7 +180,7 @@ internal static class BranchGraphSuite
                     item.Node.Sha == sideSha && item.LaneIndex > 0 && !item.IsOpenTip),
                 "recovered merge history still occupies a row without a right-side tip");
 
-            var registry = new CommandRegistry();
+            var registry = new TestRegistrar();
             GraphCommands.RegisterAll(registry, graph);
             var commands = registry.All().ToDictionary(command => command.Name, StringComparer.OrdinalIgnoreCase);
             True(commands.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase).SetEquals([

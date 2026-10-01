@@ -8,8 +8,8 @@ namespace HistoryJanus.Module;
 internal static partial class HistoryJanusUiCommands
 {
     private static void RegisterLifecycleCommands(
-        CommandRegistry registry,
-        CommandBus bus,
+        ICommandRegistrar registry,
+        ICommandBus bus,
         string source,
         Func<StudioBusinessComposition?> business)
     {
@@ -29,7 +29,7 @@ internal static partial class HistoryJanusUiCommands
                 return bus.ExecuteAsync(
                     "aurora.ui.refreshdata node=projects", context.Source, context.Cancellation);
             },
-        }, source);
+        });
         registry.Register(new CommandDescriptor
         {
             Name = "janus.ui.projectaction",
@@ -44,7 +44,7 @@ internal static partial class HistoryJanusUiCommands
                 new ParameterSpec { Name = "msg", Description = "提交描述；省略时弹窗输入" },
             ],
             Handler = context => ProjectActionAsync(context, bus, business),
-        }, source);
+        });
         registry.Register(new CommandDescriptor
         {
             Name = "janus.ui.openmeta",
@@ -54,11 +54,11 @@ internal static partial class HistoryJanusUiCommands
             HiddenReason = "本机界面动作，不进入 MCP",
             Parameters = [new ParameterSpec { Name = "name", Description = "项目名", Required = true, Position = 0 }],
             Handler = context => OpenMetaAsync(context, bus, business),
-        }, source);
+        });
     }
 
     private static async Task<CommandResult> ProjectActionAsync(
-        CommandContext context, CommandBus bus, Func<StudioBusinessComposition?> business)
+        CommandContext context, ICommandBus bus, Func<StudioBusinessComposition?> business)
     {
         var name = context.RequireString("name").Trim();
         var action = context.RequireString("action").Trim();
@@ -127,7 +127,7 @@ internal static partial class HistoryJanusUiCommands
     /// 返回 <c>Command</c> 表示接着执行它。
     /// </summary>
     private static async Task<(CommandResult? Result, string? Command)> DecideCommitAsync(
-        CommandContext context, CommandBus bus, ProjectService projects, string name)
+        CommandContext context, ICommandBus bus, ProjectService projects, string name)
     {
         var diff = await projects.ReadWorktreeDiffAsync(
             name, RepositoryTarget.Parent, context.Cancellation);
@@ -212,7 +212,7 @@ internal static partial class HistoryJanusUiCommands
     }
 
     private static async Task<CommandResult> OpenMetaAsync(
-        CommandContext context, CommandBus bus, Func<StudioBusinessComposition?> business)
+        CommandContext context, ICommandBus bus, Func<StudioBusinessComposition?> business)
     {
         var name = context.RequireString("name").Trim();
         var projects = business()?.Projects;

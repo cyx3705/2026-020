@@ -7,7 +7,6 @@ using HistoryJanus.Git;
 using HistoryJanus.GitHub;
 using HistoryJanus.Module;
 using HistoryVulcan.Core.Commands;
-using HistoryVulcan.Core.Storage;
 using Xunit;
 
 namespace HistoryJanus.Contracts;
@@ -38,8 +37,8 @@ public sealed class ProjectLifecycleContractTests : IDisposable
         var service = CreateService();
         var initial = (await service.ReadLifecycleStatusesAsync([new WorktreeInfo(name, project)], false))[0];
         Assert.Equal("推送", initial.LifecycleAction);
-        var registry = new CommandRegistry();
-        var bus = new CommandBus(registry, new ModuleLog());
+        var registry = new TestRegistrar();
+        var bus = new TestCommandBus(registry);
         var composition = new StudioBusinessComposition(service, null!, null!, null!, null!, null!, null!);
         HistoryJanusUiCommands.Register(registry, bus, "test", () => composition);
         var lists = 0;

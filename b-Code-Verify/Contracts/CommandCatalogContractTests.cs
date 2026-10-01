@@ -1,7 +1,6 @@
 using HistoryJanus;
 using HistoryVulcan.Core.Commands;
 using HistoryVulcan.Core.Logging;
-using HistoryVulcan.Core.Storage;
 using Xunit;
 
 namespace HistoryJanus.Contracts;
@@ -94,18 +93,7 @@ public sealed class CommandCatalogContractTests
         }
     }
 
-    [Fact]
-    public void EveryCommandCarriesTheRequestedSource()
-    {
-        using var fixture = new CompositionFixture();
-
-        foreach (var descriptor in fixture.Registry.All())
-        {
-            Assert.Equal(
-                CompositionFixture.Source,
-                fixture.Registry.GetSource(descriptor.Name));
-        }
-    }
+    // 5.14.0：来源由宿主按模块盖章（宿主 6.0.0），模块登记时不再给来源，也就没有「每条都带上请求的来源」可测。
 
     [Fact]
     public void CommandNamesAreUniqueAndLowercase()
@@ -190,21 +178,19 @@ public sealed class CommandCatalogContractTests
 
     private sealed class CompositionFixture : IDisposable
     {
-        public const string Source = "test:contracts";
-
         private readonly string _dataDirectory;
 
         public CompositionFixture()
         {
             _dataDirectory = Path.Combine(
                 Path.GetTempPath(), "HistoryJanus-Contracts", Guid.NewGuid().ToString("N"));
-            Registry = new CommandRegistry();
-            var bus = new CommandBus(Registry, new NullLog());
+            Registry = new TestRegistrar();
+            var bus = new TestCommandBus(Registry);
             StudioBusinessCompositionFactory.Register(
-                Registry, bus, new MemorySettings(), new NullLog(), _dataDirectory, Source);
+                Registry, bus, new MemorySettings(), new NullLog(), _dataDirectory);
         }
 
-        public CommandRegistry Registry { get; }
+        public TestRegistrar Registry { get; }
 
         public void Dispose()
         {
@@ -234,13 +220,10 @@ public sealed class CommandCatalogContractTests
         public IReadOnlyList<KeyValuePair<string, string>> All() => _values.ToList();
     }
 
-    private sealed class NullLog : IShellLog
+    private sealed class NullLog : IModuleLog
     {
-        public event EventHandler<ShellLogEntry>? EntryAdded;
-
-        public IReadOnlyList<ShellLogEntry> Snapshot() => [];
-
         public void Log(ShellLogLevel level, string category, string message)
-            => EntryAdded?.Invoke(this, new ShellLogEntry(DateTime.Now, level, category, message));
+        {
+        }
     }
 }

@@ -16,7 +16,7 @@ public partial class GraphView : UserControl
     private const int PageLimit = 200;
     private const double CullPad = 96;
 
-    private readonly Func<CommandBus?> _busAccessor;
+    private readonly Func<ICommandBus?> _busAccessor;
     private readonly ProjectSelectionState _selection;
     private readonly DoubleCollection _mergeDash = new() { 4, 3 };
     private readonly DebouncedAction _selectionLoad;
@@ -30,7 +30,7 @@ public partial class GraphView : UserControl
     private double _panOffsetX;
     private double _panOffsetY;
 
-    public GraphView(Func<CommandBus?> busAccessor, ProjectSelectionState selection)
+    public GraphView(Func<ICommandBus?> busAccessor, ProjectSelectionState selection)
     {
         InitializeComponent();
         _busAccessor = busAccessor;

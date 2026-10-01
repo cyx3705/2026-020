@@ -1,6 +1,5 @@
 using System.IO;
 using System.Text;
-using HistoryVulcan.Core.Storage;
 using HistoryJanus.GitHub;
 
 namespace HistoryJanus.Git;
@@ -71,7 +70,6 @@ public sealed record CommitReport(
 public sealed partial class ProjectService
 {
     public const string KeyLibraryRoot = "proj.libraryroot";
-    public const string KeyWorktreeRoot = "proj.worktreeroot";
     public const string KeyBaseBranch = "proj.basebranch";
     public const string KeyWarnMb = "proj.warnmb";
     public const string KeyRejectMb = "proj.rejectmb";
@@ -135,9 +133,6 @@ public sealed partial class ProjectService
             var current = _settings.Get(KeyLibraryRoot);
             if (!string.IsNullOrWhiteSpace(current))
                 return current;
-            var legacy = _settings.Get(KeyWorktreeRoot);
-            if (!string.IsNullOrWhiteSpace(legacy))
-                return legacy;
             return ProjectRepoLayout.DefaultLibraryRoot;
         }
     }

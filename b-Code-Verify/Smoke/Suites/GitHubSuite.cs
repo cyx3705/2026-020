@@ -155,21 +155,19 @@ internal static class GitHubSuite
         var runner = new FakeRunner((_, _) => Ok());
         var service = new GitHubConnectionService(() => repository, runner);
 
-        var registry = new CommandRegistry();
-        GitHubCommands.RegisterAll(registry, service, "module:HistoryJanus");
+        var registry = new TestRegistrar();
+        GitHubCommands.RegisterAll(registry, service);
         foreach (var name in new[] { "janus.github.status", "janus.github.accounts", "janus.github.test" })
         {
             True(registry.TryGet(name, out var descriptor) && descriptor.Readonly,
                 $"{name} stays a readonly module command");
-            Equal("module:HistoryJanus", registry.GetSource(name),
-                $"{name} registers under the Janus module source");
         }
         var test = registry.All().Single(d => d.Name == "janus.github.test");
         True(test.Parameters.Any(p => p.Name == "transport"
                 && p.AllowedValues is ["auto", "ssh", "https"]),
             "janus.github.test keeps the transport enum schema");
 
-        var bus = new CommandBus(registry, new MemoryLog());
+        var bus = new TestCommandBus(registry);
         var accounts = await bus.ExecuteAsync("janus.github.accounts", "Smoke");
         True(accounts.Success, "janus.github.accounts executes through the bus");
         var invalid = await bus.ExecuteAsync("janus.github.test transport=bogus", "Smoke");

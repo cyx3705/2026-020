@@ -10,13 +10,13 @@ namespace HistoryJanus.Views;
 /// <summary>项目工作树、Z 级元文件夹与共享项目选择。</summary>
 public partial class OverviewView : UserControl
 {
-    private readonly Func<CommandBus?> _busAccessor;
+    private readonly Func<ICommandBus?> _busAccessor;
     private readonly ProjectSelectionState _selection;
     private List<WorktreeRow> _allRows = [];
     private bool _initialLoadDone;
     private bool _suppressSelection;
 
-    public OverviewView(Func<CommandBus?> busAccessor, ProjectSelectionState selection)
+    public OverviewView(Func<ICommandBus?> busAccessor, ProjectSelectionState selection)
     {
         InitializeComponent();
         _busAccessor = busAccessor;

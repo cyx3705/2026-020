@@ -21,7 +21,8 @@ internal static class TestArchitectureSuite
         foreach (var forbidden in new[]
         {
             "IUiModule", "IShellUiAware", "IShellUiRegistrar", "ToolWindowDescriptor",
-            "context.Settings", "context.Log", "context.DataDirectory", "HistoryVulcan.Extensibility",
+            // context.Log 不在这里：宿主 5.5.0 起它是宿主那一份只写日志，Janus 5.14.0 起就写它。
+            "context.Settings", "context.DataDirectory", "HistoryVulcan.Extensibility",
         })
         {
             True(!module.Contains(forbidden, StringComparison.Ordinal)

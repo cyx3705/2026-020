@@ -8,8 +8,6 @@ using HistoryJanus.Smoke.Suites;
 //   Smoke.exe --suite GitRules --real-template     向功能套件透传可选参数
 //   Smoke.exe --suite ProjectOperations             运行项目操作页规则行为
 
-// 冒烟宿主不运行 WPF 装配点，因此在此显式登记应用身份。
-AppIdentity.Use(typeof(HistoryJanus.Git.ProjectService).Assembly);
 Environment.CurrentDirectory = SmokeKit.RepoRoot;
 
 var suites = new (string Name, Func<string[], Task> Run)[]

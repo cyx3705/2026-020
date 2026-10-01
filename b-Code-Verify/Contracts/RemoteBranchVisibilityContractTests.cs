@@ -1,6 +1,5 @@
 using System.IO;
 using HistoryJanus.Git;
-using HistoryVulcan.Core.Storage;
 using Xunit;
 
 namespace HistoryJanus.Contracts;

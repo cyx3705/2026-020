@@ -144,7 +144,7 @@ internal static class RepositoryTargetsSuite
             Equal("janus.proj.pushall target=both",
                 ProjectOperationCommandBuilder.BuildPush(ProjectOperationMode.AllBoth, null), "all both push command");
 
-            var registry = new CommandRegistry();
+            var registry = new TestRegistrar();
             ProjectCommands.RegisterAll(registry, service, null!);
             foreach (var commandName in new[] { "janus.proj.commit", "janus.proj.push", "janus.proj.commitall", "janus.proj.pushall" })
             {

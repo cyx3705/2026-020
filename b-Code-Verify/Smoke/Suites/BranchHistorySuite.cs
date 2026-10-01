@@ -151,7 +151,7 @@ internal static class BranchHistorySuite
             True(!staleLease.Success && staleLease.Message.Contains("force-with-lease"),
                 "stale lease rejects remote overwrite");
 
-            var registry = new CommandRegistry();
+            var registry = new TestRegistrar();
             BranchHistoryCommands.RegisterAll(registry, service, null!);
             var commands = registry.All().ToDictionary(command => command.Name, StringComparer.OrdinalIgnoreCase);
             True(commands.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase).SetEquals([
