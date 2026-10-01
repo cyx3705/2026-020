@@ -36,11 +36,12 @@ internal static partial class HistoryJanusUiCommands
             Domain = Domain,
             CommandClass = "ui",
             Summary = "执行项目总览状态单元格对应动作",
+            Example = "janus.ui.projectaction 2026-020-HistoryJanus 刷新",
             HiddenReason = "本机界面动作，不进入 MCP",
             Parameters =
             [
-                new ParameterSpec { Name = "name", Description = "项目名", Required = true, Position = 0 },
-                new ParameterSpec { Name = "action", Description = "状态动作", Required = true, Position = 1 },
+                new ParameterSpec { Name = "name", Description = "已登记项目的工作树名称，例如 2026-020-HistoryJanus", Required = true, Position = 0 },
+                new ParameterSpec { Name = "action", Description = "状态单元格上的动作：提交 / 推送 / 同步 / 拉取 / 归档 / 刷新；除「刷新」外必须等于该项目当前应执行的动作", Required = true, Position = 1, AllowedValues = ["提交", "推送", "同步", "拉取", "归档", "刷新"] },
                 new ParameterSpec { Name = "msg", Description = "提交描述；省略时弹窗输入" },
             ],
             Handler = context => ProjectActionAsync(context, bus, business),
@@ -51,8 +52,9 @@ internal static partial class HistoryJanusUiCommands
             Domain = Domain,
             CommandClass = "ui",
             Summary = "打开项目直属 z/Z 文件夹；多个时先选择",
+            Example = "janus.ui.openmeta 2026-020-HistoryJanus",
             HiddenReason = "本机界面动作，不进入 MCP",
-            Parameters = [new ParameterSpec { Name = "name", Description = "项目名", Required = true, Position = 0 }],
+            Parameters = [new ParameterSpec { Name = "name", Description = "已登记项目的工作树名称，例如 2026-020-HistoryJanus", Required = true, Position = 0 }],
             Handler = context => OpenMetaAsync(context, bus, business),
         });
     }

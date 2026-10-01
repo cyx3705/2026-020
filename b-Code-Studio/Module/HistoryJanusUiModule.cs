@@ -128,6 +128,7 @@ internal static partial class HistoryJanusUiCommands
             Domain = Domain,
             CommandClass = "ui",
             Summary = "按页面视图返回 Janus 页面数据",
+            Example = "janus.ui.data view=history name=2026-020-HistoryJanus",
             Readonly = true,
             HiddenReason = "界面内部协议，对模型无意义",
             Parameters =
@@ -135,20 +136,22 @@ internal static partial class HistoryJanusUiCommands
                 new ParameterSpec
                 {
                     Name = "view",
-                    Description = "页面视图：projects、graph、history、excludes、lfs、lfsstat、github",
+                    Description = "页面视图：projects 项目总览、years 年份候选、graph 分支图谱、history 提交历史、excludes 入库排除、lfs ≥100MB 文件表、lfsstat LFS 面板一格、github 账号与远端",
                     Required = true,
+                    AllowedValues = ["projects", "years", "graph", "history", "excludes", "lfs", "lfsstat", "github"],
                     Position = 0,
                 },
                 new ParameterSpec
                 {
                     Name = "name",
-                    Description = "项目名；history / graph / lfs / lfsstat 需要，由页面按当前选中行填入",
+                    Description = "已登记项目的工作树名称，例如 2026-020-HistoryJanus；history / graph / lfs / lfsstat 需要，页面按当前选中行填入",
                     Position = 1,
                 },
                 new ParameterSpec
                 {
                     Name = "item",
-                    Description = "lfsstat 视图取哪一格：compliance / bytes / oversize",
+                    Description = "lfsstat 视图取哪一格：compliance 是否合规、bytes 指针总大小、oversize ≥100MB 文件数",
+                    AllowedValues = ["compliance", "bytes", "oversize"],
                 },
                 new ParameterSpec
                 {
@@ -182,6 +185,7 @@ internal static partial class HistoryJanusUiCommands
             Domain = Domain,
             CommandClass = "ui",
             Summary = "返回图谱提交节点详情",
+            Example = "janus.ui.graphnode \"2026-020-HistoryJanus|97c6a39\"",
             Readonly = true,
             HiddenReason = "界面内部协议，对模型无意义",
             Parameters =
@@ -189,7 +193,7 @@ internal static partial class HistoryJanusUiCommands
                 new ParameterSpec
                 {
                     Name = "node",
-                    Description = "页面图谱节点 ID",
+                    Description = "页面图谱节点 ID，格式 <项目名>|<提交 SHA>，例如 2026-020-HistoryJanus|97c6a39",
                     Required = true,
                     Position = 0,
                 },
@@ -203,6 +207,7 @@ internal static partial class HistoryJanusUiCommands
             Domain = Domain,
             CommandClass = "ui",
             Summary = "切到某个子页面时重取它那一张表",
+            Example = "janus.ui.sectionenter section=GitHub",
             Readonly = true,
             HiddenReason = "界面内部协议，对模型无意义",
             Parameters =
@@ -224,12 +229,13 @@ internal static partial class HistoryJanusUiCommands
             Domain = Domain,
             CommandClass = "ui",
             Summary = "LFS 规则表的行操作：记住一个 ≥100MB 文件的去向并刷新表格",
+            Example = "janus.ui.lfsdecide 2026-020-HistoryJanus assets/demo.mp4 choose",
             HiddenReason = "界面内部协议；模型请用 janus.gitrule.lfsset",
             Parameters =
             [
-                new ParameterSpec { Name = "name", Description = "项目名", Required = true, Position = 0 },
-                new ParameterSpec { Name = "path", Description = "仓库内相对路径", Required = true, Position = 1 },
-                new ParameterSpec { Name = "decision", Description = "lfs / ignore / none；choose = 弹窗二选一；excluded = 已被入库规则排除（只回说明）", Required = true, Position = 2 },
+                new ParameterSpec { Name = "name", Description = "已登记项目的工作树名称，例如 2026-020-HistoryJanus", Required = true, Position = 0 },
+                new ParameterSpec { Name = "path", Description = "文件在仓库内的相对路径，用 /，例如 assets/demo.mp4", Required = true, Position = 1 },
+                new ParameterSpec { Name = "decision", Description = "去向：lfs 纳入 LFS、ignore 不纳入 git、none 撤销决定、choose 弹窗二选一、excluded 已被入库规则排除（只回说明）", Required = true, Position = 2, AllowedValues = ["lfs", "ignore", "none", "choose", "excluded"] },
             ],
             Handler = context => DecideLfsAsync(context, bus),
         });
