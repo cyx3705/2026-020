@@ -39,7 +39,7 @@
 | `ProjectCommands` | 复用项目列表、创建、删除、提交、推送、修复和统一确认策略 |
 | `BranchTreeService` | 只复用项目继承关系；提交图谱由 `GraphService` 从当前项目仓的 refs 与父边构建 |
 | `BranchHistoryService` / `HistoryRecorder` | 复用分支提交历史、操作留痕和说明覆盖，不另建审计格式 |
-| 宿主总线 | 所有页面动作和跨模块调用均通过稳定命令名执行 |
+| 宿主 `CommandBus` | 所有页面动作和跨模块调用均通过稳定命令名执行 |
 | HistoryVulcan 开发管线 | 宿主拥有 AI 工作区、候选、装机和正式并回；Janus 只展示结果 |
 | HistoryVulcan MCP/确认层 | MCP 投影、危险操作确认、模块生命周期和 Web/HTTP 边界继续由宿主拥有 |
 
@@ -169,7 +169,7 @@ Janus 只展示结果，不复制管线，不调用已删除的 Diana 发布器�
 - Janus 先以独立版本交付图谱/工作树展示；工作区与发布由宿主 `vulcan.dev.*` 拥有。
 - 未接入宿主管线时，Janus 保留只读图谱，不假装自己能发布。
 - Diana 不发布；不得再调用已删除的集中发布脚本。
-- Vulcan 只需提供稳定的总线、确认、CLI 开发管线和模块生命周期；不为此功能增加项目专用宿主分支。
+- Vulcan 只需提供稳定 CommandBus、确认、CLI 开发管线和模块生命周期；不为此功能增加项目专用宿主分支。
 - Mercury、Minerva 不增加对 Janus 内部程序集的引用；需要联动时只消费公开命令或文档中心。
 
 ## 风险与门禁
