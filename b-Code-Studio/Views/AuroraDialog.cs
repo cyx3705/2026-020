@@ -20,16 +20,16 @@ public static class AuroraDialog
     public static string Prompt(string title, string body, string value, string? primary = null)
         => Build("prompt", title, body, value: value, primary: primary);
 
-    public static Task ShowMessageAsync(CommandBus bus, string title, string body)
+    public static Task ShowMessageAsync(ICommandBus bus, string title, string body)
         => bus.ExecuteAsync(Message(title, body), "UI");
 
-    public static Task ShowContentAsync(CommandBus bus, string title, string body, string content)
+    public static Task ShowContentAsync(ICommandBus bus, string title, string body, string content)
         => bus.ExecuteAsync(
             Content(title, body, string.IsNullOrWhiteSpace(content) ? "(无差异内容)" : content),
             "UI");
 
     public static async Task<string?> PromptAsync(
-        CommandBus bus, string title, string body, string value, string? primary = null)
+        ICommandBus bus, string title, string body, string value, string? primary = null)
     {
         var result = await bus.ExecuteAsync(Prompt(title, body, value, primary), "UI");
         if (!result.Success)

@@ -8,11 +8,11 @@ namespace HistoryJanus.Views;
 public partial class GitHubConnectionView : UserControl
 {
     private readonly Func<GitHubConnectionService?> _serviceAccessor;
-    private readonly Func<CommandBus?> _busAccessor;
+    private readonly Func<ICommandBus?> _busAccessor;
     private bool _busy;
     private IReadOnlyList<GitHubDiagnosticStep> _diagnosticSteps = [];
 
-    public GitHubConnectionView(Func<GitHubConnectionService?> serviceAccessor, Func<CommandBus?> busAccessor)
+    public GitHubConnectionView(Func<GitHubConnectionService?> serviceAccessor, Func<ICommandBus?> busAccessor)
     {
         InitializeComponent();
         _serviceAccessor = serviceAccessor;

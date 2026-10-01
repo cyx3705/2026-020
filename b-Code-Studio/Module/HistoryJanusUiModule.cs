@@ -3,7 +3,6 @@ using System.Text.Json;
 using HistoryVulcan.Core.Commands;
 using HistoryVulcan.Core.Logging;
 using HistoryVulcan.Core.Modules;
-using HistoryVulcan.Core.Storage;
 using HistoryJanus.Git;
 using HistoryJanus.GitHub;
 
@@ -26,21 +25,20 @@ public sealed class HistoryJanusUiModule : IModuleContextAware
         context.RegisterCommands(registry =>
         {
             var settings = new ModuleSettings();
-            var log = new ModuleLog();
+            // 5.14.0：日志写宿主那一份（只写），不再自建一个没人读的日志；来源由宿主盖章（宿主 6.0.0）。
+            var log = context.Log;
             // 5.13.0：数据目录由宿主给（宿主 5.9.0 统一契约），不再自己拼 %AppData% 下的包槽位路径。
             var dataDirectory = context.Environment.DataDirectory;
-            LegacyDataMigration.CopyOnce(dataDirectory, log);
 
             _business = StudioBusinessCompositionFactory.Register(
                 registry,
                 context.Bus,
                 settings,
                 log,
-                dataDirectory,
-                "module:HistoryJanus");
+                dataDirectory);
 
             HistoryJanusUiCommands.Register(
-                registry, context.Bus, "module:HistoryJanus", () => _business);
+                registry, context.Bus, "", () => _business);
         });
     }
 }
@@ -97,8 +95,8 @@ internal static partial class HistoryJanusUiCommands
     private const string AllYears = "全部";
 
     public static void Register(
-        CommandRegistry registry,
-        CommandBus bus,
+        ICommandRegistrar registry,
+        ICommandBus bus,
         string source,
         Func<StudioBusinessComposition?> business)
     {
@@ -111,7 +109,7 @@ internal static partial class HistoryJanusUiCommands
             Readonly = true,
             HiddenReason = "界面内部协议，对模型无意义",
             Handler = CommandDescriptor.Sync(_ => CommandResult.Ok(DescriptionJson)),
-        }, source);
+        });
 
         registry.Register(new CommandDescriptor
         {
@@ -122,7 +120,7 @@ internal static partial class HistoryJanusUiCommands
             Readonly = true,
             HiddenReason = "界面内部协议，对模型无意义",
             Handler = CommandDescriptor.Sync(_ => CommandResult.Ok(ActionsJson)),
-        }, source);
+        });
 
         registry.Register(new CommandDescriptor
         {
@@ -176,7 +174,7 @@ internal static partial class HistoryJanusUiCommands
                 },
             ],
             Handler = context => LoadDataAsync(context, bus, business),
-        }, source);
+        });
 
         registry.Register(new CommandDescriptor
         {
@@ -197,7 +195,7 @@ internal static partial class HistoryJanusUiCommands
                 },
             ],
             Handler = context => LoadGraphNodeAsync(context, bus),
-        }, source);
+        });
 
         registry.Register(new CommandDescriptor
         {
@@ -218,7 +216,7 @@ internal static partial class HistoryJanusUiCommands
                 },
             ],
             Handler = context => EnterSectionAsync(context, bus),
-        }, source);
+        });
 
         registry.Register(new CommandDescriptor
         {
@@ -234,7 +232,7 @@ internal static partial class HistoryJanusUiCommands
                 new ParameterSpec { Name = "decision", Description = "lfs / ignore / none；choose = 弹窗二选一；excluded = 已被入库规则排除（只回说明）", Required = true, Position = 2 },
             ],
             Handler = context => DecideLfsAsync(context, bus),
-        }, source);
+        });
 
         RegisterLifecycleCommands(registry, bus, source, business);
     }
@@ -250,7 +248,7 @@ internal static partial class HistoryJanusUiCommands
     /// 按节点刷、不按页刷：一页上挂着三支，刷整页会把没人看的那两支一起跑掉。
     /// 认不出的标题按成功返回：子页面是界面自己的候选项，多出一个不该让人看见报错。
     /// </summary>
-    private static async Task<CommandResult> EnterSectionAsync(CommandContext context, CommandBus bus)
+    private static async Task<CommandResult> EnterSectionAsync(CommandContext context, ICommandBus bus)
     {
         string[] nodes = context.GetString("section")?.Trim() switch
         {
@@ -287,7 +285,7 @@ internal static partial class HistoryJanusUiCommands
     /// 否则人点了「纳入」，那一格还写着「纳入」。
     /// 未决的先弹窗让人二选一（5.12.1）；<c>z-*</c> 快照里的文件只能走 LFS 指针，弹窗只给这一项。
     /// </summary>
-    private static async Task<CommandResult> DecideLfsAsync(CommandContext context, CommandBus bus)
+    private static async Task<CommandResult> DecideLfsAsync(CommandContext context, ICommandBus bus)
     {
         var name = context.RequireString("name");
         var path = context.RequireString("path");
@@ -320,7 +318,7 @@ internal static partial class HistoryJanusUiCommands
 
     private static async Task<CommandResult> LoadDataAsync(
         CommandContext context,
-        CommandBus bus,
+        ICommandBus bus,
         Func<StudioBusinessComposition?> business)
     {
         var view = context.GetString("view")?.Trim().ToLowerInvariant();
@@ -379,7 +377,7 @@ internal static partial class HistoryJanusUiCommands
     /// </summary>
     private static async Task<CommandResult> LoadProjectsAsync(
         CommandContext context,
-        CommandBus bus,
+        ICommandBus bus,
         bool yearsOnly)
     {
         var projects = await ReadProjectsAsync(context, bus);
@@ -414,7 +412,7 @@ internal static partial class HistoryJanusUiCommands
 
     private static async Task<(IReadOnlyList<WorktreeInfo> Items, CommandResult? Failure)> ReadProjectsAsync(
         CommandContext context,
-        CommandBus bus)
+        ICommandBus bus)
     {
         await ProjectCacheGate.WaitAsync(context.Cancellation);
         try
@@ -455,7 +453,7 @@ internal static partial class HistoryJanusUiCommands
     /// 这期间人若已按过「刷新」，缓存已被换掉，这里就不再覆盖。
     /// </summary>
     private static async Task AutoRefreshProjectsAsync(
-        CommandBus bus, string source, IReadOnlyList<WorktreeInfo> firstScreen)
+        ICommandBus bus, string source, IReadOnlyList<WorktreeInfo> firstScreen)
     {
         try
         {
@@ -494,7 +492,7 @@ internal static partial class HistoryJanusUiCommands
     private static CommandResult Rows(IReadOnlyList<IReadOnlyDictionary<string, string>> rows)
         => Payload(JsonSerializer.Serialize(rows));
 
-    private static async Task<CommandResult> LoadGraphAsync(CommandContext context, CommandBus bus)
+    private static async Task<CommandResult> LoadGraphAsync(CommandContext context, ICommandBus bus)
     {
         // 项目名由页面从选中通道填入。此前这里固定取项目清单的**第一条**，
         // 于是无论在总览里选了谁，图谱画的都是同一个项目——不报错，只是一直不对。
@@ -731,7 +729,7 @@ internal static partial class HistoryJanusUiCommands
         }
     }
 
-    private static async Task<CommandResult> LoadGraphNodeAsync(CommandContext context, CommandBus bus)
+    private static async Task<CommandResult> LoadGraphNodeAsync(CommandContext context, ICommandBus bus)
     {
         var node = context.GetString("node")?.Trim();
         var separator = node?.IndexOf('|', StringComparison.Ordinal) ?? -1;
@@ -766,11 +764,3 @@ internal sealed class ModuleSettings : ISettingsService
     public IReadOnlyList<KeyValuePair<string, string>> All() => _values.ToList();
 }
 
-internal sealed class ModuleLog : IShellLog
-{
-    public event EventHandler<ShellLogEntry>? EntryAdded;
-    public IReadOnlyList<ShellLogEntry> Snapshot() => [];
-
-    public void Log(ShellLogLevel level, string category, string message)
-        => EntryAdded?.Invoke(this, new ShellLogEntry(DateTime.Now, level, category, message));
-}

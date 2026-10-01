@@ -179,9 +179,9 @@ internal static class GitRulesSuite
     private static async Task TestCommandsRegisteredAsync(string temp)
     {
         var service = BuildService(temp, out _);
-        var registry = new CommandRegistry();
+        var registry = new TestRegistrar();
         GitRuleCommands.RegisterAll(registry, service,
-            new LfsRuleService(new ProjectService(new MemorySettings(), _ => true, temp)), "module:HistoryJanus");
+            new LfsRuleService(new ProjectService(new MemorySettings(), _ => true, temp)));
 
         var names = registry.All().Select(descriptor => descriptor.Name)
             .OrderBy(name => name, StringComparer.Ordinal).ToArray();
@@ -210,7 +210,7 @@ internal static class GitRulesSuite
             True(!registry.TryGet(retired, out _), $"{retired} is retired without an alias");
         }
 
-        var bus = new CommandBus(registry, new MemoryLog());
+        var bus = new TestCommandBus(registry);
         True((await bus.ExecuteAsync("janus.gitrule.list", "Smoke")).Success,
             "janus.gitrule.list executes through the bus");
     }

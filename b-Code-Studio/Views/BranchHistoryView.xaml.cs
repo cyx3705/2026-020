@@ -14,7 +14,7 @@ public partial class BranchHistoryView : UserControl
 {
     private const int PageSize = 200;
 
-    private readonly Func<CommandBus?> _busAccessor;
+    private readonly Func<ICommandBus?> _busAccessor;
     private readonly ProjectSelectionState _selection;
     private readonly Func<string, bool> _isProtected;
     private readonly DebouncedAction _selectionLoad;
@@ -23,7 +23,7 @@ public partial class BranchHistoryView : UserControl
     private long _loadVersion;
 
     public BranchHistoryView(
-        Func<CommandBus?> busAccessor,
+        Func<ICommandBus?> busAccessor,
         ProjectSelectionState selection,
         Func<string, bool> isProtected)
     {

@@ -1,6 +1,5 @@
 using HistoryVulcan.Core.Commands;
 using HistoryVulcan.Core.Logging;
-using HistoryVulcan.Core.Storage;
 using HistoryJanus.Git;
 using HistoryJanus.GitHub;
 
@@ -51,12 +50,11 @@ public sealed class StudioBusinessComposition
 public static class StudioBusinessCompositionFactory
 {
     public static StudioBusinessComposition Register(
-        CommandRegistry registry,
-        CommandBus bus,
+        ICommandRegistrar registry,
+        ICommandBus bus,
         ISettingsService settings,
-        IShellLog log,
+        IModuleLog log,
         string dataDirectory,
-        string commandSource = "app",
         Func<string?>? currentProjectName = null)
     {
         ArgumentNullException.ThrowIfNull(registry);
@@ -64,7 +62,6 @@ public static class StudioBusinessCompositionFactory
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(log);
         ArgumentException.ThrowIfNullOrWhiteSpace(dataDirectory);
-        ArgumentException.ThrowIfNullOrWhiteSpace(commandSource);
 
         var history = new HistoryRecorder(dataDirectory, log);
         var projects = new ProjectService(
@@ -88,11 +85,12 @@ public static class StudioBusinessCompositionFactory
             () => projects.ResolveGitHubRepository(currentProjectName?.Invoke()));
         var graph = new GraphService(projects);
 
-        ProjectCommands.RegisterAll(registry, projects, history, commandSource);
-        BranchHistoryCommands.RegisterAll(registry, branchHistory, history, commandSource);
-        GitRuleCommands.RegisterAll(registry, gitRules, lfsRules, commandSource);
-        GitHubCommands.RegisterAll(registry, gitHub, commandSource);
-        GraphCommands.RegisterAll(registry, graph, commandSource);
+        ProjectCommands.RegisterAll(registry, projects, history);
+        BranchHistoryCommands.RegisterAll(registry, branchHistory, history);
+        GitRuleCommands.RegisterAll(registry, gitRules, lfsRules);
+        GitHubCommands.RegisterAll(registry, gitHub);
+        GraphCommands.RegisterAll(registry, graph);
+        // 5.14.0：登记不再带来源——宿主 6.0.0 按模块盖章（module:HistoryJanus）。
         // 业务模块不注册诊断或自动化辅助指令：日志承压由宿主 vulcan.log.flood 承担，
         // 不在此重复实现。
 

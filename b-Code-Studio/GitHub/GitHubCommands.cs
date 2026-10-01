@@ -9,17 +9,16 @@ namespace HistoryJanus.GitHub;
 public static class GitHubCommands
 {
     public static void RegisterAll(
-        CommandRegistry registry,
-        GitHubConnectionService service,
-        string source = "app")
+        ICommandRegistrar registry,
+        GitHubConnectionService service)
     {
-        registry.Register(BuildStatus(service), source);
-        registry.Register(BuildAccounts(service), source);
-        registry.Register(BuildTest(service), source);
-        registry.Register(BuildLogin(service), source);
-        registry.Register(BuildLogout(service), source);
-        registry.Register(BuildIdentity(service), source);
-        registry.Register(BuildRemote(service), source);
+        registry.Register(BuildStatus(service));
+        registry.Register(BuildAccounts(service));
+        registry.Register(BuildTest(service));
+        registry.Register(BuildLogin(service));
+        registry.Register(BuildLogout(service));
+        registry.Register(BuildIdentity(service));
+        registry.Register(BuildRemote(service));
     }
 
     private static CommandDescriptor BuildStatus(GitHubConnectionService service) => new()

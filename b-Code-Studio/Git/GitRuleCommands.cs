@@ -11,16 +11,15 @@ namespace HistoryJanus.Git;
 public static class GitRuleCommands
 {
     public static void RegisterAll(
-        CommandRegistry registry,
+        ICommandRegistrar registry,
         GitFileRuleService service,
-        LfsRuleService lfs,
-        string source = "app")
+        LfsRuleService lfs)
     {
-        registry.Register(BuildList(service), source);
-        registry.Register(BuildLfs(lfs), source);
-        registry.Register(BuildLfsSet(lfs), source);
-        registry.Register(BuildLfsRepair(lfs), source);
-        registry.Register(BuildExcludes(service), source);
+        registry.Register(BuildList(service));
+        registry.Register(BuildLfs(lfs));
+        registry.Register(BuildLfsSet(lfs));
+        registry.Register(BuildLfsRepair(lfs));
+        registry.Register(BuildExcludes(service));
     }
 
     private static CommandDescriptor BuildLfs(LfsRuleService service) => new()

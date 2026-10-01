@@ -6,17 +6,16 @@ namespace HistoryJanus.Git;
 public static class BranchHistoryCommands
 {
     public static void RegisterAll(
-        CommandRegistry registry,
+        ICommandRegistrar registry,
         BranchHistoryService service,
-        HistoryRecorder history,
-        string source = "app")
+        HistoryRecorder history)
     {
-        registry.Register(BuildHistory(service), source);
-        registry.Register(BuildShow(service), source);
-        registry.Register(BuildDiff(service), source);
-        registry.Register(BuildRollback(service, history), source);
-        registry.Register(BuildReset(service, history), source);
-        registry.Register(BuildForcePush(service, history), source);
+        registry.Register(BuildHistory(service));
+        registry.Register(BuildShow(service));
+        registry.Register(BuildDiff(service));
+        registry.Register(BuildRollback(service, history));
+        registry.Register(BuildReset(service, history));
+        registry.Register(BuildForcePush(service, history));
     }
 
     private static CommandDescriptor BuildHistory(BranchHistoryService service) => new()

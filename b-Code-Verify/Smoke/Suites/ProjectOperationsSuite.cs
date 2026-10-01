@@ -86,9 +86,9 @@ internal static class ProjectOperationsSuite
         True(!calls.Contains("list"), "a failed save does not re-read the landing state");
     }
 
-    private static CommandBus BuildBus(List<string> calls, bool succeed)
+    private static TestCommandBus BuildBus(List<string> calls, bool succeed)
     {
-        var registry = new CommandRegistry();
+        var registry = new TestRegistrar();
         registry.Register(new CommandDescriptor
         {
             Name = "janus.gitrule.excludes",
@@ -117,9 +117,9 @@ internal static class ProjectOperationsSuite
                 return Task.FromResult(CommandResult.Ok("落地状态"));
             },
         });
-        return new CommandBus(registry, new MemoryLog());
+        return new TestCommandBus(registry);
     }
 
-    private static ProjectOperationsView BuildView(CommandBus bus)
+    private static ProjectOperationsView BuildView(TestCommandBus bus)
         => new(() => bus, new ProjectSelectionState(), _ => false, () => null);
 }

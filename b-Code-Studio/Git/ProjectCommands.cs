@@ -81,30 +81,30 @@ public static partial class ProjectCommands
     }
 
     public static void RegisterAll(
-        CommandRegistry registry, ProjectService projects, HistoryRecorder history, string source = "app")
+        ICommandRegistrar registry, ProjectService projects, HistoryRecorder history)
     {
-        registry.Register(BuildList(projects), source);
-        registry.Register(BuildCreate(projects, history), source);
-        registry.Register(BuildRename(projects, history), source);
-        registry.Register(BuildDelete(projects, history), source);
-        registry.Register(BuildTree(projects), source);
-        registry.Register(BuildCommit(projects, history), source);
-        registry.Register(BuildPush(projects, history), source);
-        registry.Register(BuildCommitAll(projects, history), source);
-        registry.Register(BuildPushAll(projects, history), source);
-        registry.Register(BuildOpen(projects), source);
-        registry.Register(BuildScan(projects), source);
-        registry.Register(BuildRepair(projects, history), source);
-        registry.Register(BuildConfig(projects), source);
-        registry.Register(BuildNote(projects, history), source);
-        registry.Register(BuildMetaList(projects), source);
-        registry.Register(BuildMetaOpen(projects), source);
-        registry.Register(BuildRefresh(projects), source);
-        registry.Register(BuildSync(projects, history), source);
-        registry.Register(BuildArchive(projects, history), source);
-        registry.Register(BuildPull(projects, history), source);
-        registry.Register(BuildDiff(projects), source);
-        registry.Register(BuildDiscard(projects, history), source);
+        registry.Register(BuildList(projects));
+        registry.Register(BuildCreate(projects, history));
+        registry.Register(BuildRename(projects, history));
+        registry.Register(BuildDelete(projects, history));
+        registry.Register(BuildTree(projects));
+        registry.Register(BuildCommit(projects, history));
+        registry.Register(BuildPush(projects, history));
+        registry.Register(BuildCommitAll(projects, history));
+        registry.Register(BuildPushAll(projects, history));
+        registry.Register(BuildOpen(projects));
+        registry.Register(BuildScan(projects));
+        registry.Register(BuildRepair(projects, history));
+        registry.Register(BuildConfig(projects));
+        registry.Register(BuildNote(projects, history));
+        registry.Register(BuildMetaList(projects));
+        registry.Register(BuildMetaOpen(projects));
+        registry.Register(BuildRefresh(projects));
+        registry.Register(BuildSync(projects, history));
+        registry.Register(BuildArchive(projects, history));
+        registry.Register(BuildPull(projects, history));
+        registry.Register(BuildDiff(projects));
+        registry.Register(BuildDiscard(projects, history));
     }
 
     // ---------------------------------------------------------------- janus.proj.list
