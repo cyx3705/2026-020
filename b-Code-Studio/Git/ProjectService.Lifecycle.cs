@@ -277,15 +277,28 @@ public sealed partial class ProjectService
         IProgress<string>? progress = null)
     {
         var before = await RefreshProjectAsync(name, fetchRemote: true, cancellation);
+        var repo = Path.Combine(LibraryRoot, name.Trim());
+        var reconcileNote = string.Empty;
         if (before.State == ProjectLifecycleState.Diverged)
-            return (false, "本地与远端已分叉，拒绝自动 merge/rebase；请人工处理后重试同步", before);
-        if (before.State is ProjectLifecycleState.Dirty or ProjectLifecycleState.NoRemote
+        {
+            // 5.15.0：分叉交 AI 检查。简单情况合并后把本地提交推上去——「同步」的终点是两端一致，
+            // 停在「本地领先」等于没同步完；真冲突什么都不做，原样返回。
+            var reconciled = await DivergenceReconciler.ReconcileAsync(
+                repo, MainlineBranch, DivergenceAdvisor, progress, cancellation);
+            if (!reconciled.Changed)
+                return (false, reconciled.Message, before);
+            var pushed = await PushParentAsync(repo, setUpstream: false, progress, cancellation);
+            if (!pushed.Success)
+                return (false, $"{reconciled.Message}\n合并后推送失败（合并结果留在本地，可再推送）:\n{pushed.Output}",
+                    await RefreshProjectAsync(name, fetchRemote: false, cancellation));
+            reconcileNote = reconciled.Message;
+        }
+        else if (before.State is ProjectLifecycleState.Dirty or ProjectLifecycleState.NoRemote
             or ProjectLifecycleState.Ahead or ProjectLifecycleState.Archived)
             return (false, $"当前状态应执行“{before.Action}”，不能同步：{before.Message}", before);
-        if (before.State == ProjectLifecycleState.Unavailable)
+        else if (before.State == ProjectLifecycleState.Unavailable)
             return (false, before.Message, before);
 
-        var repo = Path.Combine(LibraryRoot, name.Trim());
         if (before.State == ProjectLifecycleState.Behind)
         {
             // main 已经一致、只欠别的分支时这一步是空跑：ff-only 对已包含的提交返回成功。
@@ -316,6 +329,8 @@ public sealed partial class ProjectService
         var message = branchNote.Length == 0
             ? "同步完成，本地与远端已验证一致"
             : $"同步完成，本地与远端已验证一致。{branchNote}";
+        if (reconcileNote.Length > 0)
+            message = $"{reconcileNote}\n{message}";
         return (true, message, after);
     }
 

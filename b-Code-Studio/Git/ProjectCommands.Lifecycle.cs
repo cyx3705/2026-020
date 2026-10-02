@@ -21,7 +21,7 @@ public static partial class ProjectCommands
     {
         Name = "janus.proj.sync",
         CommandClass = "proj",
-        Summary = "fetch 后仅快进同步项目（含把远端分支落成本地分支），并记录两端已验证 SHA",
+        Summary = "fetch 后同步项目（含把远端分支落成本地分支），并记录两端已验证 SHA；已分叉时交 AI 检查，无冲突则自动合并并推送，真冲突不动",
         Example = "janus.proj.sync name=2026-018-MyAPI",
         Parameters = [ProjectNameParameter()],
         Handler = async ctx =>

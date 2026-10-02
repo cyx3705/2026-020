@@ -72,6 +72,8 @@ public static class StudioBusinessCompositionFactory
         projects.NotesProvider = history.AllNotes;
         // 首次推送时按需建远端仓库；令牌来自 janus.github.login 已存进 GCM 的 HTTPS 凭据。
         projects.RepositoryProvisioner = new GitHubRepositoryProvisioner();
+        // 分叉交给 HistoryApollo 检查（软依赖：只经总线发指令，Apollo 不在时分叉不自动处理）。
+        projects.DivergenceAdvisor = new ApolloDivergenceAdvisor(bus);
 
         var gitRules = new GitFileRuleService(projects, settings);
         // 排除规则由提交链路自动落地，不再需要人工下发命令。
