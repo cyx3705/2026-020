@@ -111,6 +111,12 @@ public sealed partial class ProjectService
     /// </summary>
     public LfsRuleService? LfsRules { get; set; }
 
+    /// <summary>
+    /// 分叉检查通道（5.15.0）：推送被拒或同步遇到分叉时，经它请 AI 判断能否自动合并。
+    /// 为空时分叉保持旧行为：推送报 git 原文、同步拒绝。
+    /// </summary>
+    public IDivergenceAdvisor? DivergenceAdvisor { get; set; }
+
     public Func<IReadOnlyDictionary<string, string>>? NotesProvider
     {
         get => _tree.NotesProvider;

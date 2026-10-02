@@ -28,7 +28,7 @@ public static partial class ProjectCommands
     {
         Name = "janus.proj.push",
         CommandClass = "proj",
-        Summary = "推送单个分支；可先推直属子模块，全部成功后再推父项目",
+        Summary = "推送单个分支；可先推直属子模块，全部成功后再推父项目；被拒时交 AI 检查分叉，无冲突则自动合并后重推",
         Example = "janus.proj.push name=2026-018-MyAPI target=both",
         Parameters =
         [
@@ -53,7 +53,7 @@ public static partial class ProjectCommands
         {
             var name = ctx.RequireString("name");
             var report = await projects.PushAsync(name, ResolveTarget(ctx),
-                ctx.GetString("visibility"), ctx.Cancellation);
+                ctx.GetString("visibility"), ctx.Cancellation, ctx.Progress);
             if (report.Success)
                 projects.InvalidateVerification(name);
             history.Record(name, "push",
@@ -76,7 +76,7 @@ public static partial class ProjectCommands
     {
         Name = "janus.proj.pushall",
         CommandClass = "proj",
-        Summary = "推送全部分支；可先去重推送所有直属子模块",
+        Summary = "推送全部分支；可先去重推送所有直属子模块；被拒的仓交 AI 检查分叉，无冲突则自动合并后重推",
         Example = "janus.proj.pushall target=both",
         Parameters =
         [
@@ -103,7 +103,7 @@ public static partial class ProjectCommands
         Handler = async ctx =>
         {
             var report = await projects.PushAllAsync(ResolveTarget(ctx),
-                ctx.GetString("visibility"), ctx.Cancellation);
+                ctx.GetString("visibility"), ctx.Cancellation, ctx.Progress);
             var newRemotes = (report.CreatedRemotes ?? [])
                 .Where(remote => remote.Created).ToList();
             history.Record("(全部)", "pushall",

@@ -21,7 +21,8 @@ public sealed partial class ProjectService
         string name,
         RepositoryTarget target,
         string? visibility = null,
-        CancellationToken cancellation = default)
+        CancellationToken cancellation = default,
+        IProgress<string>? progress = null)
     {
         name = name.Trim();
         var (resolved, resolveMessage, worktree) = await ResolveWorktreeAsync(name);
@@ -65,8 +66,8 @@ public sealed partial class ProjectService
                 ParentPointerPending: pendingParentCount > 0);
 
         var created = remote.Creation;
-        var result = await PushBranchAsync(
-            worktreePath, branch: null, setUpstream: created != null, progress: null, cancellation);
+        var result = await PushParentAsync(
+            worktreePath, setUpstream: created != null, progress, cancellation);
 
         // 建仓的结果必须同时出现在成功和失败两条消息里：推送失败时用户只看到 git 的报错，
         // 不说清楚就不知道 GitHub 上已经多了一个仓库。
@@ -89,6 +90,59 @@ public sealed partial class ProjectService
             RemoteUrl: created?.OriginUrl ?? string.Empty,
             RemoteVisibility: created?.Visibility ?? string.Empty);
     }
+
+    /// <summary>
+    /// 父仓库推送（5.15.0）：被远端以「非快进」拒收时，取回该分支、交
+    /// <see cref="DivergenceReconciler"/> 检查并收口，收口成功再推一次。
+    /// 只认非快进拒收；传输中断、pre-receive 拒收等照旧原样报出——那些不是分叉。
+    /// 子模块推送不走这里：子模块的分叉牵涉父 gitlink，不在自动处理范围内。
+    /// </summary>
+    private async Task<GitResult> PushParentAsync(
+        string worktreePath,
+        bool setUpstream,
+        IProgress<string>? progress,
+        CancellationToken cancellation)
+    {
+        var first = await PushBranchAsync(worktreePath, branch: null, setUpstream, progress, cancellation);
+        if (first.Success || !IsNonFastForwardRejection(first.Output))
+            return first;
+
+        var head = await GitRunner.RunAsync(worktreePath,
+            ["symbolic-ref", "--quiet", "--short", "HEAD"], cancellation);
+        var branch = head.Success ? FirstLine(head.Output) : string.Empty;
+        if (branch.Length == 0)
+            return first;
+        progress?.Report($"[{branch}] 推送被拒（远端有本地没有的提交），取回远端检查分叉...");
+        // 只取这一条分支：这里要的是比较对象，不是全量刷新。
+        var fetch = await GitRunner.RunAsync(worktreePath,
+            ["fetch", "--no-tags", "origin", $"+refs/heads/{branch}:refs/remotes/origin/{branch}"],
+            cancellation);
+        if (!fetch.Success)
+            return new GitResult(first.ExitCode, $"推送被拒且取回远端失败:\n{fetch.Output}\n{first.Output}");
+
+        var reconciled = await DivergenceReconciler.ReconcileAsync(
+            worktreePath, branch, DivergenceAdvisor, progress, cancellation);
+        if (!reconciled.Changed)
+            return new GitResult(first.ExitCode, reconciled.Outcome == ReconcileOutcome.NotDiverged
+                ? first.Output
+                : reconciled.Message);
+
+        var second = await PushBranchAsync(worktreePath, branch, setUpstream, progress, cancellation);
+        return second.Success
+            ? new GitResult(0, $"{reconciled.Message}\n{second.Output}")
+            : new GitResult(second.ExitCode, $"{reconciled.Message}\n但随后推送失败:\n{second.Output}");
+    }
+
+    /// <summary>
+    /// git 对「远端有本地没有的提交」的拒收：<c>! [rejected] main -> main (fetch first)</c>
+    /// 或 <c>(non-fast-forward)</c>。括号里的原因会随 git 界面语言翻译，<c>[rejected]</c> 标记不会；
+    /// <c>[remote rejected]</c> 是服务端钩子拒收，不是分叉。
+    /// </summary>
+    internal static bool IsNonFastForwardRejection(string output)
+        => output.Contains("(fetch first)", StringComparison.Ordinal)
+           || output.Contains("(non-fast-forward)", StringComparison.Ordinal)
+           || (output.Contains("[rejected]", StringComparison.Ordinal)
+               && !output.Contains("[remote rejected]", StringComparison.Ordinal));
 
     /// <summary>
     /// 全部父仓库推送的唯一出口。把 2026-08 全库首推里手工验证过的四条经验固化下来：
@@ -235,7 +289,8 @@ public sealed partial class ProjectService
     public async Task<BatchPushReport> PushAllAsync(
         RepositoryTarget target,
         string? visibility = null,
-        CancellationToken cancellation = default)
+        CancellationToken cancellation = default,
+        IProgress<string>? progress = null)
     {
         var (listResult, worktrees) = await ListWorktreesAsync();
         if (!listResult.Success)
@@ -288,8 +343,8 @@ public sealed partial class ProjectService
                     remote.Creation.FullName, remote.Creation.OriginUrl,
                     remote.Creation.Visibility, remote.Creation.Created));
 
-            var result = await PushBranchAsync(item.WorktreePath, branch: null,
-                setUpstream: remote.Creation != null, progress: null, cancellation);
+            var result = await PushParentAsync(item.WorktreePath,
+                setUpstream: remote.Creation != null, progress, cancellation);
             if (result.Success)
                 pushed++;
             else
