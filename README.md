@@ -41,12 +41,7 @@ Git 文件规则与 LFS，GitHub 账号与远端，以及分支图谱与提交�
 | --- | --- |
 | [`AGENTS.md`](./AGENTS.md) | AI 工作合同：读取顺序、真值判定、边界 |
 | [`project.manifest.json`](./project.manifest.json) | 项目身份、活动目录、文档与命令 |
-| [文档中心](./b-Office/文档中心.md) | 文档索引与读取顺序 |
-| [项目概览](./b-Office/current/项目概览.md) | 目标、范围与状态 |
-| [技术合同](./b-Office/current/技术合同.md) | 现行需求与架构 |
-| [有效决策](./b-Office/current/有效决策.md) | 仍然有效的关键决策 |
-| [验证合同](./b-Office/current/验证合同.md) | 验证层级、命令与证据 |
-| [指令优化规范](./b-Office/current/指令优化规范.md) | 命令命名规则与旧名映射 |
+| [现行约定](./b-Office/current/现行约定.md) | 唯一的长期文档：真相在哪、取舍、真机才知道的、工程约定 |
 
 ## 目录
 
@@ -54,7 +49,7 @@ Git 文件规则与 LFS，GitHub 账号与远端，以及分支图谱与提交�
 | --- | --- |
 | `b-Code-Studio/` | 业务源码、模块入口与 `eng/` 构建门禁脚本 |
 | `b-Code-Verify/` | Contracts、功能 Smoke 与 ModuleSmoke |
-| `b-Office/` | 项目文档：`current/` 现行合同、`history/` 只读归档 |
+| `b-Office/` | `current/现行约定.md`，仅此一份 |
 | `z-Publish/` | 正式快照与 `history/` 归档，由宿主管线写入 |
 
 ## 构建与验证
@@ -79,8 +74,8 @@ dotnet run --project .\b-Code-Verify\ModuleSmoke\ModuleSmoke.csproj -c Release -
 ## 要点
 
 - 正式快照含 `HistoryJanus.dll`、XML、module manifest 与 checksum，不含 docs、Janus EXE 或 HistoryVulcan 运行库。
-- 跨项目查 Janus 指令走 `diana.docs.read domain=janus`；HistoryVulcan 合同只从平级 `2026-023-HistoryVulcan/z-Publish` 消费。
-- 默认不读 `b-Office/history`，只有明确追溯版本时才读指定文件。
+- 跨项目查 Janus 指令走 `diana.docs.read domain=janus`；命名合同由 `CommandCatalogContractTests` 守住。HistoryVulcan 合同只从平级 `2026-023-HistoryVulcan/z-Publish` 消费。
+- 不留 `history/`、方案、需求书。仍有效的结论写进现行约定、调用处注释或测试。
 
 ## 保留内容
 - 本模板项目介绍：此为最初的准备的项目模板

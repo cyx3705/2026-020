@@ -15,7 +15,7 @@
       "appshell-module"
     ],
     "status": "active",
-    "version": "5.15.0",
+    "version": "5.15.1",
     "branch": "main"
   },
   "paths": {
@@ -36,7 +36,6 @@
       "z-Publish"
     ],
     "archiveRoots": [
-      "b-Office/history",
       "z-Publish/history"
     ],
     "releaseRoots": [
@@ -49,12 +48,7 @@
     ]
   },
   "documents": {
-    "center": "b-Office/文档中心.md",
-    "structure": "b-Office/文档中心.md",
-    "overview": "b-Office/current/项目概览.md",
-    "technicalContract": "b-Office/current/技术合同.md",
-    "decisions": "b-Office/current/有效决策.md",
-    "verification": "b-Office/current/验证合同.md"
+    "conventions": "b-Office/current/现行约定.md"
   },
   "commands": {
     "setup": "dotnet restore .\\HistoryJanus.sln --locked-mode -p:NuGetAudit=false",
@@ -65,13 +59,12 @@
     "package": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\b-Code-Studio\\eng\\Build-HistoryJanusPackage.ps1"
   },
   "externalDependencies": [
-    "HistoryVulcan >= 5.4.0 host snapshot from ../2026-023-HistoryVulcan/z-Publish/host",
+    "HistoryVulcan >= 6.0.0 host snapshot from ../2026-023-HistoryVulcan/z-Publish/host",
     "HistoryAurora >= 1.24.0 at runtime: content dialogs that carry action options (commit diff preview), stateful command buttons, bounded scrolling rule tables and scrollbar-free graph navigation; not a compile-time reference",
     ".NET 8 SDK and Windows Desktop Runtime",
     "Git command-line client"
   ],
   "contextExclusions": [
-    "b-Office/history/**",
     "z-Publish/**",
     "**/bin/**",
     "**/obj/**",

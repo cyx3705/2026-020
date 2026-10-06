@@ -87,7 +87,7 @@ public static class GitRuleCommands
         Name = "janus.gitrule.lfsrepair",
         CommandClass = "gitrule",
         Summary = "把一个仓修回 LFS 规则：不足 100MB 的指针转回普通入库，≥100MB 的按精确路径保留",
-        Example = "janus.gitrule.lfsrepair name=2026-018-MyAPI dryRun=true",
+        Example = "janus.gitrule.lfsrepair name=2026-018-MyAPI dryrun=true",
         Parameters =
         [
             new ParameterSpec { Name = "name", Description = "已登记项目名（目录名）", Required = true, Position = 0 },
@@ -100,14 +100,14 @@ public static class GitRuleCommands
             },
             new ParameterSpec
             {
-                Name = "formatOnly",
+                Name = "formatonly",
                 Description = "只删按格式的规则（*.dll 这类带通配的），精确路径的规则保留；失去覆盖的小指针同批转回",
                 Type = ParamType.Bool,
                 Default = "false",
             },
             new ParameterSpec
             {
-                Name = "dryRun",
+                Name = "dryrun",
                 Description = "只报告计划，不改文件、不动索引",
                 Type = ParamType.Bool,
                 Default = "false",
@@ -117,7 +117,7 @@ public static class GitRuleCommands
         Level = CommandLevel.Ask,
         ConfirmPrompt = ctx =>
             $"确认修复项目 {ctx.GetString("name")} 的 LFS 规则？\n\n" +
-            (ctx.GetBool("formatOnly")
+            (ctx.GetBool("formatonly")
                 ? "• 只去掉按格式的 filter=lfs（*.dll 这类），精确路径保留（保留 -text）\n"
                 : "• 去掉 lfs 托管块之外的所有 filter=lfs（保留 -text）\n") +
             "• 不足 100MB 的 LFS 指针转回普通入库；本机缺实体的先 git lfs pull，取不到的暂留指针\n" +
@@ -127,8 +127,8 @@ public static class GitRuleCommands
         Handler = async ctx =>
         {
             var (success, message, report) = await service.RepairAsync(
-                ctx.RequireString("name"), ctx.GetBool("commit", true), ctx.GetBool("dryRun"),
-                ctx.Progress, ctx.Cancellation, ctx.GetBool("formatOnly"));
+                ctx.RequireString("name"), ctx.GetBool("commit", true), ctx.GetBool("dryrun"),
+                ctx.Progress, ctx.Cancellation, ctx.GetBool("formatonly"));
             return success ? CommandResult.Ok(message, report) : CommandResult.Fail(message);
         },
     };

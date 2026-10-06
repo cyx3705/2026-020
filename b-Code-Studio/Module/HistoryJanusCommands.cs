@@ -15,9 +15,9 @@ public sealed class HistoryJanusCommands
             .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
             ?? typeof(HistoryJanusCommands).Assembly.GetName().Version?.ToString(3)
             ?? "unknown";
-        return $"HistoryJanus {version} 已由 HistoryVulcan 加载;已注册项目总览和项目操作两个页面;"
-               + "Git 文件规则、分支历史与 GitHub 在项目操作页底部同一行分段切换;"
-               + "Meta 文件夹已合并到项目总览;指令域 janus 含 proj/gitrule/history/github 四类,"
-               + "写操作仅限页面或确认门;业务命令已接入宿主命令总线";
+        return $"HistoryJanus {version} 已由 HistoryVulcan 加载;页面 overview、graph、projops;"
+               + "Git 文件规则、分支历史与 GitHub 在项目操作页内切换;"
+               + "指令域 janus 含 proj、gitrule、history、github、graph 五类,"
+               + "另有两段状态命令 janus.status;写操作仅限页面或确认门";
     }
 }

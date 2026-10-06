@@ -213,11 +213,13 @@ internal static class VersionProjectionSuite
 
         var officeRoot = Path.Combine(ParentDir, "b-Office");
         var currentRoot = Path.Combine(officeRoot, "current");
-        var historyRoot = Path.Combine(officeRoot, "history");
-        // 宿主 6.1.0（DEC-072）：消费文档退役，说明书只来自指令注册时的自描述。
-        True(Directory.Exists(currentRoot) && Directory.Exists(historyRoot)
+        // 文档改造后长期文档只剩现行约定。说明书来自指令注册时的自描述，命名合同在 Contracts。
+        True(Directory.Exists(currentRoot)
+             && !Directory.Exists(Path.Combine(officeRoot, "history"))
              && !Directory.Exists(Path.Combine(officeRoot, "package")),
-            "documentation follows the current/history contract without a package directory");
+            "long-lived documentation is only b-Office/current");
+        True(!File.Exists(Path.Combine(officeRoot, "文档中心.md")),
+            "documentation center is retired");
         True(!Directory.Exists(Path.Combine(officeRoot, "HistoryJanus")),
             "documentation: the drifted HistoryJanus document directory is removed");
         True(!Directory.Exists(Path.Combine(officeRoot, "meta"))
@@ -227,11 +229,8 @@ internal static class VersionProjectionSuite
         var currentDocuments = Directory.EnumerateFiles(currentRoot, "*.md")
             .Select(Path.GetFileName)
             .ToHashSet(StringComparer.Ordinal);
-        True(currentDocuments.SetEquals(
-                ["项目概览.md", "技术合同.md", "有效决策.md", "验证合同.md", "指令优化规范.md"]),
-            "current contains the AIReady meta documents plus the command naming guide");
-        var documentationCenter = Path.Combine(officeRoot, "文档中心.md");
-        True(File.Exists(documentationCenter), "b-Office has a root documentation center");
+        True(currentDocuments.SetEquals(["现行约定.md"]),
+            "current contains only the project conventions");
         Equal(0, Directory.EnumerateFiles(officeRoot, "README.md", SearchOption.AllDirectories).Count(),
             "b-Office subdirectories contain no independent README");
 
@@ -242,9 +241,6 @@ internal static class VersionProjectionSuite
                     || line.StartsWith("> 当前版本：", StringComparison.Ordinal)),
                 $"current manual has no hand-synchronized applicability version: {Path.GetFileName(path)}");
         }
-        var officeNavigation = File.ReadAllText(documentationCenter);
-        True(!officeNavigation.Contains("> 当前版本：", StringComparison.Ordinal),
-            "documentation center has no hand-synchronized current version");
 
     }
 

@@ -1,14 +1,18 @@
+using System.Reflection;
+using System.Text.RegularExpressions;
 using HistoryJanus;
+using HistoryJanus.Module;
 using HistoryVulcan.Core.Commands;
 using HistoryVulcan.Core.Logging;
+using HistoryVulcan.Core.Modules;
 using Xunit;
 
 namespace HistoryJanus.Contracts;
 
 /// <summary>
-/// 命令目录合同：组合根是 Janus 业务命令的唯一权威注册入口，Help/命令集/MCP/手册
-/// 全部从运行时注册表投影（QA-001；代码管道化 §4.1）。这里的断言替代人工核对，
-/// 使命令数量、来源、只读与危险确认的漂移在 Contracts 阶段即被阻断。
+/// 命令目录合同，也是指令命名合同：组合根是 Janus 业务命令的唯一权威注册入口。
+/// 名字三段式全小写、无连字符，<c>CommandClass</c> 等于中间段，参数键同样全小写；
+/// 旧名一次切掉，不双注册。<c>janus.status</c> 是唯一的两段名，由模块入口投影，类为 core。
 /// </summary>
 public sealed class CommandCatalogContractTests
 {
@@ -158,6 +162,38 @@ public sealed class CommandCatalogContractTests
                 fixture.Registry.TryGet(name, out var descriptor), $"missing: {name}");
             Assert.NotEqual(CommandLevel.Ask, descriptor.Level);
         }
+    }
+
+    // 参数键与指令名同一条规矩：全小写、无连字符。camelCase 会让调用方对不上总线校验。
+    private static readonly Regex NameToken = new("^[a-z][a-z0-9]*$", RegexOptions.CultureInvariant);
+
+    [Fact]
+    public void CommandAndParameterNamesAreLowercaseWords()
+    {
+        using var fixture = new CompositionFixture();
+
+        foreach (var descriptor in fixture.Registry.All())
+        {
+            Assert.Matches("^[a-z]+(\\.[a-z][a-z0-9]*){2}$", descriptor.Name);
+            Assert.All(descriptor.Parameters, parameter => Assert.Matches(NameToken, parameter.Name));
+        }
+    }
+
+    [Fact]
+    public void StatusIsTheOnlyTwoSegmentCommand()
+    {
+        var methods = typeof(HistoryJanusCommands)
+            .GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly)
+            .Where(method => method.GetCustomAttribute<ModuleCommandAttribute>() != null)
+            .ToArray();
+        var method = Assert.Single(methods);
+        Assert.Equal("status", method.Name);
+        Assert.Matches(NameToken, method.Name);
+        var attribute = method.GetCustomAttribute<ModuleCommandAttribute>();
+        Assert.NotNull(attribute);
+        Assert.Equal("core", attribute.CommandClass);
+        Assert.True(attribute.Readonly);
+        Assert.Equal("janus", new ModuleInfo().CommandPrefix);
     }
 
     [Fact]

@@ -69,7 +69,7 @@ foreach ($hotspot in $hotspots) {
     $violations.Add("Hotspot over 1000 lines: $($hotspot.Path) ($($hotspot.Lines) lines); split by responsibility.")
 }
 
-# --- 3. 版本身份链一致：props -> manifest -> 技术合同现行声明 ----------------------------
+# --- 3. 版本身份链一致：props -> module.manifest -> project.manifest -------------------
 $versionPropsPath = Join-Path $componentRoot 'JanusVersion.props'
 [xml]$versionProps = [IO.File]::ReadAllText($versionPropsPath)
 $sourceVersion = [string]$versionProps.Project.PropertyGroup.HistoryJanusVersion
@@ -97,12 +97,6 @@ $manifestPath = Join-Path $componentRoot 'Module\module.manifest.json'
 $manifest = [IO.File]::ReadAllText($manifestPath) | ConvertFrom-Json
 if ([string]$manifest.version -ne $sourceVersion) {
     $violations.Add("module.manifest.json version $($manifest.version) != JanusVersion.props $sourceVersion")
-}
-
-$contractPath = Join-Path $root 'b-Office\current\技术合同.md'
-$contractText = [IO.File]::ReadAllText($contractPath)
-if ($contractText -notmatch "当前开发版本为 ``?$([regex]::Escape($sourceVersion))``?") {
-    $violations.Add("技术合同.md 未声明当前开发版本 $sourceVersion")
 }
 
 # 运行时 Status 必须是程序集投影，不允许版本字面量回流进源码
