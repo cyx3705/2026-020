@@ -212,12 +212,11 @@ internal static class VersionProjectionSuite
         }
 
         var officeRoot = Path.Combine(ParentDir, "b-Office");
-        var currentRoot = Path.Combine(officeRoot, "current");
-        // 文档改造后长期文档只剩现行约定。说明书来自指令注册时的自描述，命名合同在 Contracts。
-        True(Directory.Exists(currentRoot)
+        // 长期文档只剩现行约定，并且直接放在 office 文件夹里。说明书来自指令注册时的自描述，命名合同在 Contracts。
+        True(!Directory.Exists(Path.Combine(officeRoot, "current"))
              && !Directory.Exists(Path.Combine(officeRoot, "history"))
              && !Directory.Exists(Path.Combine(officeRoot, "package")),
-            "long-lived documentation is only b-Office/current");
+            "office folder has no internal structure");
         True(!File.Exists(Path.Combine(officeRoot, "文档中心.md")),
             "documentation center is retired");
         True(!Directory.Exists(Path.Combine(officeRoot, "HistoryJanus")),
@@ -226,15 +225,15 @@ internal static class VersionProjectionSuite
              && !Directory.Exists(Path.Combine(officeRoot, "versions"))
              && !Directory.Exists(Path.Combine(officeRoot, "evidence")),
             "retired documentation directories are absent");
-        var currentDocuments = Directory.EnumerateFiles(currentRoot, "*.md")
+        var officeDocuments = Directory.EnumerateFiles(officeRoot, "*.md")
             .Select(Path.GetFileName)
             .ToHashSet(StringComparer.Ordinal);
-        True(currentDocuments.SetEquals(["现行约定.md"]),
-            "current contains only the project conventions");
+        True(officeDocuments.SetEquals(["现行约定.md"]),
+            "office contains only the project conventions");
         Equal(0, Directory.EnumerateFiles(officeRoot, "README.md", SearchOption.AllDirectories).Count(),
-            "b-Office subdirectories contain no independent README");
+            "b-Office contains no independent README");
 
-        foreach (var path in Directory.EnumerateFiles(currentRoot, "*.md"))
+        foreach (var path in Directory.EnumerateFiles(officeRoot, "*.md"))
         {
             True(!File.ReadAllLines(path).Any(line =>
                     line.StartsWith("> 适用版本：", StringComparison.Ordinal)

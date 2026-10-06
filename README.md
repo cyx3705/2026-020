@@ -41,7 +41,7 @@ Git 文件规则与 LFS，GitHub 账号与远端，以及分支图谱与提交�
 | --- | --- |
 | [`AGENTS.md`](./AGENTS.md) | AI 工作合同：读取顺序、真值判定、边界 |
 | [`project.manifest.json`](./project.manifest.json) | 项目身份、活动目录、文档与命令 |
-| [现行约定](./b-Office/current/现行约定.md) | 唯一的长期文档：真相在哪、取舍、真机才知道的、工程约定 |
+| [现行约定](./b-Office/现行约定.md) | 唯一的长期文档：真相在哪、取舍、真机才知道的、工程约定 |
 
 ## 目录
 
