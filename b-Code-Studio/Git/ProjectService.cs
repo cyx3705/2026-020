@@ -359,7 +359,10 @@ public sealed partial class ProjectService
         if (Directory.Exists(targetPath))
             return (false, $"目标项目目录已存在: {targetPath}\n请更换项目名称或手动清理该目录");
 
-        progress?.Report($"从模板 {baseBranch} 复制工作树...");
+        var skippedZ = ReadZFolderNames(templatePath);
+        progress?.Report(skippedZ.Count == 0
+            ? $"从模板 {baseBranch} 复制工作树..."
+            : $"从模板 {baseBranch} 复制工作树（不继承 {skippedZ.Count} 个 z/Z 文件夹）...");
         try
         {
             ProjectRepoLayout.CopyWorkingTree(templatePath, targetPath);
@@ -386,7 +389,10 @@ public sealed partial class ProjectService
         if (!commit.Success)
             return (false, $"首提交失败:\n{commit.Output}");
 
-        return (true, $"项目已就绪: {targetPath}(独立仓,基于模板 {baseBranch})");
+        var skippedNote = skippedZ.Count == 0
+            ? ""
+            : $"；未继承 z 级文件夹: {string.Join("、", skippedZ)}";
+        return (true, $"项目已就绪: {targetPath}(独立仓,基于模板 {baseBranch}){skippedNote}");
     }
 
     private static async Task CopyIdentityAsync(string templatePath, string targetPath)

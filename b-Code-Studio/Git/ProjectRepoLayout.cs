@@ -118,12 +118,17 @@ internal static class ProjectRepoLayout
         }
     }
 
+    /// <summary>
+    /// 复制工作树。跳过 <c>.git</c>，也跳过根下以 z/Z 开头的文件夹：
+    /// 那是本仓自己的元数据或备用模板，新项目不继承，用到时再从模板仓复制。
+    /// 根上名字以 z 开头的文件不是文件夹，照常复制；普通目录里面的 z 段也照常复制。
+    /// </summary>
     public static void CopyWorkingTree(string source, string destination)
     {
         Directory.CreateDirectory(destination);
         foreach (var directory in Directory.EnumerateDirectories(source, "*", SearchOption.AllDirectories))
         {
-            if (IsGitSegment(source, directory))
+            if (IsGitSegment(source, directory) || IsUnderTopLevelZFolder(source, directory, isDirectory: true))
                 continue;
             if ((File.GetAttributes(directory) & FileAttributes.ReparsePoint) != 0)
                 continue;
@@ -132,7 +137,7 @@ internal static class ProjectRepoLayout
 
         foreach (var file in Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories))
         {
-            if (IsGitSegment(source, file))
+            if (IsGitSegment(source, file) || IsUnderTopLevelZFolder(source, file, isDirectory: false))
                 continue;
             var target = Map(source, destination, file);
             Directory.CreateDirectory(Path.GetDirectoryName(target)!);
@@ -189,6 +194,22 @@ internal static class ProjectRepoLayout
         var relative = Path.GetRelativePath(root, path);
         return relative.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
             .Any(segment => segment.Equals(".git", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// 与 ReadZFolderNames 同一口径：只看根下第一段是否以 z/Z 开头。
+    /// 目录自身（只有一段）也算；根上的文件只有一段且不是目录，不排除。
+    /// </summary>
+    private static bool IsUnderTopLevelZFolder(string root, string path, bool isDirectory)
+    {
+        var relative = Path.GetRelativePath(root, path);
+        var parts = relative.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        if (parts.Length == 0 || parts[0].Length == 0 || parts[0] == ".")
+            return false;
+        var topIsZ = parts[0][0] == 'z' || parts[0][0] == 'Z';
+        if (!topIsZ)
+            return false;
+        return isDirectory || parts.Length >= 2;
     }
 
     private static string Map(string source, string destination, string path)

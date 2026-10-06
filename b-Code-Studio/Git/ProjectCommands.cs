@@ -193,7 +193,7 @@ public static partial class ProjectCommands
     {
         Name = "janus.proj.create",
         CommandClass = "proj",
-        Summary = "创建新项目:从模板仓复制工作树并 git init 为独立仓",
+        Summary = "创建新项目:从模板仓复制工作树并 git init 为独立仓，不继承根下 z/Z 文件夹",
         Example = "janus.proj.create name=2026-025-新项目",
         Parameters =
         [
