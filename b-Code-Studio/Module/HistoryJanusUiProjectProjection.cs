@@ -88,6 +88,35 @@ internal static partial class HistoryJanusUiCommands
                 (needle.Length == 0 || Matches(project, needle))));
         }
 
+        /// <summary>
+        /// 「操作」排列的组序：要人动手的在前（提交 → 推送 → 同步 → 归档 → 拉取），
+        /// 远端没确认的「刷新」垫底——它还说不出该做什么。
+        /// </summary>
+        private static readonly string[] ActionOrder = ["提交", "推送", "同步", "归档", "拉取"];
+
+        /// <summary>
+        /// 顶栏「排列」：<see cref="SortByAction"/> 按操作分组，组内保持传入次序（已是新项目在上）；
+        /// 其余值（含空、<see cref="SortByNumber"/>）原样返回。
+        /// 分组键用的是投影后的动作——与「操作」格显示的是同一个值，表上看到的分组不会和格子对不上。
+        /// </summary>
+        public static IReadOnlyList<WorktreeInfo> Arrange(IReadOnlyList<WorktreeInfo> projects, string? sort)
+        {
+            if (!SortByAction.Equals(sort?.Trim(), StringComparison.Ordinal))
+                return projects;
+            return projects
+                .Select((project, index) => (project, index, rank: Rank(Project(project).LifecycleAction)))
+                .OrderBy(item => item.rank)
+                .ThenBy(item => item.index)
+                .Select(item => item.project)
+                .ToList();
+
+            static int Rank(string action)
+            {
+                var index = Array.IndexOf(ActionOrder, action);
+                return index < 0 ? ActionOrder.Length : index;
+            }
+        }
+
         private static bool Matches(WorktreeInfo project, string needle)
             => project.BranchName.Contains(needle, StringComparison.OrdinalIgnoreCase) ||
                (project.ZFolders ?? []).Any(folder =>

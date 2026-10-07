@@ -268,7 +268,7 @@ public sealed partial class ProjectOperationsPanelContractTests
     [Fact]
     public void OverviewUsesTheV56ControlPanelAndClickableColumns()
     {
-        // V5.6：页签叫 Janus，顶栏是「刷新 + 搜索 + 年份」三件。
+        // V5.6：页签叫 Janus，顶栏是「刷新 + 搜索 + 年份」；5.15.3 加第四件「排列」。
         Assert.Equal("Janus", Page("overview").GetProperty("title").GetString());
         var children = Page("overview").GetProperty("content").GetProperty("children")
             .EnumerateArray().ToList();
@@ -276,7 +276,16 @@ public sealed partial class ProjectOperationsPanelContractTests
 
         var panel = children.Single(node => node.GetProperty("type").GetString() == "panel");
         var widgets = PanelWidgets(panel).ToList();
-        Assert.Equal(3, widgets.Count);
+        Assert.Equal(4, widgets.Count);
+
+        // 「排列」两态：第一态是原有的编号次序（选项框初值落在第一项）。
+        var sort = widgets[3];
+        Assert.Equal("排列", sort.GetProperty("label").GetString());
+        Assert.Equal("select", sort.GetProperty("mode").GetString());
+        Assert.Equal("janus.overview.sort", sort.GetProperty("channel").GetString());
+        Assert.Equal(
+            new[] { HistoryJanusUiCommands.SortByNumber, HistoryJanusUiCommands.SortByAction },
+            sort.GetProperty("options").EnumerateArray().Select(item => item.GetString()));
 
         var refresh = widgets[0];
         Assert.Equal("刷新", refresh.GetProperty("text").GetString());
@@ -302,6 +311,7 @@ public sealed partial class ProjectOperationsPanelContractTests
             .GetProperty("dataSource").GetProperty("args");
         Assert.Equal("{selection.janus.overview.query.value}", args.GetProperty("query").GetString());
         Assert.Equal("{selection.janus.overview.year.value}", args.GetProperty("year").GetString());
+        Assert.Equal("{selection.janus.overview.sort.value}", args.GetProperty("sort").GetString());
         Assert.False(args.TryGetProperty("refresh", out _));
 
         var columns = children.Single(node => node.GetProperty("type").GetString() == "table")

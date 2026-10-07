@@ -71,29 +71,31 @@ internal static partial class HistoryJanusUiCommands
         if (action == ProjectService.RefreshAction)
         {
             // 「刷新」本身就是上面那次带 fetch 的复核；把结果写回这一行即可。
-            await RefreshCachedProjectAsync(projects, name, current, context.Cancellation);
-            _ = await bus.ExecuteAsync("aurora.ui.refreshdata node=projects", context.Source, context.Cancellation);
+            await ShowRowAsync(current);
             return current.State == ProjectLifecycleState.Unavailable
                 ? CommandResult.Fail($"远端状态仍无法确认：{current.Message}")
                 : CommandResult.Ok($"已刷新：当前应执行“{current.Action}”（{current.Message}）");
         }
         if (!current.Action.Equals(action, StringComparison.Ordinal))
         {
-            await RefreshCachedProjectAsync(projects, name, current, context.Cancellation);
-            _ = await bus.ExecuteAsync("aurora.ui.refreshdata node=projects", context.Source, context.Cancellation);
+            await ShowRowAsync(current);
             return CommandResult.Fail($"项目状态已变化：当前应执行“{current.Action}”（{current.Message}）");
         }
 
-        string command;
-        if (action == "提交")
+        // 5.15.3：从这里往下，**每一条出路**都回写这一行，不只成功那一条。
+        // 此前只有成功才回写：「工作树干净，没有要提交的内容」、取消、提交被跳过、
+        // 推送/同步/归档失败（同步失败时 AI 收口可能已经动过本地）——这些出路都弹了提示，
+        // 操作列却还停在点之前的那个动作上，再点一次还是同一个提示。
+        try
         {
-            var decided = await DecideCommitAsync(context, bus, projects, name);
-            if (decided.Result != null) return decided.Result;
-            command = decided.Command!;
-        }
-        else
-        {
-            command = action switch
+            if (action == "提交")
+            {
+                var decided = await DecideCommitAsync(context, bus, projects, name);
+                if (decided.Result != null) return decided.Result;
+                return await bus.ExecuteAsync(decided.Command!, context.Source, context.Cancellation);
+            }
+
+            var command = action switch
             {
                 "推送" => $"janus.proj.push name={Quote(name)}",
                 "同步" => $"janus.proj.sync name={Quote(name)}",
@@ -102,14 +104,20 @@ internal static partial class HistoryJanusUiCommands
                 _ => "",
             };
             if (command.Length == 0) return CommandResult.Fail($"未知项目状态动作: {action}");
+            return await bus.ExecuteAsync(command, context.Source, context.Cancellation);
         }
-        var result = await bus.ExecuteAsync(command, context.Source, context.Cancellation);
-        if (result.Success)
+        finally
         {
-            await RefreshCachedProjectAsync(projects, name, null, context.Cancellation);
-            _ = await bus.ExecuteAsync("aurora.ui.refreshdata node=projects", context.Source, context.Cancellation);
+            // 动作可能改了本地也可能没改；不再 fetch，按本地引用重读即可（推送/同步已更新过跟踪引用）。
+            // 不用调用方的取消令牌：人取消了动作，表格也得对上现场。
+            await ShowRowAsync(null);
         }
-        return result;
+
+        async Task ShowRowAsync(ProjectLifecycleSnapshot? snapshot)
+        {
+            await RefreshCachedProjectAsync(projects, name, snapshot);
+            _ = await bus.ExecuteAsync("aurora.ui.refreshdata node=projects", context.Source);
+        }
     }
 
     /// <summary>提交动作里「丢弃」那一支的回执值。</summary>
@@ -133,6 +141,8 @@ internal static partial class HistoryJanusUiCommands
     {
         var diff = await projects.ReadWorktreeDiffAsync(
             name, RepositoryTarget.Parent, context.Cancellation);
+        // 状态说脏、差异说干净：多半是只差索引记录的「幽灵修改」，收尾回写这一行时
+        // 刷新链路会顺手把它清掉（见 ProjectService.HealStatOnlyChangesAsync），操作列随之换成下一步。
         if (!diff.IsDirty)
             return (CommandResult.Ok($"{name}: {diff.Summary}"), null);
 
@@ -154,14 +164,9 @@ internal static partial class HistoryJanusUiCommands
         if (DialogValue(chosen) == DiscardChoice)
         {
             // 丢弃自带宿主确认（janus.proj.discard 是 Ask 级）；这里不再叠一层。
+            // 表格由调用方在收尾时统一回写。
             var discarded = await bus.ExecuteAsync(
                 $"janus.proj.discard name={Quote(name)}", context.Source, context.Cancellation);
-            if (discarded.Success)
-            {
-                await RefreshCachedProjectAsync(projects, name, null, context.Cancellation);
-                _ = await bus.ExecuteAsync(
-                    "aurora.ui.refreshdata node=projects", context.Source, context.Cancellation);
-            }
             return (discarded, null);
         }
 
@@ -209,6 +214,7 @@ internal static partial class HistoryJanusUiCommands
             _projectCache = cached.Any(item => ReferenceEquals(item, previous))
                 ? cached.Select(item => ReferenceEquals(item, previous) ? updated : item).ToArray()
                 : [.. cached, updated];
+            RowsUpdatedSinceLoad.Add(updated.BranchName);
         }
         finally { ProjectCacheGate.Release(); }
     }

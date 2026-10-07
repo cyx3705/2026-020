@@ -81,13 +81,50 @@ public sealed class ProjectLifecycleContractTests : IDisposable
         var result = await bus.ExecuteAsync($"janus.ui.projectaction name={name} action=推送", "UI");
         Assert.Equal(succeeds, result.Success);
         Assert.Equal(1, lists); // 操作结束没有全库扫描。
-        if (!succeeds) Assert.Null(displayed);
-        var after = await bus.ExecuteAsync("janus.ui.data view=projects", "UI");
-        using var json = JsonDocument.Parse(succeeds ? displayed! : after.Message);
+        // 5.15.3：失败也回写这一行并让表格重取——每条出路都要对上现场。
+        Assert.NotNull(displayed);
+        using var json = JsonDocument.Parse(displayed!);
         var row = json.RootElement.EnumerateArray().Single(item => item.GetProperty("name").GetString() == name);
         Assert.Equal(succeeds ? "同步 ↔" : "推送 ↑", row.GetProperty("status").GetString());
         var other = json.RootElement.EnumerateArray().Single(item => item.GetProperty("name").GetString() == "2026-903-Unchanged");
         Assert.Equal("提交 ●", other.GetProperty("status").GetString());
+    }
+
+    /// <summary>
+    /// 「幽灵修改」：eol=crlf 文件的索引尺寸是 LF 版的，status 报 M、git diff HEAD 为空。
+    /// 刷新要把它认成干净（并清掉索引里的旧尺寸），否则操作列永远是「提交」，点下去又说没有可提交的。
+    /// 真有改动的文件不能被这条路吞掉。
+    /// </summary>
+    [Fact]
+    public async Task StatOnlyModificationIsHealedAndDoesNotAskForCommit()
+    {
+        Directory.CreateDirectory(_root);
+        var service = CreateService();
+        const string projectName = "2026-905-Phantom";
+        var project = Path.Combine(_root, projectName);
+        Directory.CreateDirectory(project);
+        await Git(project, "init", "-b", "main");
+        await Git(project, "config", "user.name", "Janus Test");
+        await Git(project, "config", "user.email", "janus@example.invalid");
+        await Git(project, "config", "core.autocrlf", "false");
+        File.WriteAllText(Path.Combine(project, "a.cs"), "a\nb\n");
+        await Git(project, "add", "-A");
+        await Git(project, "commit", "-m", "lf");
+        File.WriteAllText(Path.Combine(project, ".gitattributes"), "*.cs text eol=crlf\n");
+        await Git(project, "add", "-A");
+        await Git(project, "commit", "-m", "attr");
+        File.WriteAllText(Path.Combine(project, "a.cs"), "a\r\nb\r\n");
+
+        var healed = await service.RefreshProjectAsync(projectName);
+        Assert.NotEqual(ProjectLifecycleState.Dirty, healed.State);
+        Assert.Equal("推送", healed.Action); // 没有 origin：下一步是推送
+        var staged = await GitRunner.RunAsync(project, ["diff", "--cached", "--name-only"]);
+        Assert.Equal("", staged.Output.Trim());
+
+        File.WriteAllText(Path.Combine(project, "a.cs"), "a\r\nchanged\r\n");
+        var dirty = await service.RefreshProjectAsync(projectName);
+        Assert.Equal(ProjectLifecycleState.Dirty, dirty.State);
+        Assert.Equal("提交", dirty.Action);
     }
 
     /// <summary>

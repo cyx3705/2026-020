@@ -94,6 +94,18 @@ internal static partial class HistoryJanusUiCommands
     /// <summary>年份下拉里「不过滤」那一项。它同时是候选表的第一行和过滤器的短路值。</summary>
     private const string AllYears = "全部";
 
+    /// <summary>总览页顶栏「排列」的通道（5.15.3）。</summary>
+    private const string OverviewSortChannel = "janus.overview.sort";
+
+    /// <summary>
+    /// 「排列」两态，同时是选项框的候选项与排序的分支值，只写一处。
+    /// 编号：新项目在上（原有行为，第一态）；操作：按「提交 → 推送 → 同步 → 归档 → 拉取」分组，
+    /// 要动手的排在最前，组内仍是新项目在上。
+    /// </summary>
+    internal const string SortByNumber = "编号";
+
+    internal const string SortByAction = "操作";
+
     public static void Register(
         ICommandRegistrar registry,
         ICommandBus bus,
@@ -174,6 +186,11 @@ internal static partial class HistoryJanusUiCommands
                 {
                     Name = "year",
                     Description = $"projects 视图的年份过滤；「{AllYears}」或空表示不过滤",
+                },
+                new ParameterSpec
+                {
+                    Name = "sort",
+                    Description = $"projects 视图的排列：「{SortByNumber}」新项目在上（空即此项），「{SortByAction}」按提交、推送、同步、归档、拉取分组",
                 },
             ],
             Handler = context => LoadDataAsync(context, bus, business),
@@ -398,7 +415,8 @@ internal static partial class HistoryJanusUiCommands
             context.GetString("query"),
             context.GetString("year"),
             AllYears);
-        return Payload(UiProjectProjection.Serialize(filtered));
+        return Payload(UiProjectProjection.Serialize(
+            UiProjectProjection.Arrange(filtered, context.GetString("sort"))));
     }
 
     /// <summary>
@@ -413,6 +431,15 @@ internal static partial class HistoryJanusUiCommands
 
     private static IReadOnlyList<WorktreeInfo>? _projectCache;
     private static readonly SemaphoreSlim ProjectCacheGate = new(1, 1);
+
+    /// <summary>整张清单被重取的次数。后台补刷据此判断「这期间有没有人整表刷新过」。</summary>
+    private static int _projectCacheGeneration;
+
+    /// <summary>
+    /// 本次整表取数之后被单行回写过的项目（项目操作之后）。后台补刷回来时这些行以回写为准：
+    /// 它们比补刷开始时取的那份更新。整表重取时清空。
+    /// </summary>
+    private static readonly HashSet<string> RowsUpdatedSinceLoad = new(StringComparer.OrdinalIgnoreCase);
 
     internal static void RequestProjectRefresh() => _forceProjectRefresh = true;
 
@@ -439,9 +466,11 @@ internal static partial class HistoryJanusUiCommands
 
             var items = UiProjectProjection.ReadWorktrees(result.Data);
             _projectCache = items;
+            var generation = ++_projectCacheGeneration;
+            RowsUpdatedSinceLoad.Clear();
             // 只有界面（Aurora 取数来源是 UI）才补这一轮；冒烟与脚本取数不该顺带 fetch 全库。
             if (!forced && context.Source == "UI" && Interlocked.Exchange(ref _autoRefreshStarted, 1) == 0)
-                _ = Task.Run(() => AutoRefreshProjectsAsync(bus, context.Source, items));
+                _ = Task.Run(() => AutoRefreshProjectsAsync(bus, context.Source, generation));
             return (items, null);
         }
         finally { ProjectCacheGate.Release(); }
@@ -456,10 +485,14 @@ internal static partial class HistoryJanusUiCommands
     ///
     /// 不借 <see cref="_forceProjectRefresh"/> 这面旗：它是给按钮用的一次性开关，
     /// 后台任务若立了旗却没等到重取，下一次因搜索词变化的取数就会意外付全价。
-    /// 这期间人若已按过「刷新」，缓存已被换掉，这里就不再覆盖。
+    /// 这期间人若已按过「刷新」，整表已被换掉，这里就不再覆盖。
+    ///
+    /// 人在这期间只对某几行做过动作（提交、推送……）时**照样合并**，那几行以动作后的回写为准。
+    /// 5.15.2 及以前这里只比引用：任何一次单行回写都会换掉缓存引用，整轮补刷因此被丢弃，
+    /// 其余几十行永远停在首屏的「刷新 ?」，直到人自己去按刷新。
     /// </summary>
     private static async Task AutoRefreshProjectsAsync(
-        ICommandBus bus, string source, IReadOnlyList<WorktreeInfo> firstScreen)
+        ICommandBus bus, string source, int generation)
     {
         try
         {
@@ -471,9 +504,9 @@ internal static partial class HistoryJanusUiCommands
             await ProjectCacheGate.WaitAsync();
             try
             {
-                if (!ReferenceEquals(_projectCache, firstScreen))
+                if (_projectCacheGeneration != generation || _projectCache is not { } current)
                     return;
-                _projectCache = items;
+                _projectCache = MergeKeepingUpdatedRows(items, current, RowsUpdatedSinceLoad);
             }
             finally { ProjectCacheGate.Release(); }
 
@@ -483,6 +516,22 @@ internal static partial class HistoryJanusUiCommands
         {
             // 后台补刷失败不影响首屏；表格仍显示「刷新 ?」，人可以自己点。
         }
+    }
+
+    /// <summary>补刷结果为底，被单行回写过的项目换回缓存里那一版；补刷里没有的回写行也留着。</summary>
+    internal static IReadOnlyList<WorktreeInfo> MergeKeepingUpdatedRows(
+        IReadOnlyList<WorktreeInfo> refreshed,
+        IReadOnlyList<WorktreeInfo> cached,
+        IReadOnlySet<string> updated)
+    {
+        var kept = cached
+            .Where(item => updated.Contains(item.BranchName))
+            .GroupBy(item => item.BranchName, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.Last(), StringComparer.OrdinalIgnoreCase);
+        var merged = refreshed.Select(item => kept.GetValueOrDefault(item.BranchName) ?? item).ToList();
+        merged.AddRange(kept.Values.Where(item =>
+            !refreshed.Any(row => row.BranchName.Equals(item.BranchName, StringComparison.OrdinalIgnoreCase))));
+        return merged;
     }
 
     /// <summary>按项目取数：没给项目名就返回 null，调用方据此拒绝，而不是去扫全库。</summary>
@@ -538,6 +587,9 @@ internal static partial class HistoryJanusUiCommands
             lanes,
             nodes,
             selectAction = "janus.graph.node.detail",
+            // 左侧不画泳道标题栏（5.15.3，要 Aurora ≥ 1.33.0）：多数项目只有一条 main，
+            // 那一栏只写着「main」，却占掉一截宽度、贴着节点挡住泳道起点（用户定：全部不画）。
+            laneTitles = false,
         };
         return CommandResult.Ok(JsonSerializer.Serialize(description), description);
     }

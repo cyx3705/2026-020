@@ -67,8 +67,8 @@ internal static partial class HistoryJanusUiCommands
                         {
                             type = "panel",
                             id = "janus-overview-controls",
-                            // 一行三件：刷新、搜索、年份。搜索框吃掉余量，另外两个各自最窄。
-                            // 搜索与年份都只作用在**已经取到的那份清单**上（见 LoadProjectsAsync）——
+                            // 一行四件：刷新、搜索、年份、排列。搜索框吃掉余量，其余各自最窄。
+                            // 搜索、年份、排列都只作用在**已经取到的那份清单**上（见 LoadProjectsAsync）——
                             // 敲一个字符就 fetch 一轮远端是不能接受的。
                             rows = new object[]
                             {
@@ -108,6 +108,18 @@ internal static partial class HistoryJanusUiCommands
                                                 args = new { view = "years" },
                                             },
                                         },
+                                        // 「排列」两态（5.15.3）：第一态编号是原有行为，第二态按操作分组。
+                                        // 同样只在已取到的清单上重排，不碰 Git。
+                                        new
+                                        {
+                                            kind = "textbox",
+                                            id = "overview-sort",
+                                            label = "排列",
+                                            mode = "select",
+                                            minWidth = 72,
+                                            channel = OverviewSortChannel,
+                                            options = new[] { SortByNumber, SortByAction },
+                                        },
                                     },
                                 },
                             },
@@ -128,6 +140,7 @@ internal static partial class HistoryJanusUiCommands
                                     view = "projects",
                                     query = "{selection." + OverviewQueryChannel + ".value}",
                                     year = "{selection." + OverviewYearChannel + ".value}",
+                                    sort = "{selection." + OverviewSortChannel + ".value}",
                                 },
                             },
                             columns = new object[]

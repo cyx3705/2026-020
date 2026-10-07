@@ -85,7 +85,8 @@ public sealed partial class ProjectService
 
         if (!status.Success || local.Length == 0)
             return Snapshot(ProjectLifecycleState.Unavailable, RefreshAction, "无法读取本地仓库状态");
-        if (!string.IsNullOrWhiteSpace(status.Output))
+        if (!string.IsNullOrWhiteSpace(status.Output)
+            && !await HealStatOnlyChangesAsync(repo, status.Output, cancellation))
             return Snapshot(ProjectLifecycleState.Dirty, "提交", "工作树有未提交或未跟踪内容");
         if (remote.Length == 0)
             return Snapshot(ProjectLifecycleState.NoRemote, "推送", "项目尚未配置 origin");
@@ -135,6 +136,41 @@ public sealed partial class ProjectService
             string remoteSha = "", int ahead = 0, int behind = 0)
             => new(name, state, action, message, local, remoteSha, remote, branch,
                 ahead, behind, zFolders);
+    }
+
+    /// <summary>
+    /// 「幽灵修改」：status 报 <c> M</c>，内容却与 HEAD 一字不差（<c>git diff HEAD</c> 为空）。
+    ///
+    /// 真机上见于 <c>eol=crlf</c> 的文件：索引里记的尺寸是另一种换行下的尺寸，
+    /// git 看到尺寸不同就直接判「改过」，不再比内容；<c>update-index --refresh</c> 走的是同一个判断，
+    /// 刷不掉。于是操作列永远停在「提交」，点下去差异预览却说「工作树干净」，提交也只会跳过——
+    /// 人卡在一个做不完的动作上。
+    ///
+    /// 只有全部条目都是「工作树改过、索引没动」且 <c>git diff HEAD</c> 为空时才处理：
+    /// 对这几个路径 <c>git add -u</c>，内容经清洗后与索引同一个 blob，所以暂存区不变，
+    /// 只是把索引里的尺寸与时间戳换成现在的。任何一条对不上（未跟踪、已暂存、真有差异）都原样返回脏。
+    /// </summary>
+    /// <returns>处理后工作树确实干净时返回 true。</returns>
+    internal static async Task<bool> HealStatOnlyChangesAsync(
+        string repo, string porcelain, CancellationToken cancellation)
+    {
+        var lines = porcelain.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(line => line.TrimEnd('\r'))
+            .Where(line => line.Length > 0)
+            .ToList();
+        if (lines.Count == 0 || lines.Any(line => line.Length < 4 || line[0] != ' ' || line[1] != 'M'))
+            return false;
+        var diff = await GitRunner.RunAsync(repo, ["diff", "--name-only", "HEAD"], cancellation);
+        if (!diff.Success || diff.Output.Trim().Length > 0)
+            return false;
+
+        var paths = lines.Select(line => ":(literal)" + GitPath.Unquote(line[3..].Trim())).ToList();
+        var add = await GitRunner.RunAsync(repo, ["add", "-u", "--", .. paths], cancellation);
+        if (!add.Success)
+            return false;
+        var after = await GitRunner.RunAsync(repo,
+            ["status", "--porcelain=v1", "--untracked-files=all"], cancellation);
+        return after.Success && string.IsNullOrWhiteSpace(after.Output);
     }
 
     /// <summary>
