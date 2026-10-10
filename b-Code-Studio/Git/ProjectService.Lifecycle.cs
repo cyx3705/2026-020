@@ -56,6 +56,10 @@ public sealed partial class ProjectService
     ///
     /// HTTPS 没有凭据时不弹登录窗（<c>GCM_INTERACTIVE=never</c>），直接退回 origin。
     /// origin 本来就是 HTTPS 或本地路径时只走 origin。
+    ///
+    /// HTTPS 这一试带 git 自己的停滞判定（<see cref="HttpsStallArguments"/>）：真机上见过 TLS 连上之后
+    /// 一个字节都不再来，git 就一直挂着，整轮刷新跟着卡死。判定只作用于这一试，
+    /// 判停后照样退回 origin 走完，所以它不是「产品 Git 不设应用级超时」那条要防的东西。
     /// </summary>
     internal static async Task<GitResult> FetchAllHeadsAsync(
         string repo, string? remote, CancellationToken cancellation)
@@ -68,7 +72,7 @@ public sealed partial class ProjectService
         if (ArchiveCloner.TryBuildHttpsRemote(remote, out var https))
         {
             var viaHttps = await GitRunner.RunStreamingAsync(repo,
-                ["fetch", "--no-tags", "--prune", https, AllHeadsRefspec], null, cancellation,
+                [.. HttpsStallArguments, "fetch", "--no-tags", "--prune", https, AllHeadsRefspec], null, cancellation,
                 new Dictionary<string, string> { ["GCM_INTERACTIVE"] = "never" });
             if (viaHttps.Success)
                 return viaHttps;
@@ -76,6 +80,10 @@ public sealed partial class ProjectService
         return await GitRunner.RunAsync(repo, ["fetch", "--no-tags", "--prune", "origin", AllHeadsRefspec],
             cancellation);
     }
+
+    /// <summary>连续 10 秒每秒不足 1KB 就判这一试停滞。真在传对象的 fetch 远高于这个速度。</summary>
+    internal static readonly string[] HttpsStallArguments =
+        ["-c", "http.lowSpeedLimit=1000", "-c", "http.lowSpeedTime=10"];
 
     public IReadOnlyList<ProjectLifecycleRecord> LifecycleRecords => _lifecycle.All();
 
