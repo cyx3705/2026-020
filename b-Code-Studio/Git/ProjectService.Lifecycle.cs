@@ -46,6 +46,37 @@ public sealed partial class ProjectService
     /// </summary>
     public const string AllHeadsRefspec = "+refs/heads/*:refs/remotes/origin/*";
 
+    /// <summary>
+    /// 取回 origin 全部分支的跟踪引用，**先走同一仓库的 HTTPS，不通再走 origin 原地址**。
+    ///
+    /// 刷新的 fetch 几乎不传字节，耗时全在建连：本机实测 SSH 一次握手约 3.8 秒，
+    /// HTTPS 约 1.5 秒；28 个项目同时取，SSH 4.2 秒、HTTPS 2.5 秒。SSH 的 22/443
+    /// 还会间歇被重置，HTTPS 一直通。只换这一次 fetch 用的地址，不改 <c>origin</c> 配置，
+    /// refspec 照旧写进 <c>refs/remotes/origin/*</c>，所以后面的比较、推送都不受影响。
+    ///
+    /// HTTPS 没有凭据时不弹登录窗（<c>GCM_INTERACTIVE=never</c>），直接退回 origin。
+    /// origin 本来就是 HTTPS 或本地路径时只走 origin。
+    /// </summary>
+    internal static async Task<GitResult> FetchAllHeadsAsync(
+        string repo, string? remote, CancellationToken cancellation)
+    {
+        if (remote == null)
+        {
+            var url = await GitRunner.RunAsync(repo, ["remote", "get-url", "origin"], cancellation);
+            remote = url.Success ? url.Output.Trim() : "";
+        }
+        if (ArchiveCloner.TryBuildHttpsRemote(remote, out var https))
+        {
+            var viaHttps = await GitRunner.RunStreamingAsync(repo,
+                ["fetch", "--no-tags", "--prune", https, AllHeadsRefspec], null, cancellation,
+                new Dictionary<string, string> { ["GCM_INTERACTIVE"] = "never" });
+            if (viaHttps.Success)
+                return viaHttps;
+        }
+        return await GitRunner.RunAsync(repo, ["fetch", "--no-tags", "--prune", "origin", AllHeadsRefspec],
+            cancellation);
+    }
+
     public IReadOnlyList<ProjectLifecycleRecord> LifecycleRecords => _lifecycle.All();
 
     public ProjectLifecycleRecord? GetLifecycleRecord(string name) => _lifecycle.Get(name);
@@ -93,8 +124,7 @@ public sealed partial class ProjectService
 
         if (fetchRemote)
         {
-            var fetch = await GitRunner.RunAsync(repo, ["fetch", "--no-tags", "--prune", "origin", AllHeadsRefspec],
-                cancellation);
+            var fetch = await FetchAllHeadsAsync(repo, remote, cancellation);
             if (!fetch.Success)
                 return Snapshot(ProjectLifecycleState.Unavailable, RefreshAction, $"远端状态待确认: {fetch.Output}");
         }
@@ -216,10 +246,13 @@ public sealed partial class ProjectService
     /// 全库四十多个项目，一次刷新就是四十多次 fetch，而这些 fetch 几乎不传字节——
     /// 每一次的开销是一趟 ssh 握手往返（本机实测约 4 秒），因此**总时长由并发度决定，
     /// 不由带宽决定**。5.9 及以前按 6 限流，实测全库 31 秒；放到 16 之后是 12 秒，
-    /// 且没有一条失败。再往上收益递减，而真有对象要传的项目会开始互相抢链路
-    /// （本机链路大传输本就易断），所以停在 16。
+    /// 且没有一条失败。
+    ///
+    /// 5.15.4 放到 32：归档之后在用的项目约 28 个，16 意味着固定排两轮（约 8.6 秒）；
+    /// 一轮跑完实测 28 条同时取 SSH 4.2 秒、HTTPS 2.5 秒，没有一条失败。
+    /// 刷新的 fetch 几乎不传对象，抢链路的担心落不到它身上。
     /// </summary>
-    private const int MaxConcurrentFetches = 16;
+    private const int MaxConcurrentFetches = 32;
 
     private static async Task<IReadOnlyList<ProjectLifecycleSnapshot>> RefreshManyAsync(
         IReadOnlyList<string> names,

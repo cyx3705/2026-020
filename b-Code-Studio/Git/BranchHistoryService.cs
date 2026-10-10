@@ -166,9 +166,7 @@ public sealed class BranchHistoryService
             // 与刷新链路同一个 refspec：取 origin 全部分支，不只 main。只取 main 的话，
             // 这里报的「远端领先/落后」永远只针对主线，别人推的分支既进不来也算不进去。
             progress?.Report("刷新 origin 全部分支...");
-            var fetch = await GitRunner.RunAsync(boundary.RepoPath,
-                ["fetch", "--no-tags", "--prune", "origin", ProjectService.AllHeadsRefspec],
-                cancellation: cancellation);
+            var fetch = await ProjectService.FetchAllHeadsAsync(boundary.RepoPath, null, cancellation);
             if (!fetch.Success)
                 remoteWarning = fetch.Output;
         }
