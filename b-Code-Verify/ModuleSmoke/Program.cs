@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO;
+using System.IO.Compression;
 using System.Reflection;
 using System.Text;
 using System.Text.Json;
@@ -9,15 +10,15 @@ using System.Text.Json;
 // 现在只看宿主给出的装载结果与指令结果（JSON 形状），宿主内部怎么改都不影响本仓。
 // 重载、卸载后注册表是否干净是宿主的行为，由宿主自己的测试守住，这里不再重复。
 //
-// 5.7.0：同时接受运行区根目录、单包和管线传入的 bin 输出；bin 经 SmokePackageRoot 包装为带校验和的包。
+// 7.0：宿主只装 nupkg。bin 由 SmokePackageRoot 打成临时包；已经是 nupkg 时原样交给 --probe。
 if (args.Length != 1)
 {
-    Console.Error.WriteLine("usage: ModuleSmoke <runtime-package-root|package|build-output>");
+    Console.Error.WriteLine("usage: ModuleSmoke <nupkg|package-directory|build-output>");
     return 2;
 }
 
 var input = Path.GetFullPath(args[0]);
-if (!Directory.Exists(input))
+if (!Directory.Exists(input) && !File.Exists(input))
 {
     Console.Error.WriteLine($"runtime package root not found: {input}");
     return 2;
@@ -25,7 +26,7 @@ if (!Directory.Exists(input))
 
 using var smokePackages = new SmokePackageRoot(input);
 var package = smokePackages.Package;
-using var manifest = JsonDocument.Parse(File.ReadAllText(Path.Combine(package, "module.manifest.json")));
+using var manifest = JsonDocument.Parse(ReadPackageManifest(package));
 var expectedVersion = manifest.RootElement.GetProperty("version").GetString();
 
 // 5.6.0：39 条业务命令 + 8 条 UI 命令 + janus.status = 48（命令面与 5.5.1 相同）。
@@ -128,6 +129,16 @@ Console.WriteLine(
     $"PASS module={module.GetProperty("name")} version={module.GetProperty("version")} " +
     $"commands={module.GetProperty("commandCount")} pages={string.Join(",", pageIds)} protocol=V1 host=--probe");
 return 0;
+
+static string ReadPackageManifest(string package)
+{
+    using var archive = ZipFile.OpenRead(package);
+    var entry = archive.Entries.FirstOrDefault(item =>
+            item.FullName.Replace('\\', '/').Equals("module.manifest.json", StringComparison.OrdinalIgnoreCase))
+        ?? throw new InvalidOperationException("nupkg 里没有 module.manifest.json");
+    using var reader = new StreamReader(entry.Open());
+    return reader.ReadToEnd();
+}
 
 // 成功指令的正文；失败直接抛出，信息里带宿主给的原因。
 static string Result(JsonElement envelope)
