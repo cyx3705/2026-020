@@ -276,14 +276,11 @@ internal static class VersionProjectionSuite
                 var candidatePackageFiles = Directory.EnumerateFiles(candidateRoot, "*", SearchOption.AllDirectories)
                     .Select(path => Path.GetRelativePath(candidateRoot, path).Replace('\\', '/'))
                     .ToHashSet(StringComparer.Ordinal);
-                var required = new[]
-                {
-                    "HistoryJanus.dll", "HistoryJanus.xml", "module.manifest.json", "SHA256SUMS",
-                };
+                var required = new[] { "HistoryJanus.nupkg" };
                 True(required.All(candidatePackageFiles.Contains),
-                    "version projection: supplied candidate has the runtime snapshot files");
+                    "version projection: supplied candidate has the nupkg");
                 True(candidatePackageFiles.All(path => required.Contains(path, StringComparer.Ordinal)),
-                    "version projection: supplied candidate is exactly the runtime files (no docs/ since host 6.1.0)");
+                    "version projection: supplied candidate is exactly the nupkg");
             }
 
             return Task.CompletedTask;
@@ -315,17 +312,11 @@ internal static class VersionProjectionSuite
                 var candidatePackageFiles = Directory.EnumerateFiles(publishedCandidateRoot, "*", SearchOption.AllDirectories)
                     .Select(path => Path.GetRelativePath(publishedCandidateRoot, path).Replace('\\', '/'))
                     .ToHashSet(StringComparer.Ordinal);
-                var required = new[]
-                {
-                    "HistoryJanus.dll", "HistoryJanus.xml", "module.manifest.json", "SHA256SUMS",
-                };
+                var required = new[] { "HistoryJanus.nupkg" };
                 True(required.All(candidatePackageFiles.Contains),
-                    "version projection: versioned candidate has the runtime snapshot files");
-                True(candidatePackageFiles.All(path =>
-                        required.Contains(path, StringComparer.Ordinal)
-                        || (path.StartsWith("docs/", StringComparison.OrdinalIgnoreCase)
-                            && path.EndsWith(".md", StringComparison.OrdinalIgnoreCase))),
-                    "version projection: versioned candidate is runtime files (plus legacy docs from before host 6.1.0)");
+                    "version projection: versioned candidate has the nupkg");
+                True(candidatePackageFiles.All(path => required.Contains(path, StringComparer.Ordinal)),
+                    "version projection: versioned candidate is exactly the nupkg");
             }
         }
 
