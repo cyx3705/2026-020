@@ -386,7 +386,7 @@ internal static partial class HistoryJanusUiCommands
         return view switch
         {
             "history" => Rows(UiHistoryProjection.Read(result.Data)),
-            "github" => Rows(UiGitHubProjection.Read(result.Data)),
+            "github" => Rows(UiGitHubProjection.Read(result.Data, context.RequireString("name"))),
             _ => Payload(JsonSerializer.Serialize(result.Data)),
         };
     }
@@ -754,7 +754,7 @@ internal static partial class HistoryJanusUiCommands
     /// </summary>
     internal static class UiGitHubProjection
     {
-        public static IReadOnlyList<IReadOnlyDictionary<string, string>> Read(object? data)
+        public static IReadOnlyList<IReadOnlyDictionary<string, string>> Read(object? data, string name)
         {
             if (data is not GitHubAccountOverview overview)
                 return [];
@@ -766,7 +766,8 @@ internal static partial class HistoryJanusUiCommands
                 Row(("item", "gh CLI"), ("value", overview.GhCliAvailable ? "可用" : "不可用")),
                 Row(("item", "提交身份"),
                     ("value", $"{overview.EffectiveIdentity.Name} <{overview.EffectiveIdentity.Email}>（{overview.EffectiveIdentity.Source}）")),
-                Row(("item", "origin fetch"), ("value", overview.Origin.FetchUrl)),
+                Row(("item", "远端地址"), ("value", overview.Origin.FetchUrl),
+                    ("name", name), ("editable", "true")),
                 Row(("item", "origin push"), ("value", overview.Origin.PushUrl)),
                 Row(("item", "origin 归属"),
                     ("value", $"{overview.Origin.Host} / {overview.Origin.Owner} / {overview.Origin.Repository}")),

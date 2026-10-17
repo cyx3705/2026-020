@@ -15,6 +15,20 @@ public sealed class GitHubRemoteContractTests : IDisposable
     private const string Url = "https://github.com/Cloudsflee/video-studio";
 
     [Fact]
+    public void OnlyTheRemoteAddressRowIsEditableAndItCarriesItsSourceProject()
+    {
+        var overview = new GitHubAccountOverview("git", "gcm", false,
+            new("User", "user@example.com", "local"), new(Url, Url, GitRemoteTransport.Https, "github.com", "owner", "repo"),
+            [], new("github.com", "", [], "unknown", ""), new("unknown", "https", []), DateTimeOffset.UtcNow);
+        var rows = HistoryJanusUiCommands.UiGitHubProjection.Read(overview, Name);
+        var editable = Assert.Single(rows, row => row.GetValueOrDefault("editable") == "true");
+        Assert.Equal("远端地址", editable["item"]);
+        Assert.Equal(Name, editable["name"]);
+        Assert.Equal(Url, editable["value"]);
+        Assert.DoesNotContain(rows.Where(row => !ReferenceEquals(row, editable)), row => row.ContainsKey("editable"));
+    }
+
+    [Fact]
     public async Task PreviewDoesNotCreateOriginAndSingleAddressUpdatesBothUrls()
     {
         var project = await Init(Name);
@@ -144,3 +158,4 @@ public sealed class GitHubRemoteContractTests : IDisposable
         public IReadOnlyList<KeyValuePair<string, string>> All() => _values.ToList();
     }
 }
+

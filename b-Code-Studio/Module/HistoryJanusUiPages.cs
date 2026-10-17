@@ -420,48 +420,19 @@ internal static partial class HistoryJanusUiCommands
                                 // 另一支的时候白跑，也不该靠人记得回来点一下刷新。
                                 new
                                 {
-                                    type = "stack",
+                                    type = "table",
                                     @case = SectionGitHub,
-                                    id = "janus-github",
-                                    children = new object[]
+                                    id = "github-rows",
+                                    dataSource = new
                                     {
-                                        new
-                                        {
-                                            type = "panel",
-                                            id = "github-remote-panel",
-                                            rows = new object[]
-                                            {
-                                                new
-                                                {
-                                                    widgets = new object[]
-                                                    {
-                                                        new { kind = "textbox", id = "github-remote-url", label = "远端地址", flex = true },
-                                                        new
-                                                        {
-                                                            kind = "button",
-                                                            action = "janus.github.setremote",
-                                                            text = "保存远端",
-                                                            enabledWhen = new { selected = ProjectChannel },
-                                                        },
-                                                    },
-                                                },
-                                            },
-                                        },
-                                        new
-                                        {
-                                            type = "table",
-                                            id = "github-rows",
-                                            dataSource = new
-                                            {
-                                                command = "janus.ui.data",
-                                                args = new { view = "github", name = SelectedProject },
-                                            },
-                                            columns = new object[]
-                                            {
-                                                new { key = "item", title = "项", width = "120" },
-                                                new { key = "value", title = "值", width = "*" },
-                                            },
-                                        },
+                                        command = "janus.ui.data",
+                                        args = new { view = "github", name = SelectedProject },
+                                    },
+                                    columns = new object[]
+                                    {
+                                        new { key = "item", title = "项", width = "120" },
+                                        new { key = "value", title = "值", width = "*",
+                                            cellEditAction = "janus.github.setremote", editableWhen = "editable" },
                                     },
                                 },
                             },
@@ -485,8 +456,8 @@ internal static partial class HistoryJanusUiCommands
                 command = "janus.ui.setremote",
                 args = new Dictionary<string, string>
                 {
-                    ["name"] = SelectedProject,
-                    ["url"] = "{github-remote-url}",
+                    ["name"] = "{name}",
+                    ["url"] = "{value}",
                 },
                 summary = "将选中项目的 origin 拉取与推送地址设为输入的仓库地址",
             },
