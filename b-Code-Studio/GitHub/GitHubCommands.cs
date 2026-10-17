@@ -10,27 +10,30 @@ public static class GitHubCommands
 {
     public static void RegisterAll(
         ICommandRegistrar registry,
-        GitHubConnectionService service)
+        GitHubConnectionService service,
+        Func<string, GitHubConnectionService> projectService)
     {
-        registry.Register(BuildStatus(service));
+        registry.Register(BuildStatus(projectService));
         registry.Register(BuildAccounts(service));
         registry.Register(BuildTest(service));
         registry.Register(BuildLogin(service));
         registry.Register(BuildLogout(service));
         registry.Register(BuildIdentity(service));
-        registry.Register(BuildRemote(service));
+        registry.Register(BuildRemote(projectService));
     }
 
-    private static CommandDescriptor BuildStatus(GitHubConnectionService service) => new()
+    private static CommandDescriptor BuildStatus(Func<string, GitHubConnectionService> projectService) => new()
     {
         Name = "janus.github.status",
         CommandClass = "github",
         Summary = "查看服务器 Git、GCM、提交身份、origin 和 SSH 状态",
         Readonly = true,
-        Example = "janus.github.status",
-        Handler = async _ =>
+        Example = "janus.github.status name=2026-020-HistoryJanus",
+        Parameters = [new ParameterSpec { Name = "name", Description = "已登记项目名（目录名）", Required = true }],
+        Handler = async ctx =>
         {
-            var overview = await service.GetOverviewAsync();
+            var service = projectService(ctx.RequireString("name"));
+            var overview = await service.GetOverviewAsync(ctx.Cancellation);
             return CommandResult.Ok(
                 $"git={overview.GitVersion}; origin={overview.Origin.FetchUrl}; " +
                 $"GCM 账号={overview.CredentialAccounts.Count} 个",
@@ -145,24 +148,27 @@ public static class GitHubCommands
         },
     };
 
-    private static CommandDescriptor BuildRemote(GitHubConnectionService service) => new()
+    private static CommandDescriptor BuildRemote(Func<string, GitHubConnectionService> projectService) => new()
     {
         Name = "janus.github.remote",
         CommandClass = "github",
-        Summary = "预览或修改 origin 远端地址",
-        Example = "janus.github.remote fetch=https://github.com/o/r.git push=https://github.com/o/r.git apply=false",
+        Summary = "预览、添加或修改指定项目的 origin 远端地址",
+        Example = "janus.github.remote name=2026-041-VideoStudio fetch=https://github.com/Cloudsflee/video-studio push=https://github.com/Cloudsflee/video-studio apply=false",
         Parameters =
         [
+            new ParameterSpec { Name = "name", Description = "已登记项目名（目录名）", Required = true },
             new ParameterSpec { Name = "fetch", Description = "fetch URL" },
-            new ParameterSpec { Name = "push", Description = "push URL" },
+            new ParameterSpec { Name = "push", Description = "push URL；省略时随新 fetch 一起修改" },
             new ParameterSpec { Name = "apply", Description = "true 时写入", Type = ParamType.Bool, Default = "false" },
         ],
         Level = CommandLevel.Ask,
-        ConfirmPrompt = ctx => ctx.GetBool("apply") ? "确认修改服务器 origin？" : null,
+        ConfirmPrompt = ctx => ctx.GetBool("apply")
+            ? $"确认修改项目 {ctx.RequireString("name")} 的 origin？\nfetch: {GitHubRedactor.Redact(ctx.GetString("fetch") ?? "（保持原值）")}\npush: {GitHubRedactor.Redact(ctx.GetString("push") ?? "（跟随 fetch）")}" : null,
         Handler = async ctx =>
         {
+            var service = projectService(ctx.RequireString("name"));
             var result = await service.SetRemoteAsync(
-                ctx.GetString("fetch"), ctx.GetString("push"), ctx.GetBool("apply"));
+                ctx.GetString("fetch"), ctx.GetString("push"), ctx.GetBool("apply"), ctx.Cancellation);
             return CommandResult.Ok(result.Action, result);
         },
     };

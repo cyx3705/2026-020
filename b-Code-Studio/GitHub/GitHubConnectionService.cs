@@ -192,28 +192,39 @@ public sealed partial class GitHubConnectionService
     {
         var before = await ReadRemoteAsync(cancellation).ConfigureAwait(false);
         var targetFetch = string.IsNullOrWhiteSpace(fetch) ? before.FetchUrl : fetch.Trim();
-        var targetPush = string.IsNullOrWhiteSpace(push) ? before.PushUrl : push.Trim();
+        // 只填一个地址时，拉取与推送一起切换，避免仍推向旧仓库。
+        var targetPush = string.IsNullOrWhiteSpace(push)
+            ? (string.IsNullOrWhiteSpace(fetch) ? before.PushUrl : targetFetch)
+            : push.Trim();
         ValidateRemote(targetFetch);
         ValidateRemote(targetPush);
         var desired = ParseRemote(targetFetch, targetPush);
         if (!apply)
             return new GitHubMutationResult<GitRemoteInfo>(before, desired, false, "将修改 origin");
 
-        if (!targetFetch.Equals(before.FetchUrl, StringComparison.Ordinal))
+        var adding = string.IsNullOrWhiteSpace(before.FetchUrl);
+        if (adding || !targetFetch.Equals(before.FetchUrl, StringComparison.Ordinal))
         {
             var result = await GitAsync(
-                ["remote", "set-url", "origin", targetFetch], 20, cancellation).ConfigureAwait(false);
+                adding ? ["remote", "add", "origin", targetFetch]
+                    : ["remote", "set-url", "origin", targetFetch], 20, cancellation).ConfigureAwait(false);
             if (!result.Success)
                 throw new InvalidOperationException(GitHubRedactor.Redact(result.CombinedOutput));
         }
-        if (!targetPush.Equals(before.PushUrl, StringComparison.Ordinal))
+        // fetch 改动也会改变原本隐式跟随它的 push；即使目标 push 等于旧值也要写回。
+        if ((!adding && (!targetPush.Equals(before.PushUrl, StringComparison.Ordinal)
+                         || !targetFetch.Equals(before.FetchUrl, StringComparison.Ordinal)))
+            || (adding && !targetPush.Equals(targetFetch, StringComparison.Ordinal)))
         {
             var result = await GitAsync(
                 ["remote", "set-url", "--push", "origin", targetPush], 20, cancellation)
                 .ConfigureAwait(false);
             if (!result.Success)
             {
-                if (!string.IsNullOrWhiteSpace(before.FetchUrl))
+                if (adding)
+                    await GitAsync(["remote", "remove", "origin"], 20, cancellation)
+                        .ConfigureAwait(false);
+                else
                     await GitAsync(
                         ["remote", "set-url", "origin", before.FetchUrl], 20, cancellation)
                         .ConfigureAwait(false);
@@ -402,6 +413,8 @@ public sealed partial class GitHubConnectionService
     {
         if (string.IsNullOrWhiteSpace(value))
             throw new ArgumentException("远端 URL 不能为空");
+        if (value.StartsWith('-') || value.Any(char.IsWhiteSpace) || value.Contains('#'))
+            throw new ArgumentException("远端 URL 格式无效，请填写仓库地址");
         if (value.Contains("github_pat_", StringComparison.OrdinalIgnoreCase)
             || TokenLike().IsMatch(value))
             throw new ArgumentException("远端 URL 不得包含 token");

@@ -420,18 +420,48 @@ internal static partial class HistoryJanusUiCommands
                                 // 另一支的时候白跑，也不该靠人记得回来点一下刷新。
                                 new
                                 {
-                                    type = "table",
+                                    type = "stack",
                                     @case = SectionGitHub,
-                                    id = "github-rows",
-                                    dataSource = new
+                                    id = "janus-github",
+                                    children = new object[]
                                     {
-                                        command = "janus.ui.data",
-                                        args = new { view = "github" },
-                                    },
-                                    columns = new object[]
-                                    {
-                                        new { key = "item", title = "项", width = "120" },
-                                        new { key = "value", title = "值", width = "*" },
+                                        new
+                                        {
+                                            type = "panel",
+                                            id = "github-remote-panel",
+                                            rows = new object[]
+                                            {
+                                                new
+                                                {
+                                                    widgets = new object[]
+                                                    {
+                                                        new { kind = "textbox", id = "github-remote-url", label = "远端地址", flex = true },
+                                                        new
+                                                        {
+                                                            kind = "button",
+                                                            action = "janus.github.setremote",
+                                                            text = "保存远端",
+                                                            enabledWhen = new { selected = ProjectChannel },
+                                                        },
+                                                    },
+                                                },
+                                            },
+                                        },
+                                        new
+                                        {
+                                            type = "table",
+                                            id = "github-rows",
+                                            dataSource = new
+                                            {
+                                                command = "janus.ui.data",
+                                                args = new { view = "github", name = SelectedProject },
+                                            },
+                                            columns = new object[]
+                                            {
+                                                new { key = "item", title = "项", width = "120" },
+                                                new { key = "value", title = "值", width = "*" },
+                                            },
+                                        },
                                     },
                                 },
                             },
@@ -448,6 +478,18 @@ internal static partial class HistoryJanusUiCommands
         owner = Owner,
         actions = new object[]
         {
+            new
+            {
+                id = "janus.github.setremote",
+                title = "保存远端",
+                command = "janus.ui.setremote",
+                args = new Dictionary<string, string>
+                {
+                    ["name"] = SelectedProject,
+                    ["url"] = "{github-remote-url}",
+                },
+                summary = "将选中项目的 origin 拉取与推送地址设为输入的仓库地址",
+            },
             // 「改谁」取选中行、「改成什么」取输入框——两者必须分开取。
             // 跟随框一开始等于选中行，但人改过之后就不再相等；两边都从输入框取的话，
             // 改名只能把项目改成它自己。

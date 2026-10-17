@@ -156,7 +156,7 @@ internal static class GitHubSuite
         var service = new GitHubConnectionService(() => repository, runner);
 
         var registry = new TestRegistrar();
-        GitHubCommands.RegisterAll(registry, service);
+        GitHubCommands.RegisterAll(registry, service, _ => service);
         foreach (var name in new[] { "janus.github.status", "janus.github.accounts", "janus.github.test" })
         {
             True(registry.TryGet(name, out var descriptor) && descriptor.Readonly,

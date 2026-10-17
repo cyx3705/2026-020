@@ -189,8 +189,9 @@ $expectedRuntimeCommandNames = @($businessCommandNames + 'janus.status' | Sort-O
 # 5.9.0 增加 proj.diff / proj.discard（REQ-014）与 gitrule.lfs（REQ-016）：47 → 50；
 # janus.ui.refreshrules 改名为 janus.ui.sectionenter（REQ-017），UI 投影仍是 8 条。
 # 5.11.0 增加 gitrule.lfsset / gitrule.lfsrepair 与 janus.ui.lfsdecide（DEC-032）：50 → 53。
-if ($businessCommandNames.Count -ne 53 -or $expectedRuntimeCommandNames.Count -ne 54) {
-    $violations.Add("运行时命令总数应为 54（44 条业务命令 + 9 条 Aurora UI 投影命令 + janus.status）；源码为 $($businessCommandNames.Count) + 1")
+# REQ-018：GitHub 子页面新增 ui.setremote，UI 投影共 10 条。
+if ($businessCommandNames.Count -ne 54 -or $expectedRuntimeCommandNames.Count -ne 55) {
+    $violations.Add("运行时命令总数应为 55（44 条业务命令 + 10 条 Aurora UI 投影命令 + janus.status）；源码为 $($businessCommandNames.Count) + 1")
 }
 
 # --- 6. 候选边界（QA-004 日常化）：事务候选或版本化运行包 + 独立 history ---

@@ -208,7 +208,9 @@ public sealed partial class ProjectOperationsPanelContractTests
             .Select(action => action.GetProperty("id").GetString()!)
             .ToHashSet(StringComparer.Ordinal);
 
-        var widgets = PanelWidgets(OperationsPanel()).ToList();
+        var widgets = Descend(Page("projops").GetProperty("content"))
+            .Where(node => node.TryGetProperty("rows", out _))
+            .SelectMany(PanelWidgets).ToList();
         var controls = widgets
             .Where(w => w.GetProperty("kind").GetString() == "textbox")
             .Select(w => w.GetProperty("id").GetString()!)
@@ -491,6 +493,7 @@ public sealed partial class ProjectOperationsPanelContractTests
         foreach (var (node, view) in new[]
                  {
                      ("history-rows", "history"),
+                     ("github-rows", "github"),
                      // LFS 两张表读的是**选中项目仓**的实况（5.11.0 从规则表里拆出来），
                      // 换项目要重取，而不是让人看着上一个项目的清单。
                      ("lfs-files", "lfs"),
@@ -564,6 +567,22 @@ public sealed partial class ProjectOperationsPanelContractTests
         var op = table.GetProperty("columns").EnumerateArray().Last();
         Assert.Equal("janus.lfs.toggle", op.GetProperty("cellAction").GetString());
         Assert.Equal("{next}", Action("janus.lfs.toggle").GetProperty("args").GetProperty("decision").GetString());
+    }
+
+    // REQ-018：输入框与保存动作必须在 GitHub 子页内，目标始终来自项目选择通道。
+    [Fact]
+    public void GitHubRemoteEditorSavesTheEnteredUrlForTheSelectedProject()
+    {
+        var panel = Node("projops", "github-remote-panel");
+        var widgets = PanelWidgets(panel);
+        Assert.Equal("github-remote-url", widgets[0].GetProperty("id").GetString());
+        Assert.Equal("远端地址", widgets[0].GetProperty("label").GetString());
+        Assert.Equal("janus.github.setremote", widgets[1].GetProperty("action").GetString());
+        Assert.Equal(Channel, widgets[1].GetProperty("enabledWhen").GetProperty("selected").GetString());
+        var action = Action("janus.github.setremote");
+        Assert.Equal("janus.ui.setremote", action.GetProperty("command").GetString());
+        Assert.Equal("{selection." + Channel + ".name}", action.GetProperty("args").GetProperty("name").GetString());
+        Assert.Equal("{github-remote-url}", action.GetProperty("args").GetProperty("url").GetString());
     }
 
     private static IEnumerable<JsonElement> Buttons(string pageId)

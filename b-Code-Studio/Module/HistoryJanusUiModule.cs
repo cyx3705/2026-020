@@ -156,7 +156,7 @@ internal static partial class HistoryJanusUiCommands
                 new ParameterSpec
                 {
                     Name = "name",
-                    Description = "已登记项目的工作树名称，例如 2026-020-HistoryJanus；history / graph / lfs / lfsstat 需要，页面按当前选中行填入",
+                    Description = "已登记项目的工作树名称，例如 2026-020-HistoryJanus；history / graph / lfs / lfsstat / github 需要，页面按当前选中行填入",
                     Position = 1,
                 },
                 new ParameterSpec
@@ -257,6 +257,7 @@ internal static partial class HistoryJanusUiCommands
             Handler = context => DecideLfsAsync(context, bus),
         });
 
+        RegisterRemoteCommand(registry, bus);
         RegisterLifecycleCommands(registry, bus, source, business);
     }
 
@@ -369,7 +370,7 @@ internal static partial class HistoryJanusUiCommands
             // 这两条都按**单个项目**取，项目名由页面从选中通道填入。
             // 不带项目名就不取——全库扫描不该由"打开一个页签"触发。
             "history" => Scoped(context, "janus.history.list", " limit=200"),
-            "github" => "janus.github.status",
+            "github" => Scoped(context, "janus.github.status", ""),
             _ => null,
         };
 

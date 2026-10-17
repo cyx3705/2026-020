@@ -90,7 +90,12 @@ public static class StudioBusinessCompositionFactory
         ProjectCommands.RegisterAll(registry, projects, history);
         BranchHistoryCommands.RegisterAll(registry, branchHistory, history);
         GitRuleCommands.RegisterAll(registry, gitRules, lfsRules);
-        GitHubCommands.RegisterAll(registry, gitHub);
+        GitHubCommands.RegisterAll(registry, gitHub, name =>
+        {
+            // 请求开始时固定项目，写入中途不再读 UI 选择，也不回退库根。
+            var repository = projects.ResolveGitHubRepository(name);
+            return new GitHubConnectionService(() => repository);
+        });
         GraphCommands.RegisterAll(registry, graph);
         // 5.14.0：登记不再带来源——宿主 6.0.0 按模块盖章（module:HistoryJanus）。
         // 业务模块不注册诊断或自动化辅助指令：日志承压由宿主 vulcan.log.flood 承担，

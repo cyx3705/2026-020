@@ -195,8 +195,14 @@ public sealed partial class ProjectService
     {
         if (string.IsNullOrWhiteSpace(projectName))
             return LibraryRoot;
-        var path = Path.Combine(LibraryRoot, projectName.Trim());
-        return Directory.Exists(path) ? path : LibraryRoot;
+        var name = projectName.Trim();
+        if (!ProjectRepoLayout.IsRegisteredProjectName(name))
+            throw new ArgumentException("请选择已登记项目，不能使用路径");
+        var path = Path.Combine(LibraryRoot, name);
+        if (!ProjectRepoLayout.IsIndependentGitRepo(path)
+            || (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0)
+            throw new ArgumentException($"项目 {name} 没有独立 Git 仓库，请先恢复已归档项目");
+        return path;
     }
 
     public async Task<(GitResult Git, List<WorktreeInfo> Worktrees)> ListWorktreesAsync()
