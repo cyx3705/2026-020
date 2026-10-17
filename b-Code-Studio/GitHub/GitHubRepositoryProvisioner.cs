@@ -17,7 +17,7 @@ public interface IGitHubRepositoryProvisioner
 {
     /// <summary>确保 <paramref name="repositoryName"/> 在 GitHub 上存在，返回接口给出的真实事实。</summary>
     /// <param name="repositoryPath">用于读取凭据的本地仓库路径。</param>
-    /// <param name="repositoryName">期望的仓库名，通常是项目目录名。</param>
+    /// <param name="repositoryName">期望的仓库名或 owner/name；指定 owner 时只复用或创建该地址。</param>
     /// <param name="visibility">public 或 private。</param>
     Task<GitHubRepositoryCreation> EnsureAsync(
         string repositoryPath,
@@ -62,40 +62,50 @@ public sealed partial class GitHubRepositoryProvisioner : IGitHubRepositoryProvi
         string visibility,
         CancellationToken cancellation = default)
     {
-        var name = (repositoryName ?? string.Empty).Trim();
-        if (!RepositoryName().IsMatch(name))
+        var parts = (repositoryName ?? string.Empty).Trim().Split('/');
+        if (parts.Length is < 1 or > 2 || parts.Any(part => part is "." or ".." || !RepositoryName().IsMatch(part))
+            || parts.Length == 2 && !OwnerName().IsMatch(parts[0]))
             throw new ArgumentException($"仓库名不符合 GitHub 命名要求: {repositoryName}");
+        var name = parts[^1];
         var scope = NormalizeVisibility(visibility);
-
         var token = await _tokens(repositoryPath, cancellation).ConfigureAwait(false);
         if (string.IsNullOrWhiteSpace(token))
-            throw new InvalidOperationException(
-                "未能从 Git 凭据存储读取 GitHub 令牌，请先执行 janus.github.login");
+            throw new InvalidOperationException("未能从 Git 凭据存储读取 GitHub 令牌，请先执行 janus.github.login");
 
-        var owner = await ReadLoginAsync(token, cancellation).ConfigureAwait(false);
+        var login = parts.Length == 1 ? await ReadLoginAsync(token, cancellation).ConfigureAwait(false) : null;
+        var owner = parts.Length == 2 ? parts[0] : login!;
+        var path = $"repos/{owner}/{name}";
+        var existing = await SendAsync(HttpMethod.Get, path, null, token, cancellation).ConfigureAwait(false);
+        if (existing.Status == HttpStatusCode.OK)
+            return DescribeTarget(existing.Body, scope, false, owner, name);
+        if (existing.Status != HttpStatusCode.NotFound)
+            throw new InvalidOperationException($"检查 GitHub 仓库失败 (HTTP {(int)existing.Status}): {existing.Body}");
+
+        login ??= await ReadLoginAsync(token, cancellation).ConfigureAwait(false);
         var body = JsonSerializer.Serialize(new Dictionary<string, object>
         {
-            ["name"] = name,
-            ["private"] = scope == "private",
-            ["auto_init"] = false,
+            ["name"] = name, ["private"] = scope == "private", ["auto_init"] = false,
         });
-
-        var created = await SendAsync(
-            HttpMethod.Post, "user/repos", body, token, cancellation).ConfigureAwait(false);
+        var endpoint = owner.Equals(login, StringComparison.OrdinalIgnoreCase) ? "user/repos" : $"orgs/{owner}/repos";
+        var created = await SendAsync(HttpMethod.Post, endpoint, body, token, cancellation).ConfigureAwait(false);
         if (created.Status == HttpStatusCode.Created)
-            return Describe(created.Body, scope, wasCreated: true);
+            return DescribeTarget(created.Body, scope, true, owner, name);
+        // 检查与创建之间可能被别人建好；只复查原地址，绝不另选账号或仓库名。
+        if (created.Status == HttpStatusCode.UnprocessableEntity)
+        {
+            existing = await SendAsync(HttpMethod.Get, path, null, token, cancellation).ConfigureAwait(false);
+            if (existing.Status == HttpStatusCode.OK)
+                return DescribeTarget(existing.Body, scope, false, owner, name);
+        }
+        throw new InvalidOperationException($"创建 GitHub 仓库 {owner}/{name} 失败 (HTTP {(int)created.Status}): {created.Body}");
+    }
 
-        // 422 是 GitHub 对「同名仓库已存在」的回答。复用它，而不是把首次推送卡死。
-        if (created.Status != HttpStatusCode.UnprocessableEntity)
-            throw new InvalidOperationException(
-                $"创建 GitHub 仓库失败 (HTTP {(int)created.Status}): {created.Body}");
-
-        var existing = await SendAsync(
-            HttpMethod.Get, $"repos/{owner}/{name}", null, token, cancellation).ConfigureAwait(false);
-        if (existing.Status != HttpStatusCode.OK)
-            throw new InvalidOperationException(
-                $"创建 GitHub 仓库被拒绝 (HTTP {(int)created.Status})，且无法复用同名仓库: {created.Body}");
-        return Describe(existing.Body, scope, wasCreated: false);
+    private static GitHubRepositoryCreation DescribeTarget(string body, string scope, bool created, string owner, string name)
+    {
+        var result = Describe(body, scope, created);
+        if (!result.FullName.Equals($"{owner}/{name}", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("GitHub 返回的仓库与指定目标不一致");
+        return result;
     }
 
     public void Dispose()
@@ -209,6 +219,9 @@ public sealed partial class GitHubRepositoryProvisioner : IGitHubRepositoryProvi
             throw new ArgumentException($"仓库可见性只允许 public 或 private: {visibility}");
         return value;
     }
+
+    [GeneratedRegex(@"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$")]
+    private static partial Regex OwnerName();
 
     [GeneratedRegex(@"^[A-Za-z0-9._-]{1,100}$")]
     private static partial Regex RepositoryName();

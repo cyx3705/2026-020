@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO;
+using HistoryJanus.Git;
 using System.Text.RegularExpressions;
 
 namespace HistoryJanus.GitHub;
@@ -49,7 +50,7 @@ public sealed partial class GitHubConnectionService
             await accountsTask.ConfigureAwait(false),
             new SshAccountStatus(remote.Host, remote.Host, keys, "unknown", "尚未检测"),
             new GitHubConnectionStatus("unknown", remote.Transport.ToString().ToLowerInvariant(), []),
-            DateTimeOffset.Now);
+            DateTimeOffset.Now, string.IsNullOrWhiteSpace(remote.FetchUrl) ? await ReadPlannedRemoteAsync(cancellation) : "");
     }
 
     public async Task<IReadOnlyList<GitCredentialAccount>> GetAccountsAsync(
@@ -191,7 +192,8 @@ public sealed partial class GitHubConnectionService
         CancellationToken cancellation = default)
     {
         var before = await ReadRemoteAsync(cancellation).ConfigureAwait(false);
-        var targetFetch = string.IsNullOrWhiteSpace(fetch) ? before.FetchUrl : fetch.Trim();
+        var planned = string.IsNullOrWhiteSpace(before.FetchUrl) ? await ReadPlannedRemoteAsync(cancellation) : "";
+        var targetFetch = string.IsNullOrWhiteSpace(fetch) ? (planned.Length > 0 ? planned : before.FetchUrl) : fetch.Trim();
         // 只填一个地址时，拉取与推送一起切换，避免仍推向旧仓库。
         var targetPush = string.IsNullOrWhiteSpace(push)
             ? (string.IsNullOrWhiteSpace(fetch) ? before.PushUrl : targetFetch)
@@ -202,6 +204,14 @@ public sealed partial class GitHubConnectionService
         if (!apply)
             return new GitHubMutationResult<GitRemoteInfo>(before, desired, false, "将修改 origin");
 
+        if (planned.Length > 0)
+        {
+            if (!targetFetch.Equals(targetPush, StringComparison.Ordinal))
+                throw new ArgumentException("首次推送前请使用同一个拉取与推送地址");
+            var saved = await GitAsync(["config", "--local", ProjectService.KeyPlannedRemote, targetFetch], 20, cancellation);
+            if (!saved.Success) throw new InvalidOperationException(saved.CombinedOutput);
+            return new GitHubMutationResult<GitRemoteInfo>(before, desired, true, "远端地址已保存，待首次推送时复用或创建仓库");
+        }
         var adding = string.IsNullOrWhiteSpace(before.FetchUrl);
         if (adding || !targetFetch.Equals(before.FetchUrl, StringComparison.Ordinal))
         {
@@ -367,7 +377,13 @@ public sealed partial class GitHubConnectionService
         return (split[1].Trim(), source);
     }
 
-    private static GitRemoteInfo ParseRemote(string fetch, string push)
+    private async Task<string> ReadPlannedRemoteAsync(CancellationToken cancellation)
+    {
+        var result = await GitAsync(["config", "--local", "--get", ProjectService.KeyPlannedRemote], 10, cancellation);
+        return result.Success ? result.StandardOutput.Trim() : "";
+    }
+
+    internal static GitRemoteInfo ParseRemote(string fetch, string push)
     {
         var safeFetch = GitHubRedactor.SanitizeRemoteUrl(fetch);
         var safePush = GitHubRedactor.SanitizeRemoteUrl(push);

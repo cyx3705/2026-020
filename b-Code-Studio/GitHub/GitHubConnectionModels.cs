@@ -49,7 +49,8 @@ public sealed record GitHubAccountOverview(
     IReadOnlyList<GitCredentialAccount> CredentialAccounts,
     SshAccountStatus Ssh,
     GitHubConnectionStatus Connection,
-    DateTimeOffset LastCheckedAt);
+    DateTimeOffset LastCheckedAt,
+    string PlannedRemoteUrl = "");
 
 public sealed record GitHubMutationResult<T>(T Before, T After, bool Applied, string Action);
 
@@ -67,5 +68,8 @@ public sealed record GitHubRepositoryCreation(
     /// 写进 origin 的 URL：优先 SSH。HTTPS 在大包（实测约 17MB 起）上会被稳定重置成
     /// <c>curl 55/56 Recv failure</c>，同一个包走 SSH 能推完；接口没给 ssh_url 时才退回 HTTPS。
     /// </summary>
-    public string OriginUrl => string.IsNullOrWhiteSpace(SshUrl) ? CloneUrl : SshUrl;
+    public string ConfiguredUrl { get; init; } = "";
+
+    public string OriginUrl => ConfiguredUrl.Length > 0 ? ConfiguredUrl
+        : string.IsNullOrWhiteSpace(SshUrl) ? CloneUrl : SshUrl;
 }

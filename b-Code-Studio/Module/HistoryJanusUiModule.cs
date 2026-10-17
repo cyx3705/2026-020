@@ -766,8 +766,10 @@ internal static partial class HistoryJanusUiCommands
                 Row(("item", "gh CLI"), ("value", overview.GhCliAvailable ? "可用" : "不可用")),
                 Row(("item", "提交身份"),
                     ("value", $"{overview.EffectiveIdentity.Name} <{overview.EffectiveIdentity.Email}>（{overview.EffectiveIdentity.Source}）")),
-                Row(("item", "远端地址"), ("value", overview.Origin.FetchUrl),
+                Row(("item", "远端地址"), ("value", overview.Origin.FetchUrl.Length > 0 ? overview.Origin.FetchUrl : overview.PlannedRemoteUrl),
                     ("name", name), ("editable", "true")),
+                Row(("item", "远端状态"), ("value", overview.Origin.FetchUrl.Length > 0 ? "已配置 origin"
+                    : overview.PlannedRemoteUrl.Length > 0 ? "待首次推送（存在则复用，不存在则创建）" : "未配置")),
                 Row(("item", "origin push"), ("value", overview.Origin.PushUrl)),
                 Row(("item", "origin 归属"),
                     ("value", $"{overview.Origin.Host} / {overview.Origin.Owner} / {overview.Origin.Repository}")),

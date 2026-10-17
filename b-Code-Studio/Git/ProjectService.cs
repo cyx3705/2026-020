@@ -70,6 +70,8 @@ public sealed record CommitReport(
 public sealed partial class ProjectService
 {
     public const string KeyLibraryRoot = "proj.libraryroot";
+    public const string KeyPlannedRemote = "janus.remoteurl";
+
     public const string KeyBaseBranch = "proj.basebranch";
     public const string KeyWarnMb = "proj.warnmb";
     public const string KeyRejectMb = "proj.rejectmb";
@@ -384,6 +386,15 @@ public sealed partial class ProjectService
             return (false, $"初始化仓库失败:\n{init.Output}");
 
         await CopyIdentityAsync(templatePath, targetPath);
+        // 只保存建议地址；首次推送前不注册 origin、不访问 GitHub。
+        var templateRemote = await GitRunner.RunAsync(templatePath, ["remote", "get-url", "origin"]);
+        var remoteInfo = GitHubConnectionService.ParseRemote(templateRemote.Success ? templateRemote.Output.Trim() : "", "");
+        if (remoteInfo.Host.Equals("github.com", StringComparison.OrdinalIgnoreCase) && remoteInfo.Owner.Length > 0)
+        {
+            var plannedUrl = $"https://github.com/{remoteInfo.Owner}/{ProjectRepoLayout.ToRemoteRepositoryName(name)}";
+            var planned = await GitRunner.RunAsync(targetPath, ["config", "--local", KeyPlannedRemote, plannedUrl]);
+            if (!planned.Success) return (false, $"预填远端地址失败:\n{planned.Output}");
+        }
         ProjectRepoLayout.StampNewProjectManifest(targetPath, baseBranch);
 
         progress?.Report("写入首提交...");

@@ -12,7 +12,7 @@ public static partial class ProjectCommands
     private static ParameterSpec VisibilityParameter() => new()
     {
         Name = "visibility",
-        Description = "缺 origin 时自动新建的 GitHub 仓库可见性；已有 origin 时无效",
+        Description = "首次推送时不存在的 GitHub 仓库可见性；已有 origin 或远端仓库时保持原值",
         AllowedValues = ["public", "private"],
         Default = GitHubRepositoryProvisioner.DefaultVisibility,
     };

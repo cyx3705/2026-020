@@ -252,22 +252,34 @@ public sealed partial class ProjectService
         if (existing.Success && !string.IsNullOrWhiteSpace(FirstLine(existing.Output)))
             return (true, string.Empty, null);
 
-        if (RepositoryProvisioner == null)
-            return (false, $"仓库未配置 origin，且未启用远端自动创建: {projectName}", null);
-
-        // 本地目录名保留中文，远端只用编号：GitHub 会吃掉非 ASCII 字符。
-        var remoteName = ProjectRepoLayout.ToRemoteRepositoryName(projectName);
+        var plan = await GitRunner.RunAsync(worktreePath, ["config", "--local", "--get", KeyPlannedRemote], cancellation);
+        var plannedUrl = plan.Success ? FirstLine(plan.Output) : "";
+        var info = GitHubConnectionService.ParseRemote(plannedUrl, plannedUrl);
+        var githubPlan = plannedUrl.Length > 0 && info.Host.Equals("github.com", StringComparison.OrdinalIgnoreCase);
+        if (plannedUrl.Length == 0 || githubPlan)
+        {
+            if (RepositoryProvisioner == null)
+                return (false, $"仓库未配置 origin，且未启用远端自动创建: {projectName}", null);
+        }
+        if (githubPlan)
+        {
+            var path = Uri.TryCreate(plannedUrl, UriKind.Absolute, out var uri) && !string.IsNullOrEmpty(uri.Host)
+                ? uri.AbsolutePath.Trim('/') : plannedUrl[(plannedUrl.IndexOf(':') + 1)..].Trim('/');
+            if (path.EndsWith(".git", StringComparison.OrdinalIgnoreCase)) path = path[..^4];
+            if (!path.Equals($"{info.Owner}/{info.Repository}", StringComparison.Ordinal))
+                return (false, "预填远端必须是完整的 GitHub 仓库地址（owner/repository）", null);
+        }
+        var remoteName = githubPlan ? $"{info.Owner}/{info.Repository}" : ProjectRepoLayout.ToRemoteRepositoryName(projectName);
         GitHubRepositoryCreation creation;
         try
         {
-            creation = await RepositoryProvisioner.EnsureAsync(
-                worktreePath, remoteName,
-                GitHubRepositoryProvisioner.NormalizeVisibility(visibility), cancellation);
+            creation = plannedUrl.Length > 0 && !githubPlan
+                ? new GitHubRepositoryCreation(info.Repository, plannedUrl, plannedUrl, plannedUrl, "", false, "")
+                : await RepositoryProvisioner!.EnsureAsync(worktreePath, remoteName,
+                    GitHubRepositoryProvisioner.NormalizeVisibility(visibility), cancellation);
+            if (plannedUrl.Length > 0) creation = creation with { ConfiguredUrl = plannedUrl };
         }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
+        catch (OperationCanceledException) { throw; }
         catch (Exception ex)
         {
             return (false, $"创建远端仓库失败 [{projectName} → {remoteName}]: {ex.Message}", null);
@@ -275,6 +287,8 @@ public sealed partial class ProjectService
 
         var added = await GitRunner.RunAsync(worktreePath,
             ["remote", "add", "origin", creation.OriginUrl], cancellation: cancellation);
+        if (added.Success && plannedUrl.Length > 0)
+            await GitRunner.RunAsync(worktreePath, ["config", "--local", "--unset-all", KeyPlannedRemote], cancellation);
         return added.Success
             ? (true, string.Empty, creation)
             : (false, $"远端仓库已就绪 {creation.FullName}，但配置 origin 失败:\n{added.Output}", null);

@@ -205,9 +205,9 @@ internal static class GitHubSuite
             new GitHubRepositoryCreation("n", "f", "https://github.com/alice/2026-018-MyAPI.git",
                 "", "h", true, "public").OriginUrl,
             "origin url falls back to https when the API omits ssh_url");
-        True(requests.SequenceEqual(["GET /user", "POST /user/repos"]), "creation hits user then repos");
+        True(requests.SequenceEqual(["GET /user", "GET /repos/alice/2026-018-MyAPI", "POST /user/repos"]), "creation checks the target before creating");
 
-        // 422 是「同名仓库已存在」，应复用而不是把首次推送卡死。
+        // 已存在时只读复用，不先发送创建请求。
         var reuseHandler = new FakeHandler((method, path) => path switch
         {
             "/user" => (HttpStatusCode.OK, "{\"login\":\"alice\"}"),
@@ -218,7 +218,7 @@ internal static class GitHubSuite
         using var reuse = new GitHubRepositoryProvisioner(
             reuseHandler, (_, _) => Task.FromResult<string?>("gho_TESTTOKEN"));
         var existing = await reuse.EnsureAsync("ignored", "2026-018-MyAPI", "public");
-        True(!existing.Created, "422 falls back to reusing the existing repository");
+        True(!existing.Created, "200 reuses the existing repository without creating");
         Equal("private", existing.Visibility, "reused repository reports the API visibility, not the request");
 
         using var tokenless = new GitHubRepositoryProvisioner(

@@ -152,7 +152,7 @@ public static class GitHubCommands
     {
         Name = "janus.github.remote",
         CommandClass = "github",
-        Summary = "预览、添加或修改指定项目的 origin 远端地址",
+        Summary = "预览或修改指定项目的远端地址；新项目保存预填地址，首次推送再配置 origin",
         Example = "janus.github.remote name=2026-041-VideoStudio fetch=https://github.com/Cloudsflee/video-studio push=https://github.com/Cloudsflee/video-studio apply=false",
         Parameters =
         [
