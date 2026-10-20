@@ -48,6 +48,10 @@ public sealed class BranchService(ProjectService projects)
             ? merged.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                 .ToHashSet(StringComparer.Ordinal)
             : [];
+        // 5.16.2：刚分出来、一次都没提交过的分支同样指向 main 历史里的提交，`--merged` 也会列它——
+        // 不剔掉的话「从此分出」点完什么都看不见。它不是「合并完了」，是「还没开始」，要摆出来。
+        foreach (var fresh in await FreshBranchesAsync(repo.Path, mergedNames, cancellation))
+            mergedNames.Remove(fresh);
 
         var branches = refs.Output
             .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
@@ -65,6 +69,29 @@ public sealed class BranchService(ProjectService projects)
             .ToList();
         return (true, $"{name}：{branches.Count} 条本地分支，当前 {current}",
             new BranchListReport(name, current, branches));
+    }
+
+    /// <summary>
+    /// 在 <paramref name="candidates"/> 里找出「分出来以后一次都没动过」的分支：
+    /// 它的 reflog 只有建分支那一条（<c>branch: Created from …</c>）。
+    /// 提交过、又被并回 main 的分支 reflog 里有提交记录，照旧算已合并；
+    /// 没有 reflog 的（克隆来的、记录已过期）说不清来历，也照旧算已合并。
+    /// </summary>
+    internal static async Task<IReadOnlyList<string>> FreshBranchesAsync(
+        string repo, IEnumerable<string> candidates, CancellationToken cancellation)
+    {
+        var fresh = new List<string>();
+        foreach (var branch in candidates.Where(item => item != ProjectService.MainlineBranch).ToList())
+        {
+            var log = await GitRunner.RunAsync(repo,
+                ["reflog", "show", "--format=%gs", $"refs/heads/{branch}", "--"], cancellation);
+            if (!log.Success)
+                continue;
+            var entries = log.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (entries.Length == 1 && entries[0].StartsWith("branch: Created from", StringComparison.Ordinal))
+                fresh.Add(branch);
+        }
+        return fresh;
     }
 
     /// <summary>从 <paramref name="from"/> 分出新分支，不切换过去。</summary>

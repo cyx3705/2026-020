@@ -32,6 +32,10 @@ public sealed class BranchServiceContractTests : IDisposable
         Assert.True(listed.Success, listed.Message);
         Assert.Equal(new[] { "main", "feature" }, listed.Report!.Branches.Select(b => b.Name).ToArray());
         Assert.True(listed.Report.Branches[0].IsCurrent);
+        // 5.16.2：刚分出来、还没提交过的分支与 main 同一个提交，`--merged` 会列它；它不算已合并，分支行要摆出来。
+        Assert.False(listed.Report.Branches.Single(b => b.Name == "feature").MergedIntoMain);
+        Assert.Equal(new[] { "main", "feature" },
+            HistoryJanus.Module.HistoryJanusUiCommands.UiBranchProjection.Options(listed.Report).Select(row => row["value"]));
 
         // 脏工作树：切换被拒，并标出 Dirty（界面据此弹提交窗口）。
         File.WriteAllText(Path.Combine(Project, "file.txt"), "dirty");
