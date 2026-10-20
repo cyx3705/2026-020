@@ -33,7 +33,8 @@ var expectedVersion = manifest.RootElement.GetProperty("version").GetString();
 // 5.9.0：业务命令增至 42（proj.diff / proj.discard / gitrule.lfs），UI 仍 8 条 → 51。
 // 5.11.0：业务命令增至 44（gitrule.lfsset / gitrule.lfsrepair），UI 增 ui.lfsdecide 到 9 条 → 54。
 // REQ-018：新增 ui.setremote，54 → 55。
-const int expectedRuntimeCommandCount = 55;
+// 5.16.0：branch 类五条 + ui.branchpick / ui.branchop（ui.sectionenter 换成 ui.opensection），55 → 62。
+const int expectedRuntimeCommandCount = 62;
 
 var listed = Probe(package, "vulcan.command.list domain=janus");
 var module = listed.GetProperty("data").GetProperty("module");
@@ -57,7 +58,7 @@ if (module.GetProperty("name").GetString() != "HistoryJanus"
 // 指令属性从目录行读（JSON 字段名），不再查宿主注册表。
 var rows = listed.GetProperty("data").GetProperty("result").GetProperty("data").EnumerateArray()
     .ToDictionary(row => row.GetProperty("commandName").GetString()!, row => row, StringComparer.Ordinal);
-foreach (var name in new[] { "janus.ui.describe", "janus.ui.actions", "janus.ui.data", "janus.ui.graphnode", "janus.ui.sectionenter" })
+foreach (var name in new[] { "janus.ui.describe", "janus.ui.actions", "janus.ui.data", "janus.ui.graphnode" })
 {
     if (!rows.TryGetValue(name, out var row)
         || !row.GetProperty("readonly").GetBoolean()
@@ -67,7 +68,7 @@ foreach (var name in new[] { "janus.ui.describe", "janus.ui.actions", "janus.ui.
     }
 }
 
-foreach (var name in new[] { "janus.ui.refreshprojects", "janus.ui.projectaction", "janus.ui.openmeta" })
+foreach (var name in new[] { "janus.ui.refreshprojects", "janus.ui.projectaction", "janus.ui.openmeta", "janus.ui.opensection", "janus.ui.branchpick", "janus.ui.branchop" })
 {
     if (!rows.TryGetValue(name, out var row)
         || row.GetProperty("readonly").GetBoolean()
@@ -88,8 +89,8 @@ using (var description = JsonDocument.Parse(describe))
     var ids = root.GetProperty("pages").EnumerateArray()
         .Select(page => page.GetProperty("id").GetString())
         .ToArray();
-    // 5.4.6：rules / history / github 收进 projops 的 switch 容器，不再是页面（REQ-015）。
-    if (!new[] { "overview", "graph", "projops" }
+    // 5.16.0：入库规则 / LFS 规则 / GitHub 是三张不露面的弹窗页，由项目操作页按钮浮出。
+    if (!new[] { "overview", "graph", "projops", "janus-rules", "janus-lfs", "janus-github" }
             .SequenceEqual(ids, StringComparer.Ordinal))
         throw new InvalidOperationException($"unexpected page ids: {string.Join(",", ids)}");
     pageIds = ids!;
@@ -106,6 +107,9 @@ foreach (var action in new[]
              "janus.project.openmeta",
              "janus.project.action",
              "janus.graph.node.detail",
+             "janus.section.github",
+             "janus.branch.pick",
+             "janus.branch.switch",
          })
 {
     if (!actions.Contains(action, StringComparison.Ordinal))

@@ -59,29 +59,27 @@ internal static partial class HistoryJanusUiCommands
     private const string SelectedProject = "{selection." + ProjectChannel + ".name}";
 
     /// <summary>
-    /// 子页面通道（Aurora 1.8.17 起）。「项目操作」页控制面板里的轮换选项框往这里发布
-    /// 当前标题，同一页的 <c>switch</c> 容器按它决定下面显示哪一批控件。
-    ///
-    /// 5.4.5 里这三块是三个 <c>side=bottom</c> 的页面，由停靠层并成底部标签组。
-    /// 标签组是**三页**，各占一条底边，各自还顶着一段说明文字；收进一页之后，
-    /// 版面只剩一条选项框，而三块内容拿到的是同一块完整高度。
-    /// </summary>
-    private const string SectionChannel = "janus.section";
-
-    /// <summary>
-    /// 四个子页面的标题。它们同时是选项框的候选项和 switch 的 case，只写一处。
+    /// 三个弹窗子页的标题（5.16.0）：它们同时是项目操作页第二行的按钮文字、
+    /// 弹窗页的页标题与 <c>janus.ui.opensection</c> 的参数值，只写一处。
     ///
     /// 5.11.0 起「Git 文件规则」拆成两页：入库规则（全库共用的不纳入仓库清单）
     /// 与 LFS 规则（按选中项目列出指针文件与 ≥100MB 文件，逐个定去向）。
-    /// 两者原先挤在一张表里，靠「类型」一列区分，而它们回答的是两个问题。
+    /// 分支历史不再是子页：它是项目操作页下半截的常驻表格。
     /// </summary>
     private const string SectionRules = "入库规则";
 
     private const string SectionLfs = "LFS 规则";
 
-    private const string SectionHistory = "分支历史";
-
     private const string SectionGitHub = "GitHub";
+
+    /// <summary>分支表右键菜单的四种操作，同时是动作 id 的末段与 janus.ui.branchop 的 op。</summary>
+    internal const string BranchOpSwitch = "switch";
+
+    internal const string BranchOpMerge = "merge";
+
+    internal const string BranchOpCreate = "create";
+
+    internal const string BranchOpDelete = "delete";
 
     /// <summary>
     /// 总览页顶栏的两个筛选通道。搜索框与年份框各占一个；
@@ -148,27 +146,16 @@ internal static partial class HistoryJanusUiCommands
                 new ParameterSpec
                 {
                     Name = "view",
-                    Description = "页面视图：projects 项目总览、years 年份候选、graph 分支图谱、history 提交历史、excludes 入库排除、lfs ≥100MB 文件表、lfsstat LFS 面板一格、github 账号与远端",
+                    Description = "页面视图：projects 项目总览、years 年份候选、graph 分支图谱、branches 本地分支、history 所看分支的提交历史、excludes 入库排除、lfs ≥100MB 文件表、lfsstat LFS 汇总一行、github 账号与远端",
                     Required = true,
-                    AllowedValues = ["projects", "years", "graph", "history", "excludes", "lfs", "lfsstat", "github"],
+                    AllowedValues = ["projects", "years", "graph", "branches", "history", "excludes", "lfs", "lfsstat", "github"],
                     Position = 0,
                 },
                 new ParameterSpec
                 {
                     Name = "name",
-                    Description = "已登记项目的工作树名称，例如 2026-020-HistoryJanus；history / graph / lfs / lfsstat / github 需要，页面按当前选中行填入",
+                    Description = "已登记项目的工作树名称，例如 2026-020-HistoryJanus；branches / history / graph / lfs / lfsstat / github 需要，页面按当前选中行填入",
                     Position = 1,
-                },
-                new ParameterSpec
-                {
-                    Name = "item",
-                    Description = "lfsstat 视图取哪一格：compliance 是否合规、bytes 指针总大小、oversize ≥100MB 文件数",
-                    AllowedValues = ["compliance", "bytes", "oversize"],
-                },
-                new ParameterSpec
-                {
-                    Name = "section",
-                    Description = "lfsstat 视图不用它；页面带上它只为切回子页时触发重取",
                 },
                 new ParameterSpec
                 {
@@ -220,24 +207,24 @@ internal static partial class HistoryJanusUiCommands
 
         registry.Register(new CommandDescriptor
         {
-            Name = "janus.ui.sectionenter",
+            Name = "janus.ui.opensection",
             Domain = Domain,
             CommandClass = "ui",
-            Summary = "切到某个子页面时重取它那一张表",
-            Example = "janus.ui.sectionenter section=GitHub",
-            Readonly = true,
+            Summary = "弹出一个子页窗口并重取它的表",
+            Example = "janus.ui.opensection section=GitHub",
             HiddenReason = "界面内部协议，对模型无意义",
             Parameters =
             [
                 new ParameterSpec
                 {
                     Name = "section",
-                    Description = $"子页面标题：{SectionRules} / {SectionLfs} / {SectionHistory} / {SectionGitHub}",
+                    Description = $"子页标题：{SectionRules} / {SectionLfs} / {SectionGitHub}",
                     Required = true,
                     Position = 0,
+                    AllowedValues = [SectionRules, SectionLfs, SectionGitHub],
                 },
             ],
-            Handler = context => EnterSectionAsync(context, bus),
+            Handler = context => OpenSectionAsync(context, bus),
         });
 
         registry.Register(new CommandDescriptor
@@ -259,43 +246,42 @@ internal static partial class HistoryJanusUiCommands
 
         RegisterRemoteCommand(registry, bus);
         RegisterLifecycleCommands(registry, bus, source, business);
+        RegisterBranchCommands(registry, bus, business);
     }
 
     /// <summary>
-    /// 子页面一被切到就重取它那一张表。
+    /// 弹出子页（5.16.0）：先把那一页浮成置顶小窗，再按节点重取它的表。
     ///
-    /// 为什么非得由模块来做这件事：Aurora 的 switch 在建页时一次建好三支，
-    /// 切走再切回来用的是**同一个控件实例**（为的是保住滚动位置、筛选词和选中行），
-    /// 因此切回来不会触发取数。此前靠「刷新规则 / 刷新 GitHub」两个按钮补位，
-    /// 等于把「这张表是不是旧的」这件事交给人判断。
-    ///
-    /// 按节点刷、不按页刷：一页上挂着三支，刷整页会把没人看的那两支一起跑掉。
-    /// 认不出的标题按成功返回：子页面是界面自己的候选项，多出一个不该让人看见报错。
+    /// 浮窗关掉再打开用的是同一个控件实例，不会自己重取；所以每次打开都刷一遍，
+    /// 不把「这张表是不是旧的」交给人判断。按节点刷、不按页刷：别的弹窗没人看，不该白跑
+    /// （GitHub 那一张要探 SSH 与凭据助手）。
     /// </summary>
-    private static async Task<CommandResult> EnterSectionAsync(CommandContext context, ICommandBus bus)
+    private static async Task<CommandResult> OpenSectionAsync(CommandContext context, ICommandBus bus)
     {
-        string[] nodes = context.GetString("section")?.Trim() switch
+        var section = context.GetString("section")?.Trim() ?? "";
+        var (page, nodes) = section switch
         {
-            SectionRules => ["rule-list"],
+            SectionRules => (RulesPage, new[] { "rule-list" }),
             // 汇总与文件表来自同一次检查；先作废缓存，两张表才会一起看到新的一次。
-            SectionLfs => LfsNodes(),
-            SectionHistory => ["history-rows"],
-            SectionGitHub => ["github-rows"],
-            _ => [],
+            SectionLfs => (LfsPage, LfsNodes()),
+            SectionGitHub => (GitHubPage, new[] { "github-rows" }),
+            _ => ("", Array.Empty<string>()),
         };
-        if (nodes.Length == 0)
-            return CommandResult.Ok("该子页面没有需要重取的表");
-        var last = CommandResult.Ok("");
+        if (page.Length == 0)
+            return CommandResult.Fail($"未知子页：{section}");
+        var shown = await bus.ExecuteAsync($"aurora.ui.float name={page} on=true", context.Source, context.Cancellation);
+        if (!shown.Success)
+            return shown;
         foreach (var node in nodes)
-            last = await bus.ExecuteAsync($"aurora.ui.refreshdata node={node}", context.Source, context.Cancellation);
-        return last;
+            _ = await bus.ExecuteAsync($"aurora.ui.refreshdata node={node}", context.Source, context.Cancellation);
+        return CommandResult.Ok($"已打开「{section}」");
     }
 
     private static string[] LfsNodes()
     {
         // 面板那几格不是表格节点，refreshdata 够不着；它们靠通道变化重取。
         UiLfsProjection.Invalidate();
-        return ["lfs-files"];
+        return ["lfs-stat", "lfs-files"];
     }
 
     // LFS 文件表「操作」格的 next（5.12.1）：前两个直接是 lfsset 的 decision，后两个只在界面里用。
@@ -359,17 +345,22 @@ internal static partial class HistoryJanusUiCommands
             var inspected = await UiLfsProjection.InspectAsync(business(), context.GetString("name"));
             return Rows(view == "lfs"
                 ? UiLfsProjection.Files(inspected)
-                : UiLfsProjection.Stat(inspected, context.GetString("item")));
+                : UiLfsProjection.Stat(inspected));
         }
+
+        if (view == "branches")
+            return await LoadBranchesAsync(context, business);
+
+        if (view == "history")
+            return await LoadHistoryAsync(context, bus, business);
 
         if (view is "projects" or "years")
             return await LoadProjectsAsync(context, bus, view == "years");
 
         var command = view switch
         {
-            // 这两条都按**单个项目**取，项目名由页面从选中通道填入。
+            // 按**单个项目**取，项目名由页面从选中通道填入。
             // 不带项目名就不取——全库扫描不该由"打开一个页签"触发。
-            "history" => Scoped(context, "janus.history.list", " limit=200"),
             "github" => Scoped(context, "janus.github.status", ""),
             _ => null,
         };
@@ -385,7 +376,6 @@ internal static partial class HistoryJanusUiCommands
         // 帕斯卡命名加布尔/数字/嵌套对象，那种载荷解析会整条失败，症状是一张空表。
         return view switch
         {
-            "history" => Rows(UiHistoryProjection.Read(result.Data)),
             "github" => Rows(UiGitHubProjection.Read(result.Data, context.RequireString("name"))),
             _ => Payload(JsonSerializer.Serialize(result.Data)),
         };
@@ -669,22 +659,21 @@ internal static partial class HistoryJanusUiCommands
         }
 
         /// <summary>
-        /// 面板一格的值，作为**唯一一个候选**交给选择框。合规只给 ✓ / ✗。
-        /// 取不到时给「—」而不是空：空候选会让选择框留着上一个项目的值。
+        /// 汇总一行三格（5.16.0 起是表格的一行，不再是三个选择框）。合规只给 ✓ / ✗；
+        /// 取不到时给「—」，不给空行：空表看上去像「这个项目没有 LFS」。
         /// </summary>
         public static IReadOnlyList<IReadOnlyDictionary<string, string>> Stat(
-            (bool Success, string Message, LfsInspection? Report) inspected, string? item)
+            (bool Success, string Message, LfsInspection? Report) inspected)
         {
             if (!inspected.Success || inspected.Report is not { Available: true } report)
-                return [Row(("value", "—"))];
-            var value = item?.Trim().ToLowerInvariant() switch
-            {
-                "compliance" => report.SmallPointerCount + report.ForeignRuleCount == 0 ? "✓" : "✗",
-                "bytes" => LfsPolicy.FormatBytes(report.PointerBytes),
-                "oversize" => report.OversizeCount.ToString(),
-                _ => "—",
-            };
-            return [Row(("value", value))];
+                return [Row(("compliance", "—"), ("bytes", "—"), ("oversize", "—"))];
+            return
+            [
+                Row(
+                    ("compliance", report.SmallPointerCount + report.ForeignRuleCount == 0 ? "✓" : "✗"),
+                    ("bytes", LfsPolicy.FormatBytes(report.PointerBytes)),
+                    ("oversize", report.OversizeCount.ToString())),
+            ];
         }
 
         /// <summary>

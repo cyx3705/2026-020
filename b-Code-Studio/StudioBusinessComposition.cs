@@ -18,7 +18,8 @@ public sealed class StudioBusinessComposition
         LfsRuleService lfsRules,
         BranchHistoryService branchHistory,
         GitHubConnectionService gitHub,
-        GraphService graph)
+        GraphService graph,
+        BranchService branches)
     {
         Projects = projects;
         History = history;
@@ -27,6 +28,7 @@ public sealed class StudioBusinessComposition
         BranchHistory = branchHistory;
         GitHub = gitHub;
         Graph = graph;
+        Branches = branches;
     }
 
     public ProjectService Projects { get; }
@@ -42,6 +44,8 @@ public sealed class StudioBusinessComposition
     public GitHubConnectionService GitHub { get; }
 
     public GraphService Graph { get; }
+
+    public BranchService Branches { get; }
 }
 
 /// <summary>
@@ -86,6 +90,7 @@ public static class StudioBusinessCompositionFactory
         var gitHub = new GitHubConnectionService(
             () => projects.ResolveGitHubRepository(currentProjectName?.Invoke()));
         var graph = new GraphService(projects);
+        var branches = new BranchService(projects);
 
         ProjectCommands.RegisterAll(registry, projects, history);
         BranchHistoryCommands.RegisterAll(registry, branchHistory, history);
@@ -97,6 +102,7 @@ public static class StudioBusinessCompositionFactory
             return new GitHubConnectionService(() => repository);
         });
         GraphCommands.RegisterAll(registry, graph);
+        BranchCommands.RegisterAll(registry, branches);
         // 5.14.0：登记不再带来源——宿主 6.0.0 按模块盖章（module:HistoryJanus）。
         // 业务模块不注册诊断或自动化辅助指令：日志承压由宿主 vulcan.log.flood 承担，
         // 不在此重复实现。
@@ -108,6 +114,7 @@ public static class StudioBusinessCompositionFactory
             lfsRules,
             branchHistory,
             gitHub,
-            graph);
+            graph,
+            branches);
     }
 }

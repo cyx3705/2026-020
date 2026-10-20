@@ -161,12 +161,15 @@ public sealed class LfsPolicyContractTests
         Assert.Equal(new[] { "未决", "取消纳入", "纳入", "已排除" }, rows.Select(r => r["op"]).ToArray());
         Assert.Equal(new[] { "choose", "ignore", "lfs", "excluded" }, rows.Select(r => r["next"]).ToArray());
 
-        Assert.Equal("✓", HistoryJanusUiCommands.UiLfsProjection.Stat((true, "", report), "compliance")[0]["value"]);
+        // 5.16.0 起汇总是表格的一行三格。
+        var stat = Assert.Single(HistoryJanusUiCommands.UiLfsProjection.Stat((true, "", report)));
+        Assert.Equal("✓", stat["compliance"]);
+        Assert.Equal("4", stat["oversize"]);
         var dirty = report with { SmallPointerCount = 2 };
-        Assert.Equal("✗", HistoryJanusUiCommands.UiLfsProjection.Stat((true, "", dirty), "compliance")[0]["value"]);
-        Assert.Equal("—", HistoryJanusUiCommands.UiLfsProjection.Stat((false, "x", null), "bytes")[0]["value"]);
-        // 去向计数的三格 5.12.1 已删：再有人按旧名取，只给「—」。
-        Assert.Equal("—", HistoryJanusUiCommands.UiLfsProjection.Stat((true, "", report), "undecided")[0]["value"]);
+        Assert.Equal("✗", HistoryJanusUiCommands.UiLfsProjection.Stat((true, "", dirty))[0]["compliance"]);
+        // 取不到时三格都是「—」，不给空行：空表看上去像「这个项目没有 LFS」。
+        var missing = Assert.Single(HistoryJanusUiCommands.UiLfsProjection.Stat((false, "x", null)));
+        Assert.All(new[] { "compliance", "bytes", "oversize" }, key => Assert.Equal("—", missing[key]));
     }
 
     private static int Count(string text, string token)

@@ -32,12 +32,13 @@ public static class BranchHistoryCommands
             Int("skip", "从最新提交向前跳过的数量", "0"),
             Bool("refresh", "重新扫描继承树后计算父分支", "false"),
             Bool("remote", "先刷新所选 origin 分支的跟踪引用", "false"),
+            Text("branch", "要看的本地分支名，例如 feature-x；省略为 main"),
         ],
         Handler = async ctx =>
         {
             var result = await service.GetHistoryAsync(ctx.RequireString("name"),
                 ctx.GetInt("limit", 200), ctx.GetInt("skip"), ctx.GetBool("refresh"),
-                ctx.GetBool("remote"), ctx.Progress, ctx.Cancellation);
+                ctx.GetBool("remote"), ctx.Progress, ctx.Cancellation, ctx.GetString("branch"));
             return result.Success
                 ? CommandResult.Ok(result.Message, result.Report)
                 : CommandResult.Fail(result.Message);

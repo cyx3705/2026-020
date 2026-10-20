@@ -142,9 +142,11 @@ public sealed class BranchHistoryService
         bool refreshTree = false,
         bool refreshRemote = false,
         IProgress<string>? progress = null,
-        CancellationToken cancellation = default)
+        CancellationToken cancellation = default,
+        string? branch = null)
     {
         name = name.Trim();
+        branch = string.IsNullOrWhiteSpace(branch) ? null : branch.Trim();
         limit = Math.Clamp(limit, 1, MaxLimit);
         skip = Math.Max(0, skip);
 
@@ -155,7 +157,7 @@ public sealed class BranchHistoryService
                 Path.Combine(_projects.LibraryRoot, name), limit, skip, cancellation);
         }
 
-        var boundaryResult = await ResolveBoundaryAsync(name, refreshTree, progress, cancellation);
+        var boundaryResult = await ResolveBoundaryAsync(name, refreshTree, progress, cancellation, branch);
         if (!boundaryResult.Success || boundaryResult.Boundary == null)
             return (false, boundaryResult.Message, null);
         var boundary = boundaryResult.Boundary;
@@ -171,7 +173,8 @@ public sealed class BranchHistoryService
                 remoteWarning = fetch.Output;
         }
 
-        var remote = await ReadRemoteAsync(boundary.RepoPath, boundary.HeadSha, cancellation);
+        var remote = await ReadRemoteAsync(boundary.RepoPath, boundary.HeadSha, cancellation,
+            branch ?? ProjectService.MainlineBranch);
         var countResult = await GitRunner.RunAsync(boundary.RepoPath,
             ["rev-list", "--first-parent", "--count", $"{boundary.ForkSha}..{boundary.HeadSha}"],
             cancellation: cancellation);
@@ -502,7 +505,8 @@ public sealed class BranchHistoryService
         string name,
         bool refreshTree,
         IProgress<string>? progress,
-        CancellationToken cancellation)
+        CancellationToken cancellation,
+        string? branch = null)
     {
         if (name.Length == 0)
             return (false, "项目名称不能为空", null);
@@ -510,16 +514,19 @@ public sealed class BranchHistoryService
         if (!worktree.Success || worktree.Worktree == null)
             return (false, worktree.Message, null);
         var repo = worktree.Worktree.WorktreePath;
-        var head = await ResolveRefAsync(repo, $"refs/heads/{ProjectService.MainlineBranch}", cancellation)
-                   ?? await ResolveRefAsync(repo, "HEAD", cancellation);
+        // 5.16.0：指定分支时读那一条（分支控制行选中的）；不指定仍是 main，回滚等写操作只认 main。
+        var head = branch != null
+            ? await ResolveRefAsync(repo, $"refs/heads/{branch}", cancellation)
+            : await ResolveRefAsync(repo, $"refs/heads/{ProjectService.MainlineBranch}", cancellation)
+              ?? await ResolveRefAsync(repo, "HEAD", cancellation);
         if (head == null)
-            return (false, $"无法读取项目 {name} 的 HEAD", null);
+            return (false, branch != null ? $"项目 {name} 没有分支 {branch}" : $"无法读取项目 {name} 的 HEAD", null);
 
         _ = refreshTree;
         _ = progress;
         var parentBranch = ProjectRepoLayout.ReadTemplateSource(repo);
         var roots = await GitRunner.RunAsync(repo,
-            ["rev-list", "--max-parents=0", "--reverse", "HEAD"], cancellation: cancellation);
+            ["rev-list", "--max-parents=0", "--reverse", head], cancellation: cancellation);
         var fork = roots.Success
             ? roots.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault()?.Trim()
             : null;
@@ -529,9 +536,9 @@ public sealed class BranchHistoryService
     }
 
     private async Task<RemoteSnapshot> ReadRemoteAsync(
-        string repo, string localHead, CancellationToken cancellation)
+        string repo, string localHead, CancellationToken cancellation, string branch = ProjectService.MainlineBranch)
     {
-        var remoteHead = await ResolveRefAsync(repo, $"refs/remotes/origin/{ProjectService.MainlineBranch}", cancellation);
+        var remoteHead = await ResolveRefAsync(repo, $"refs/remotes/origin/{branch}", cancellation);
         if (remoteHead == null)
             return new RemoteSnapshot(null, BranchRemoteState.Unknown, 0, 0, false,
                 "不存在本地 origin 跟踪引用");

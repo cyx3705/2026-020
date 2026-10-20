@@ -39,7 +39,7 @@ public sealed class ProjectLifecycleContractTests : IDisposable
         Assert.Equal("推送", initial.LifecycleAction);
         var registry = new TestRegistrar();
         var bus = new TestCommandBus(registry);
-        var composition = new StudioBusinessComposition(service, null!, null!, null!, null!, null!, null!);
+        var composition = new StudioBusinessComposition(service, null!, null!, null!, null!, null!, null!, null!);
         HistoryJanusUiCommands.Register(registry, bus, "test", () => composition);
         var lists = 0;
         registry.Register(new CommandDescriptor

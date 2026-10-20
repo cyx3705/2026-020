@@ -28,11 +28,12 @@ public sealed class CommandCatalogContractTests
     // 与 gitrule.lfs（本仓实际走 LFS 的文件，REQ-016），39 → 42。
     // 5.11.0 LFS 规则拆成独立子页：gitrule.lfsset（≥100MB 文件定去向）
     // 与 gitrule.lfsrepair（不足 100MB 的指针转回普通入库），42 → 44（DEC-032）。
-    private const int ExpectedCommandCount = 44;
+    // 5.16.0 新增 branch 类五条（列举、分出、切换、合并、删除），44 → 49；用户定。
+    private const int ExpectedCommandCount = 49;
 
-    // DEC-012：janus 域内五类；新增类需同级决策。
+    // DEC-012：janus 域内类清单；新增类需同级决策（5.16.0 加 branch，用户定）。
     private static readonly string[] ExpectedClasses =
-        ["github", "gitrule", "graph", "history", "proj"];
+        ["branch", "github", "gitrule", "graph", "history", "proj"];
 
     private static readonly string[] ReadOnlyCommands =
     [
@@ -42,6 +43,7 @@ public sealed class CommandCatalogContractTests
         "janus.gitrule.list", "janus.gitrule.lfs",
         "janus.github.status", "janus.github.accounts", "janus.github.test",
         "janus.graph.summary", "janus.graph.branches", "janus.graph.commits", "janus.graph.node",
+        "janus.branch.list",
     ];
 
     private static readonly string[] ConfirmedCommands =
@@ -56,6 +58,8 @@ public sealed class CommandCatalogContractTests
         "janus.gitrule.excludes",
         // 修复会改 .gitattributes 并把几百个文件重新入库、本地提交。
         "janus.gitrule.lfsrepair",
+        // 未合并的分支删掉后，它独有的提交就没有引用了。
+        "janus.branch.delete",
     ];
 
     [Fact]
