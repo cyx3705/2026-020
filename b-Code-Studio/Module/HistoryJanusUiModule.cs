@@ -346,6 +346,12 @@ internal static partial class HistoryJanusUiCommands
         Func<StudioBusinessComposition?> business)
     {
         var view = context.GetString("view")?.Trim().ToLowerInvariant();
+        // 5.16.2（用户定）：项目已归档是正常状态，不是错误。选中归档项目时图谱与 GitHub 给空态，
+        // 不去跑那几条必然失败的 git 指令——失败会以 ✗ 进控制台，看上去像 Janus 出了毛病。
+        // 分支行与历史表本来就有归档兜底（只摆 main、历史按归档记录取），LFS 不走总线、不进控制台。
+        if (view is "graph" or "github" && IsArchivedSelection(context, business))
+            return view == "graph" ? ArchivedGraph(context.RequireString("name").Trim()) : Rows([]);
+
         if (view == "graph")
             return await LoadGraphAsync(context, bus);
 
@@ -556,6 +562,21 @@ internal static partial class HistoryJanusUiCommands
 
     private static CommandResult Rows(IReadOnlyList<IReadOnlyDictionary<string, string>> rows)
         => Payload(JsonSerializer.Serialize(rows));
+
+    private static bool IsArchivedSelection(CommandContext context, Func<StudioBusinessComposition?> business)
+        => context.GetString("name")?.Trim() is { Length: > 0 } name
+           && business()?.Projects.IsArchivedInPlace(name) == true;
+
+    private static CommandResult ArchivedGraph(string name)
+        => CommandResult.Ok(
+            "项目已归档",
+            new
+            {
+                schemaVersion = 1,
+                title = $"{name} 已归档：本地只保留 z/Z 文件夹，在项目总览点「拉取 ↓」取回工作树后可看图谱",
+                lanes = Array.Empty<object>(),
+                nodes = Array.Empty<object>(),
+            });
 
     private static async Task<CommandResult> LoadGraphAsync(CommandContext context, ICommandBus bus)
     {

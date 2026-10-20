@@ -353,8 +353,8 @@ public sealed partial class ProjectService
         }
     }
 
-    /// <summary>归档态：有归档记录，且原地已经不是一个 git 仓（与刷新链路同一判据）。</summary>
-    private bool IsArchivedInPlace(string name)
+    /// <summary>归档态：有归档记录，且原地已经不是一个 git 仓（与刷新链路同一判据）。界面取数据此给空态（5.16.2）。</summary>
+    internal bool IsArchivedInPlace(string name)
         => _lifecycle.Get(name.Trim())?.ArchivedAt != null
            && !ProjectRepoLayout.IsIndependentGitRepo(Path.Combine(LibraryRoot, name.Trim()));
 
