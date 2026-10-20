@@ -1,3 +1,5 @@
+using HistoryJanus.Git;
+
 namespace HistoryJanus.GitHub;
 
 public enum GitRemoteTransport
@@ -65,11 +67,24 @@ public sealed record GitHubRepositoryCreation(
     string Visibility)
 {
     /// <summary>
-    /// 写进 origin 的 URL：优先 SSH。HTTPS 在大包（实测约 17MB 起）上会被稳定重置成
-    /// <c>curl 55/56 Recv failure</c>，同一个包走 SSH 能推完；接口没给 ssh_url 时才退回 HTTPS。
+    /// 调用方指定的地址。可以是用户预填的 https；写进 origin 时由 <see cref="OriginUrl"/>
+    /// 换成 SSH。HTTPS 传输会在连接重置后拖住整轮刷新。
     /// </summary>
     public string ConfiguredUrl { get; init; } = "";
 
-    public string OriginUrl => ConfiguredUrl.Length > 0 ? ConfiguredUrl
-        : string.IsNullOrWhiteSpace(SshUrl) ? CloneUrl : SshUrl;
+    public string OriginUrl
+    {
+        get
+        {
+            if (ArchiveCloner.TryRewriteHttpToSsh(ConfiguredUrl, out var configured))
+                return configured;
+            if (ConfiguredUrl.Length > 0)
+                return ConfiguredUrl;
+            if (!string.IsNullOrWhiteSpace(SshUrl))
+                return SshUrl;
+            if (ArchiveCloner.TryRewriteHttpToSsh(CloneUrl, out var clone))
+                return clone;
+            return CloneUrl;
+        }
+    }
 }

@@ -5,9 +5,8 @@ using Xunit;
 namespace HistoryJanus.Contracts;
 
 /// <summary>
-/// 拉取走哪条路。归档记录里存的是仓库当初的 origin，通常是 SSH；
-/// 本机到 GitHub 的 SSH 口被重置时，取回必须自己换一条走得通的路，
-/// 而不是重试三次以后把「Connection reset」原样报给人看。
+/// 拉取走哪条路。传输一律是 SSH。归档记录里的 https 地址先换算，
+/// 换不成就失败，不打开 HTTPS。一条 HTTPS 失败会拖住整轮刷新。
 /// </summary>
 public sealed class ArchiveTransportContractTests : IDisposable
 {
@@ -35,11 +34,30 @@ public sealed class ArchiveTransportContractTests : IDisposable
     }
 
     /// <summary>
-    /// SSH 连不上时不能就此收手：要换 HTTPS 再试一次，换路这件事进度里说得出口，
-    /// 两条路都不通时失败消息里两条都有交代。两端都指向本机死端口，不碰外网。
+    /// https 地址换成同一个仓库的 SSH。042 的 origin 就是这种没有 .git、带斜杠的写法。
+    /// 已经是 SSH 或本地路径时不换，调用方继续用远程名 origin。
+    /// </summary>
+    [Theory]
+    [InlineData("https://github.com/cyx3705/2026-042", "git@github.com:cyx3705/2026-042.git")]
+    [InlineData("https://github.com/cyx3705/2026-042/", "git@github.com:cyx3705/2026-042.git")]
+    [InlineData("https://github.com/cyx3705/2025-001.git", "git@github.com:cyx3705/2025-001.git")]
+    [InlineData("http://gitee.com/owner/repo.git", "git@gitee.com:owner/repo.git")]
+    [InlineData("https://ssh.github.com/cyx3705/2025-001.git", "git@github.com:cyx3705/2025-001.git")]
+    [InlineData("git@github.com:cyx3705/2025-001.git", null)]
+    [InlineData(@"C:\OneHistory\HistoryClio\remote.git", null)]
+    [InlineData("", null)]
+    public void HttpRemotesAreRewrittenToSsh(string remote, string? expected)
+    {
+        var built = ArchiveCloner.TryRewriteHttpToSsh(remote, out var ssh);
+        Assert.Equal(expected != null, built);
+        Assert.Equal(expected ?? string.Empty, ssh);
+    }
+
+    /// <summary>
+    /// SSH 连不上时不再改走 HTTPS。死端口上失败一次就结束，进度里没有 HTTPS。
     /// </summary>
     [Fact]
-    public async Task UnreachableSshFallsBackToHttpsBeforeReportingFailure()
+    public async Task UnreachableSshDoesNotOpenHttps()
     {
         Directory.CreateDirectory(_root);
         var progress = new RecordingProgress();
@@ -48,8 +66,23 @@ public sealed class ArchiveTransportContractTests : IDisposable
             Path.Combine(_root, "clone"), progress, CancellationToken.None);
 
         Assert.False(result.Success);
-        Assert.Contains("改用 HTTPS 后仍然失败", result.Message);
-        Assert.Contains(progress.Lines, line => line.Contains("改用 HTTPS 重试"));
+        Assert.DoesNotContain("HTTPS", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(progress.Lines, line => line.Contains("HTTPS", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>https 归档地址在克隆前换成 SSH，换不成的地址一次 git 都不跑。</summary>
+    [Fact]
+    public async Task UnrewritableHttpsFailsBeforeAnyClone()
+    {
+        Directory.CreateDirectory(_root);
+        var progress = new RecordingProgress();
+        var result = await ArchiveCloner.CloneAsync(
+            _root, "https://intranet/owner/repo.git", "main",
+            Path.Combine(_root, "clone"), progress, CancellationToken.None);
+
+        Assert.False(result.Success);
+        Assert.Contains("禁止使用 HTTPS", result.Message);
+        Assert.Empty(progress.Lines);
     }
 
     public void Dispose()

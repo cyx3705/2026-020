@@ -53,7 +53,7 @@ public sealed class RemotePlanContractTests : IDisposable
         var created = await service.CreateAsync(Name, null, null);
         Assert.True(created.Success, created.Message);
         var project = Path.Combine(_root, Name);
-        Assert.Equal("https://github.com/template-owner/2026-991", await Git(project, "config", "--local", "--get", ProjectService.KeyPlannedRemote));
+        Assert.Equal("git@github.com:template-owner/2026-991.git", await Git(project, "config", "--local", "--get", ProjectService.KeyPlannedRemote));
         Assert.False((await GitRunner.RunAsync(project, ["remote", "get-url", "origin"])).Success);
         var connection = new GitHubConnectionService(() => project);
         var edited = await connection.SetRemoteAsync("https://github.com/other-owner/custom", null, true);
@@ -72,17 +72,18 @@ public sealed class RemotePlanContractTests : IDisposable
         var remote = Path.Combine(_root, "remote.git");
         await Git(_root, "init", "--bare", "-b", "main", remote);
         const string url = "https://github.com/chosen-owner/custom-repository";
+        const string ssh = "git@github.com:chosen-owner/custom-repository.git";
         await Git(project, "config", ProjectService.KeyPlannedRemote, url);
-        // 本仓局部 URL 重写把传输送至临时裸仓；整个测试不访问网络。
-        await Git(project, "config", $"url.{remote.Replace('\\', '/')}.insteadOf", url);
+        // 预填仍可以是 https，写进 origin 时换成 SSH。本仓局部 URL 重写把传输送至临时裸仓。
+        await Git(project, "config", $"url.{remote.Replace('\\', '/')}.insteadOf", ssh);
         var provisioner = new RecordingProvisioner(remote);
         var service = Service();
         service.RepositoryProvisioner = provisioner;
         var pushed = await service.PushAsync(Name);
         Assert.True(pushed.Success, pushed.Message);
         Assert.Equal("chosen-owner/custom-repository", Assert.Single(provisioner.Targets));
-        Assert.Equal(url, await Git(project, "config", "--get", "remote.origin.url"));
-        Assert.Equal(url, pushed.RemoteUrl);
+        Assert.Equal(ssh, await Git(project, "config", "--get", "remote.origin.url"));
+        Assert.Equal(ssh, pushed.RemoteUrl);
         Assert.Equal(await Git(project, "rev-parse", "HEAD"), await Git(remote, "rev-parse", "refs/heads/main"));
         Assert.False((await GitRunner.RunAsync(project, ["config", "--get", ProjectService.KeyPlannedRemote])).Success);
         // 即使残留旧建议，已有 origin 也不再进入建仓路径。
@@ -90,7 +91,7 @@ public sealed class RemotePlanContractTests : IDisposable
         var again = await service.PushAsync(Name);
         Assert.True(again.Success, again.Message);
         Assert.Single(provisioner.Targets);
-        Assert.Equal(url, await Git(project, "config", "--get", "remote.origin.url"));
+        Assert.Equal(ssh, await Git(project, "config", "--get", "remote.origin.url"));
     }
 
     [Theory]

@@ -47,17 +47,54 @@ public sealed partial class ProjectService
     public const string AllHeadsRefspec = "+refs/heads/*:refs/remotes/origin/*";
 
     /// <summary>
-    /// 取回 origin 全部分支的跟踪引用。地址就是仓库里配置的 origin，配的是 SSH 就走 SSH。
-    /// 刷新不改写 origin，也不另开一条 HTTPS。
-    ///
-    /// HTTPS 试连会在 TLS 之后停住，一条卡住就让整轮刷新一直等，所以刷新不再走那条路。
+    /// 取回 origin 全部分支的跟踪引用。origin 已是 SSH 时按远程名取，仓库自己的
+    /// <c>url.insteadOf</c> 继续生效。origin 配成 http(s) 时只把这一次传输换成
+    /// <c>git@host:path.git</c>，不改 origin 配置，也不把 https 交给 git。
+    /// 换不成就立刻失败，不连出去：一条 HTTPS 重置会拖住整轮刷新。
     /// </summary>
-    internal static Task<GitResult> FetchAllHeadsAsync(
+    internal static async Task<GitResult> FetchAllHeadsAsync(
         string repo, string? remote, CancellationToken cancellation)
     {
-        _ = remote;
-        return GitRunner.RunAsync(repo,
-            ["fetch", "--no-tags", "--prune", "origin", AllHeadsRefspec], cancellation);
+        var configured = remote?.Trim() ?? "";
+        if (configured.Length == 0)
+        {
+            var read = await GitRunner.RunAsync(repo, ["remote", "get-url", "origin"], cancellation);
+            if (!read.Success)
+                return read;
+            configured = read.Output.Trim();
+        }
+        if (!TryTransportTarget(configured, out var target, out var denied))
+            return new GitResult(1, denied);
+        return await GitRunner.RunAsync(repo,
+            ["fetch", "--no-tags", "--prune", target, AllHeadsRefspec], cancellation);
+    }
+
+    /// <summary>
+    /// 已是 SSH 或本地地址时目标是远程名 <c>origin</c>，本仓 <c>url.insteadOf</c> 继续生效。
+    /// http(s) 换成 <c>git@host:path.git</c>。换不成时不连出去。
+    /// </summary>
+    internal static bool TryTransportTarget(string configured, out string target, out string error)
+    {
+        target = "origin";
+        if (!ArchiveCloner.TryPrepareTransport(configured, out var transport, out error))
+        {
+            target = string.Empty;
+            return false;
+        }
+        if (ArchiveCloner.IsHttpUrl(configured))
+            target = transport;
+        return true;
+    }
+
+    internal static async Task<(bool Ok, string Target, string Error)> ResolveTransportTargetAsync(
+        string repo, CancellationToken cancellation)
+    {
+        var read = await GitRunner.RunAsync(repo, ["remote", "get-url", "origin"], cancellation);
+        if (!read.Success)
+            return (false, string.Empty, read.Output);
+        return TryTransportTarget(read.Output.Trim(), out var target, out var error)
+            ? (true, target, string.Empty)
+            : (false, string.Empty, error);
     }
 
     public IReadOnlyList<ProjectLifecycleRecord> LifecycleRecords => _lifecycle.All();

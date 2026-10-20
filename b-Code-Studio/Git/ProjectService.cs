@@ -390,7 +390,7 @@ public sealed partial class ProjectService
         var remoteInfo = GitHubConnectionService.ParseRemote(templateRemote.Success ? templateRemote.Output.Trim() : "", "");
         if (remoteInfo.Host.Equals("github.com", StringComparison.OrdinalIgnoreCase) && remoteInfo.Owner.Length > 0)
         {
-            var plannedUrl = $"https://github.com/{remoteInfo.Owner}/{ProjectRepoLayout.ToRemoteRepositoryName(name)}";
+            var plannedUrl = $"git@{remoteInfo.Host}:{remoteInfo.Owner}/{ProjectRepoLayout.ToRemoteRepositoryName(name)}.git";
             var planned = await GitRunner.RunAsync(targetPath, ["config", "--local", KeyPlannedRemote, plannedUrl]);
             if (!planned.Success) return (false, $"预填远端地址失败:\n{planned.Output}");
         }

@@ -21,12 +21,9 @@ namespace HistoryJanus.Git;
 ///   <item>LFS 内容单独一步取，它的失败不连累已经落地的 git 历史。</item>
 /// </list>
 ///
-/// 分段解决的是「传着传着断了」。还有一种是**一个字节都没传出去**：本机到 GitHub 的
-/// SSH 两个口（22 和 443）都被重置，<c>git@github.com:...</c> 的仓在握手阶段就挂了，
-/// 分段和重试都救不回来——每一段都是同一个握手。HTTPS 这条路是通的，所以
-/// <see cref="ShallowCloneAsync"/> 在认出「链路级 SSH 不通」之后换算出同一个仓库的
-/// HTTPS 地址再试一次。换路只发生在第一段：克隆出来的仓 <c>origin</c> 就是走通的那个
-/// 地址，后面的加深、LFS 以及这个项目以后的取放自然都沿用它。
+/// 分段解决的是「传着传着断了」。传输一律走 SSH。归档记录里若是 https 地址，
+/// 克隆前先换成 <c>git@host:path.git</c>，换不成就直接失败，不打开 HTTPS。
+/// 一条 HTTPS 连接重置会让整轮刷新一直等。
 /// </summary>
 internal static class ArchiveCloner
 {
@@ -56,27 +53,7 @@ internal static class ArchiveCloner
         "unable to access",
     ];
 
-    /// <summary>
-    /// SSH 链路整条不通的痕迹。它们都出现在握手阶段，此时仓库数据一个字节都还没传，
-    /// 换句话说重试多少次都是同一个结果——这正是它们和
-    /// <see cref="RetryableMarkers"/> 里那些「传输中途断了」的区别。
-    /// 认出这些就换 HTTPS 再试，而不是把失败原样报出去。
-    ///
-    /// 不含「Permission denied (publickey)」：那是钥匙不对，不是路不通，
-    /// 换条路只会把一个能一眼看懂的原因换成一个看不懂的。
-    /// </summary>
-    private static readonly string[] SshUnreachableMarkers =
-    [
-        "Connection reset by",
-        "Connection closed by",
-        "Connection refused",
-        "Connection timed out",
-        "kex_exchange_identification",
-        "Could not resolve hostname",
-        "Network is unreachable",
-    ];
-
-    /// <summary>GitHub 的 SSH 备用口专用域名，HTTPS 侧不认它，换算时要还原成主域名。</summary>
+    /// <summary>GitHub 的 SSH 备用口专用域名，换算时还原成主域名。</summary>
     private const string GitHubSshAlias = "ssh.github.com";
 
     /// <summary>克隆期间不铺开 LFS 内容：先把 git 历史落地，实体稍后单独取。</summary>
@@ -109,8 +86,7 @@ internal static class ArchiveCloner
     }
 
     /// <summary>
-    /// 第一段浅克隆。SSH 握手就不通时，换算出同一个仓库的 HTTPS 地址再试一次。
-    /// 成功时 <c>Message</c> 是一句「这次换了路」的补充说明，不是错误。
+    /// 第一段浅克隆。https 地址先换成 SSH 再克隆；换不成则一次网络都不发。
     /// </summary>
     private static async Task<(bool Success, string Message)> ShallowCloneAsync(
         string libraryRoot,
@@ -120,25 +96,12 @@ internal static class ArchiveCloner
         IProgress<string>? progress,
         CancellationToken cancellation)
     {
+        if (!TryPrepareTransport(remote, out remote, out var denied))
+            return (false, denied);
         progress?.Report($"浅克隆 {branch}（深度 {DeepenStep}）...");
         var direct = await TransferAsync(
             libraryRoot, CloneArguments(remote, branch, destination), "浅克隆", progress, cancellation);
-        if (direct.Success)
-            return (true, string.Empty);
-        if (!IsSshUnreachable(direct.Message) || !TryBuildHttpsRemote(remote, out var https))
-            return (false, direct.Message);
-
-        // 克隆失败后 git 通常会自己清掉目标目录，但不保证；留着会让下一次克隆直接
-        // 报「目录已存在」，把一次本来能成的回退变成一条看不懂的报错。
-        if (Directory.Exists(destination))
-            ProjectRepoLayout.DeleteTree(destination);
-        progress?.Report($"SSH 链路不通，改用 HTTPS 重试：{https}");
-        var fallback = await TransferAsync(
-            libraryRoot, CloneArguments(https, branch, destination),
-            "HTTPS 浅克隆", progress, cancellation);
-        return fallback.Success
-            ? (true, $"；SSH 链路不通，本次经 HTTPS 取回，origin 已指向 {https}")
-            : (false, $"{direct.Message}\n改用 HTTPS 后仍然失败:\n{fallback.Message}");
+        return direct.Success ? (true, string.Empty) : (false, direct.Message);
     }
 
     private static string[] CloneArguments(string remote, string branch, string destination) =>
@@ -198,6 +161,63 @@ internal static class ArchiveCloner
 
         https = $"https://{authority}/{path}";
         return true;
+    }
+
+    /// <summary>
+    /// 传输地址。已经是 SSH、本地路径或其他非 http 形式时原样返回。
+    /// <c>https://host/owner/repo</c> 换成 <c>git@host:owner/repo.git</c>。
+    /// 主机名必须带点，避免把 Windows 路径当成网址。换不成时 <paramref name="transport"/> 为空。
+    /// </summary>
+    internal static bool TryPrepareTransport(string remote, out string transport, out string error)
+    {
+        transport = remote.Trim();
+        error = string.Empty;
+        if (transport.Length == 0)
+        {
+            error = "没有远端地址";
+            return false;
+        }
+        if (!IsHttpUrl(transport))
+            return true;
+        if (TryRewriteHttpToSsh(transport, out var ssh))
+        {
+            transport = ssh;
+            return true;
+        }
+        error = $"禁止使用 HTTPS 传输，且这个地址换不成 SSH: {transport}";
+        transport = string.Empty;
+        return false;
+    }
+
+    /// <summary>
+    /// <c>https://host/owner/repo</c> 与带 <c>.git</c>、末尾斜杠的同址，都得到
+    /// <c>git@host:owner/repo.git</c>。已经是 SSH 或本地路径时返回 false，调用方继续用原地址。
+    /// </summary>
+    internal static bool TryRewriteHttpToSsh(string remote, out string ssh)
+    {
+        ssh = string.Empty;
+        var value = remote.Trim();
+        if (!IsHttpUrl(value) || !Uri.TryCreate(value, UriKind.Absolute, out var uri))
+            return false;
+        if (!uri.Host.Contains('.') || uri.Host.Contains('\\'))
+            return false;
+        var path = uri.AbsolutePath.Trim('/');
+        if (path.EndsWith(".git", StringComparison.OrdinalIgnoreCase))
+            path = path[..^4];
+        if (path.Length == 0 || path.Contains('\\') || path.Contains(' '))
+            return false;
+        var host = uri.Host;
+        if (host.Equals(GitHubSshAlias, StringComparison.OrdinalIgnoreCase))
+            host = "github.com";
+        ssh = $"git@{host}:{path}.git";
+        return true;
+    }
+
+    internal static bool IsHttpUrl(string remote)
+    {
+        var value = remote.Trim();
+        return value.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
+            || value.StartsWith("http://", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -297,9 +317,6 @@ internal static class ArchiveCloner
 
     private static bool IsRetryable(string output)
         => RetryableMarkers.Any(marker => output.Contains(marker, StringComparison.OrdinalIgnoreCase));
-
-    private static bool IsSshUnreachable(string output)
-        => SshUnreachableMarkers.Any(marker => output.Contains(marker, StringComparison.OrdinalIgnoreCase));
 
     private static async Task<bool> IsShallowAsync(string repository, CancellationToken cancellation)
     {

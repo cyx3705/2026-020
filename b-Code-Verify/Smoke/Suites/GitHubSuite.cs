@@ -201,10 +201,10 @@ internal static class GitHubSuite
         Equal("alice/2026-018-MyAPI", created.FullName, "creation carries the API full_name");
         Equal("git@github.com:alice/2026-018-MyAPI.git", created.OriginUrl,
             "origin url prefers ssh_url over clone_url");
-        Equal("https://github.com/alice/2026-018-MyAPI.git",
+        Equal("git@github.com:alice/2026-018-MyAPI.git",
             new GitHubRepositoryCreation("n", "f", "https://github.com/alice/2026-018-MyAPI.git",
                 "", "h", true, "public").OriginUrl,
-            "origin url falls back to https when the API omits ssh_url");
+            "origin url rewrites https clone_url to ssh when the API omits ssh_url");
         True(requests.SequenceEqual(["GET /user", "GET /repos/alice/2026-018-MyAPI", "POST /user/repos"]), "creation checks the target before creating");
 
         // 已存在时只读复用，不先发送创建请求。

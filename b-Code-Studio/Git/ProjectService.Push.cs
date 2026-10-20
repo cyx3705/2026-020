@@ -78,9 +78,12 @@ public sealed partial class ProjectService
         if (branch.Length == 0)
             return first;
         progress?.Report($"[{branch}] 推送被拒（远端有本地没有的提交），取回远端检查分叉...");
-        // 只取这一条分支：这里要的是比较对象，不是全量刷新。
+        // 只取这一条分支：这里要的是比较对象，不是全量刷新。https origin 同样换成 SSH。
+        var transport = await ResolveTransportTargetAsync(worktreePath, cancellation);
+        if (!transport.Ok)
+            return new GitResult(1, $"推送被拒且不能改走 SSH:\n{transport.Error}");
         var fetch = await GitRunner.RunAsync(worktreePath,
-            ["fetch", "--no-tags", "origin", $"+refs/heads/{branch}:refs/remotes/origin/{branch}"],
+            ["fetch", "--no-tags", transport.Target, $"+refs/heads/{branch}:refs/remotes/origin/{branch}"],
             cancellation);
         if (!fetch.Success)
             return new GitResult(first.ExitCode, $"推送被拒且取回远端失败:\n{fetch.Output}\n{first.Output}");
@@ -139,6 +142,9 @@ public sealed partial class ProjectService
             return new GitResult(1,
                 "无法确定要推送的分支名：仓库处于 detached HEAD，请先 checkout 到分支");
 
+        var transport = await ResolveTransportTargetAsync(worktreePath, cancellation);
+        if (!transport.Ok)
+            return new GitResult(1, transport.Error);
         var batches = await PlanPushBatchesAsync(worktreePath, branch, cancellation);
         for (var i = 0; i < batches.Count; i++)
         {
@@ -149,7 +155,7 @@ public sealed partial class ProjectService
             List<string> arguments = ["-c", "lfs.locksverify=false", "push"];
             if (setUpstream && last)
                 arguments.Add("-u");
-            arguments.Add("origin");
+            arguments.Add(transport.Target);
             arguments.Add(refspec);
             var result = await GitRunner.RunAsync(worktreePath, arguments, cancellation);
             if (!result.Success)
