@@ -47,43 +47,18 @@ public sealed partial class ProjectService
     public const string AllHeadsRefspec = "+refs/heads/*:refs/remotes/origin/*";
 
     /// <summary>
-    /// 取回 origin 全部分支的跟踪引用，**先走同一仓库的 HTTPS，不通再走 origin 原地址**。
+    /// 取回 origin 全部分支的跟踪引用。地址就是仓库里配置的 origin，配的是 SSH 就走 SSH。
+    /// 刷新不改写 origin，也不另开一条 HTTPS。
     ///
-    /// 刷新的 fetch 几乎不传字节，耗时全在建连：本机实测 SSH 一次握手约 3.8 秒，
-    /// HTTPS 约 1.5 秒；28 个项目同时取，SSH 4.2 秒、HTTPS 2.5 秒。SSH 的 22/443
-    /// 还会间歇被重置，HTTPS 一直通。只换这一次 fetch 用的地址，不改 <c>origin</c> 配置，
-    /// refspec 照旧写进 <c>refs/remotes/origin/*</c>，所以后面的比较、推送都不受影响。
-    ///
-    /// HTTPS 没有凭据时不弹登录窗（<c>GCM_INTERACTIVE=never</c>），直接退回 origin。
-    /// origin 本来就是 HTTPS 或本地路径时只走 origin。
-    ///
-    /// HTTPS 这一试带 git 自己的停滞判定（<see cref="HttpsStallArguments"/>）：真机上见过 TLS 连上之后
-    /// 一个字节都不再来，git 就一直挂着，整轮刷新跟着卡死。判定只作用于这一试，
-    /// 判停后照样退回 origin 走完，所以它不是「产品 Git 不设应用级超时」那条要防的东西。
+    /// HTTPS 试连会在 TLS 之后停住，一条卡住就让整轮刷新一直等，所以刷新不再走那条路。
     /// </summary>
-    internal static async Task<GitResult> FetchAllHeadsAsync(
+    internal static Task<GitResult> FetchAllHeadsAsync(
         string repo, string? remote, CancellationToken cancellation)
     {
-        if (remote == null)
-        {
-            var url = await GitRunner.RunAsync(repo, ["remote", "get-url", "origin"], cancellation);
-            remote = url.Success ? url.Output.Trim() : "";
-        }
-        if (ArchiveCloner.TryBuildHttpsRemote(remote, out var https))
-        {
-            var viaHttps = await GitRunner.RunStreamingAsync(repo,
-                [.. HttpsStallArguments, "fetch", "--no-tags", "--prune", https, AllHeadsRefspec], null, cancellation,
-                new Dictionary<string, string> { ["GCM_INTERACTIVE"] = "never" });
-            if (viaHttps.Success)
-                return viaHttps;
-        }
-        return await GitRunner.RunAsync(repo, ["fetch", "--no-tags", "--prune", "origin", AllHeadsRefspec],
-            cancellation);
+        _ = remote;
+        return GitRunner.RunAsync(repo,
+            ["fetch", "--no-tags", "--prune", "origin", AllHeadsRefspec], cancellation);
     }
-
-    /// <summary>连续 10 秒每秒不足 1KB 就判这一试停滞。真在传对象的 fetch 远高于这个速度。</summary>
-    internal static readonly string[] HttpsStallArguments =
-        ["-c", "http.lowSpeedLimit=1000", "-c", "http.lowSpeedTime=10"];
 
     public IReadOnlyList<ProjectLifecycleRecord> LifecycleRecords => _lifecycle.All();
 
@@ -280,7 +255,7 @@ public sealed partial class ProjectService
     /// 且没有一条失败。
     ///
     /// 5.15.4 放到 32：归档之后在用的项目约 28 个，16 意味着固定排两轮（约 8.6 秒）；
-    /// 一轮跑完实测 28 条同时取 SSH 4.2 秒、HTTPS 2.5 秒，没有一条失败。
+    /// 一轮跑完实测 28 条同时取 SSH 约 4 秒，没有一条失败。
     /// 刷新的 fetch 几乎不传对象，抢链路的担心落不到它身上。
     /// </summary>
     private const int MaxConcurrentFetches = 32;
