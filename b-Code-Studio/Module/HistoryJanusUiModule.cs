@@ -12,7 +12,7 @@ namespace HistoryJanus.Module;
 /// HistoryVulcan 5.0+ 的模块入口。Janus 只登记业务命令和可序列化的页面协议，
 /// 不再实现宿主 UI 生命周期，也不把 WPF 对象带过宿主边界。
 /// </summary>
-public sealed class HistoryJanusUiModule : IModuleContextAware
+public sealed class HistoryJanusUiModule : IModuleContextAware, IDisposable
 {
     private StudioBusinessComposition? _business;
 
@@ -41,6 +41,9 @@ public sealed class HistoryJanusUiModule : IModuleContextAware
                 registry, context.Bus, "", () => _business);
         });
     }
+
+    /// <summary>宿主卸载 / 热重载前回收：停掉本地改动监视（5.16.2）。</summary>
+    public void Dispose() => HistoryJanusUiCommands.StopLocalWatch();
 }
 
 internal static partial class HistoryJanusUiCommands
@@ -366,7 +369,12 @@ internal static partial class HistoryJanusUiCommands
             return await LoadHistoryAsync(context, bus, business);
 
         if (view is "projects" or "years")
+        {
+            // 5.16.2：界面取过总览，本地改动就由监视器自动对齐；冒烟与脚本取数不开监视。
+            if (context.Source == "UI" && business()?.Projects is { } watched)
+                EnsureLocalWatch(bus, watched, context.Source);
             return await LoadProjectsAsync(context, bus, view == "years");
+        }
 
         var command = view switch
         {

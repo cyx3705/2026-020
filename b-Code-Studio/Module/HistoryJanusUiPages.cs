@@ -143,8 +143,8 @@ internal static partial class HistoryJanusUiCommands
                             // 「最近提交」列删了（5.16.0）：竖栏里放不下，选中后中间页的分支表与历史表都有。
                             columns = new object[]
                             {
-                                // 点项目名打开项目目录。Aurora 表格没有双击事件，单元格动作是唯一入口。
-                                new { key = "name", title = "项目", width = "220", cellAction = "janus.project.open" },
+                                // 5.16.2：单击项目名只选中这一行，双击才打开项目目录（Aurora 1.38.1 的 cellStyle=double）。
+                                new { key = "name", title = "项目", width = "220", cellAction = "janus.project.open", cellStyle = "double" },
                                 new { key = "zFolders", title = "z 级文件夹", width = "110", cellAction = "janus.project.openmeta" },
                                 // 单元格写「动作 + 状态符号」；点它执行的仍是 lifecycleAction 那一格。
                                 new { key = "status", title = "操作", width = "120", cellAction = "janus.project.action" },

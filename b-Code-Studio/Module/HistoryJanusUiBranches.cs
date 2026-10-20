@@ -57,13 +57,28 @@ internal static partial class HistoryJanusUiCommands
 
     internal static class UiBranchProjection
     {
+        /// <summary>
+        /// 选项条上一个分支按钮最多这么多字（5.16.2，用户定）：分支名常常很长，原样摆一行放不下几个。
+        /// 超长的截短、末尾补「…」；当前分支的「·当前」也算在里面。全名悬停可见（Aurora 1.38.1 起）。
+        /// </summary>
+        internal const int MaxLabelLength = 10;
+
+        private const string CurrentMark = "·当前";
+
         public static IReadOnlyList<IReadOnlyDictionary<string, string>> Options(BranchListReport report)
             => report.Branches
                 .Where(branch => branch.IsCurrent || !branch.MergedIntoMain)
                 .Select(branch => Row(
                     ("value", branch.Name),
-                    ("text", branch.IsCurrent ? branch.Name + " · 当前" : branch.Name)))
+                    ("text", Label(branch.Name, branch.IsCurrent))))
                 .ToList();
+
+        internal static string Label(string name, bool current)
+        {
+            var room = current ? MaxLabelLength - CurrentMark.Length : MaxLabelLength;
+            var shown = name.Length <= room ? name : name[..(room - 1)] + "…";
+            return current ? shown + CurrentMark : shown;
+        }
     }
 
     private static async Task<CommandResult> LoadHistoryAsync(

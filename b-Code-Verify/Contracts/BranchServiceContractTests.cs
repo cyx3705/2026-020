@@ -58,7 +58,7 @@ public sealed class BranchServiceContractTests : IDisposable
         var unmerged = (await branches.ListAsync(Name)).Report!;
         Assert.Equal(new[] { "main", "feature" },
             HistoryJanus.Module.HistoryJanusUiCommands.UiBranchProjection.Options(unmerged).Select(row => row["value"]));
-        Assert.Equal("main · 当前", HistoryJanus.Module.HistoryJanusUiCommands.UiBranchProjection.Options(unmerged)[0]["text"]);
+        Assert.Equal("main·当前", HistoryJanus.Module.HistoryJanusUiCommands.UiBranchProjection.Options(unmerged)[0]["text"]);
         var merged = await branches.MergeAsync(Name, "feature");
         Assert.True(merged.Success, merged.Message);
         Assert.True(File.Exists(Path.Combine(Project, "feature.txt")));
@@ -70,6 +70,20 @@ public sealed class BranchServiceContractTests : IDisposable
         Assert.True((await branches.DeleteAsync(Name, "feature", force: false)).Success);
         Assert.Single((await branches.ListAsync(Name)).Report!.Branches);
         _ = projects;
+    }
+
+    /// <summary>5.16.2：分支按钮最多 10 个字，超长截短补「…」，「·当前」也算在内。</summary>
+    [Theory]
+    [InlineData("main", false, "main")]
+    [InlineData("main", true, "main·当前")]
+    [InlineData("feature-x1", false, "feature-x1")]
+    [InlineData("feature-long-name", false, "feature-l…")]
+    [InlineData("feature-long-name", true, "featur…·当前")]
+    public void BranchLabelsAreAtMostTenCharacters(string name, bool current, string expected)
+    {
+        var label = HistoryJanus.Module.HistoryJanusUiCommands.UiBranchProjection.Label(name, current);
+        Assert.Equal(expected, label);
+        Assert.True(label.Length <= HistoryJanus.Module.HistoryJanusUiCommands.UiBranchProjection.MaxLabelLength);
     }
 
     [Fact]
