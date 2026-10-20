@@ -317,6 +317,49 @@ public sealed class ProjectLifecycleContractTests : IDisposable
         Assert.Equal(ProjectLifecycleState.Behind, behind.State);
     }
 
+    /// <summary>
+    /// 5.16.4：工作树在别的分支上时，推送推的是那条分支，判断也拿它比 origin 上的同名分支。
+    /// 此前一律比 origin/main，推上去之后操作列仍是「推送」。同步只对 main 做，在分支上被拒绝。
+    /// </summary>
+    [Fact]
+    public async Task SideBranchIsComparedWithItsOwnRemoteBranch()
+    {
+        Directory.CreateDirectory(_root);
+        var service = CreateService();
+        var projectName = "2026-903-Side";
+        var project = Path.Combine(_root, projectName);
+        Directory.CreateDirectory(project);
+        await Git(project, "init", "-b", "main");
+        await Git(project, "config", "user.name", "Janus Test");
+        await Git(project, "config", "user.email", "janus@example.invalid");
+        File.WriteAllText(Path.Combine(project, "file.txt"), "one");
+        await Git(project, "add", "-A");
+        await Git(project, "commit", "-m", "one");
+        var remote = Path.Combine(_root, "side.git");
+        await Git(_root, "init", "--bare", remote);
+        await Git(project, "remote", "add", "origin", remote);
+        await Git(project, "push", "-u", "origin", "main");
+
+        await Git(project, "switch", "-c", "feature");
+        File.WriteAllText(Path.Combine(project, "feature.txt"), "f");
+        await Git(project, "add", "-A");
+        await Git(project, "commit", "-m", "feature work");
+        var unpushed = await service.RefreshProjectAsync(projectName);
+        Assert.Equal("推送", unpushed.Action);
+        Assert.Contains("feature", unpushed.Message);
+
+        var pushed = await service.PushAsync(projectName);
+        Assert.True(pushed.Success, pushed.Message);
+        var after = await service.RefreshProjectAsync(projectName, fetchRemote: false);
+        Assert.NotEqual("推送", after.Action);
+        Assert.Equal(ProjectService.RefreshAction, after.Action);
+        Assert.False((await service.SyncAsync(projectName)).Success);
+
+        // 回到 main：照旧按 main 判断。
+        await Git(project, "switch", "main");
+        Assert.NotEqual("推送", (await service.RefreshProjectAsync(projectName)).Action);
+    }
+
     [Fact]
     public async Task ArchivedHistoryPaginatesGitHubAndRejectsUnsupportedOrUnauthenticatedRemotes()
     {

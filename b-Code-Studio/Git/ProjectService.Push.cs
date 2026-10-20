@@ -164,6 +164,11 @@ public sealed partial class ProjectService
                         $"分批推送在第 {i + 1}/{batches.Count} 批失败（之前各批已推上去，重跑会从断点继续）:\n{result.Output}")
                     : result;
         }
+        // 推送目标是地址（https origin 换成的 SSH 地址）时 git 不会顺带更新 origin/<分支>，
+        // 推完一读本地引用仍是「领先」。自己补上，让推送后的那次本地重读看到推上去的结果（5.16.4）。
+        if (transport.Target != "origin")
+            _ = await GitRunner.RunAsync(worktreePath,
+                ["update-ref", $"refs/remotes/origin/{branch}", $"refs/heads/{branch}"], cancellation);
         return new GitResult(0, batches.Count > 1
             ? $"已分 {batches.Count} 批推送 {branch}"
             : $"已推送 {branch}");
