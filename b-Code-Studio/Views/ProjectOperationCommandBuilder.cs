@@ -4,49 +4,40 @@ namespace HistoryJanus.Views;
 
 public enum ProjectOperationMode
 {
-    CurrentSubmodules,
-    CurrentBoth,
-    AllSubmodules,
-    AllBoth,
+    Current,
+    All,
 }
 
 public static class ProjectOperationCommandBuilder
 {
     public static bool RequiresCurrentProject(ProjectOperationMode mode)
-        => mode is ProjectOperationMode.CurrentSubmodules or ProjectOperationMode.CurrentBoth;
+        => mode == ProjectOperationMode.Current;
 
     public static string BuildCommit(
         ProjectOperationMode mode, string? project, string message)
     {
-        var target = Target(mode);
         if (RequiresCurrentProject(mode))
         {
             if (string.IsNullOrWhiteSpace(project))
                 throw new ArgumentException("当前模式必须选择项目", nameof(project));
             return $"janus.proj.commit name={CommandParser.QuoteArg(project.Trim())} " +
-                   $"msg={CommandParser.QuoteArg(message.Trim())} target={target}";
+                   $"msg={CommandParser.QuoteArg(message.Trim())}";
         }
-        return $"janus.proj.commitall msg={CommandParser.QuoteArg(message.Trim())} target={target}";
+        return $"janus.proj.commitall msg={CommandParser.QuoteArg(message.Trim())}";
     }
 
     public static string BuildPush(ProjectOperationMode mode, string? project)
     {
-        var target = Target(mode);
         if (RequiresCurrentProject(mode))
         {
             if (string.IsNullOrWhiteSpace(project))
                 throw new ArgumentException("当前模式必须选择项目", nameof(project));
-            return $"janus.proj.push name={CommandParser.QuoteArg(project.Trim())} target={target}";
+            return $"janus.proj.push name={CommandParser.QuoteArg(project.Trim())}";
         }
-        return $"janus.proj.pushall target={target}";
+        return "janus.proj.pushall";
     }
 
     /// <summary>排除清单是全库共用的设置，不带项目名。</summary>
     public static string Excludes(string list)
         => $"janus.gitrule.excludes list={CommandParser.QuoteArg(list.Trim())}";
-
-    private static string Target(ProjectOperationMode mode)
-        => mode is ProjectOperationMode.CurrentSubmodules or ProjectOperationMode.AllSubmodules
-            ? "submodules"
-            : "both";
 }

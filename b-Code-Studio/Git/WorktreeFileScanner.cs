@@ -50,24 +50,46 @@ public static class WorktreeFileScanner
         while (pending.Count > 0)
         {
             var directory = pending.Pop();
-            foreach (var file in Directory.EnumerateFiles(directory, "*", SearchOption.TopDirectoryOnly))
+            IEnumerable<string> files;
+            try
             {
-                var info = new FileInfo(file);
-                if (info.Length >= rejectBytes)
+                files = Directory.EnumerateFiles(directory, "*", SearchOption.TopDirectoryOnly);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                continue;
+            }
+
+            foreach (var file in files)
+            {
+                // 目录枚举能看见、Win32 却打不开的名字（末尾的点、空格）会让 Length 抛
+                // FileNotFoundException。这种条目没有可提交的内容，不能把整次提交打断。
+                if (!TryGetLength(file, out var length))
+                    continue;
+                if (length >= rejectBytes)
                 {
                     status = FileSizeCheckStatus.Rejected;
-                    largeFiles.Add(new LargeFileEntry(GetRelativePath(rootPath, file), info.Length));
+                    largeFiles.Add(new LargeFileEntry(GetRelativePath(rootPath, file), length));
                 }
-                else if (info.Length >= warnBytes)
+                else if (length >= warnBytes)
                 {
                     if (status != FileSizeCheckStatus.Rejected)
                         status = FileSizeCheckStatus.Warning;
-                    largeFiles.Add(new LargeFileEntry(GetRelativePath(rootPath, file), info.Length));
+                    largeFiles.Add(new LargeFileEntry(GetRelativePath(rootPath, file), length));
                 }
             }
 
-            foreach (var child in Directory.EnumerateDirectories(
-                         directory, "*", SearchOption.TopDirectoryOnly))
+            IEnumerable<string> children;
+            try
+            {
+                children = Directory.EnumerateDirectories(directory, "*", SearchOption.TopDirectoryOnly);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                continue;
+            }
+
+            foreach (var child in children)
             {
                 var fullChild = Path.GetFullPath(child)
                     .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
@@ -75,13 +97,48 @@ public static class WorktreeFileScanner
                     || excluded.Any(path => fullChild.Equals(path, StringComparison.OrdinalIgnoreCase)
                                             || fullChild.StartsWith(path + Path.DirectorySeparatorChar,
                                                 StringComparison.OrdinalIgnoreCase))
-                    || (File.GetAttributes(fullChild) & FileAttributes.ReparsePoint) != 0)
+                    || !TryGetAttributes(fullChild, out var attributes)
+                    || (attributes & FileAttributes.ReparsePoint) != 0)
                     continue;
                 pending.Push(fullChild);
             }
         }
 
         return (status, largeFiles.OrderByDescending(f => f.SizeBytes).ToList());
+    }
+
+    private static bool TryGetLength(string file, out long length)
+    {
+        try
+        {
+            var info = new FileInfo(file);
+            if (!info.Exists)
+            {
+                length = 0;
+                return false;
+            }
+            length = info.Length;
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            length = 0;
+            return false;
+        }
+    }
+
+    private static bool TryGetAttributes(string path, out FileAttributes attributes)
+    {
+        try
+        {
+            attributes = File.GetAttributes(path);
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            attributes = 0;
+            return false;
+        }
     }
 
     private static string GetRelativePath(string rootPath, string filePath)

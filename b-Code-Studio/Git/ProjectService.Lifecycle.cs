@@ -124,8 +124,12 @@ public sealed partial class ProjectService
 
         if (!status.Success || local.Length == 0)
             return Snapshot(ProjectLifecycleState.Unavailable, RefreshAction, "无法读取本地仓库状态");
+        // 操作列认的是 git 给出的可提交内容，不是 porcelain 非空本身。
+        // porcelain 可以非空，而 git diff HEAD 仍是空的。
+        // 若这里仍停在「提交」，刷新会把已经算出来的下一步压回去。
         if (!string.IsNullOrWhiteSpace(status.Output)
-            && !await HealStatOnlyChangesAsync(repo, status.Output, cancellation))
+            && !await HealStatOnlyChangesAsync(repo, status.Output, cancellation)
+            && await GitDiffHasCommitContentAsync(repo, status.Output, cancellation))
             return Snapshot(ProjectLifecycleState.Dirty, "提交", "工作树有未提交或未跟踪内容");
         if (remote.Length == 0)
             return Snapshot(ProjectLifecycleState.NoRemote, "推送", "项目尚未配置 origin");
@@ -209,6 +213,25 @@ public sealed partial class ProjectService
         var after = await GitRunner.RunAsync(repo,
             ["status", "--porcelain=v1", "--untracked-files=all"], cancellation);
         return after.Success && string.IsNullOrWhiteSpace(after.Output);
+    }
+
+    /// <summary>
+    /// 有没有东西能进下一次提交。只看 git 已经返回的两类结果：
+    /// porcelain 的 <c>??</c>，以及 <c>git diff --name-only HEAD</c> 列出的路径。
+    /// 两者都空，就没有可提交内容。diff 自己失败时保守地当成有，避免把真改动放行掉。
+    /// </summary>
+    private static async Task<bool> GitDiffHasCommitContentAsync(
+        string repo, string porcelain, CancellationToken cancellation)
+    {
+        if (porcelain.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(line => line.TrimEnd('\r'))
+            .Any(line => line.StartsWith("?? ", StringComparison.Ordinal)))
+            return true;
+        var diff = await GitRunner.RunAsync(repo, ["diff", "--name-only", "HEAD"], cancellation);
+        if (!diff.Success)
+            return true;
+        return diff.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Any(line => line.Trim().Length > 0);
     }
 
     /// <summary>

@@ -20,35 +20,22 @@ public static partial class ProjectCommands
     public static RepositoryTarget ResolveRepositoryTarget(
         string? target, bool includeSubmodules)
     {
-        if (!string.IsNullOrWhiteSpace(target))
-        {
-            return target.Trim().ToLowerInvariant() switch
-            {
-                "submodules" => RepositoryTarget.Submodules,
-                "both" => RepositoryTarget.Both,
-                _ => RepositoryTarget.Parent,
-            };
-        }
-        return includeSubmodules ? RepositoryTarget.Both : RepositoryTarget.Parent;
+        _ = target;
+        _ = includeSubmodules;
+        return RepositoryTarget.Parent;
     }
 
     private static ParameterSpec TargetParameter() => new()
     {
         Name = "target",
-        Description = "实际仓库目标；存在时优先于兼容参数 submodules",
+        Description = "保留的兼容参数。项目只有一份仓库，这个值不再另选范围",
         AllowedValues = ["parent", "submodules", "both"],
     };
 
     /// <summary>janus.proj.commit / janus.proj.commitall 共用的单项目提交留痕(R4:结果映射唯一实现)。</summary>
     private static void RecordCommit(HistoryRecorder history, string branch, string msg, CommitReport report)
     {
-        var submodules = report.Submodules ?? [];
-        var detail = submodules.Count == 0
-            ? msg
-            : $"{msg}; 子模块 成功={submodules.Count(item => item.Outcome == SubmoduleOperationOutcome.Success)} " +
-              $"跳过={submodules.Count(item => item.Outcome == SubmoduleOperationOutcome.Skipped)} " +
-              $"失败={submodules.Count(item => item.Outcome is SubmoduleOperationOutcome.Failed or SubmoduleOperationOutcome.Rejected)}";
-        history.Record(branch, "commit", detail,
+        history.Record(branch, "commit", msg,
             report.Outcome switch
             {
                 CommitOutcome.Success => "成功",
@@ -57,27 +44,6 @@ public static partial class ProjectCommands
                 _ => "失败",
             },
             (report.HasSizeWarning ? 1 : 0) + (report.RejectedFiles?.Count ?? 0));
-        RecordSubmodules(history, branch, "submodule.commit", submodules);
-    }
-
-    private static void RecordSubmodules(
-        HistoryRecorder history,
-        string parent,
-        string action,
-        IEnumerable<SubmoduleOperationEntry> entries)
-    {
-        foreach (var entry in entries)
-        {
-            history.Record($"{parent}/{entry.RelativePath}", action,
-                $"branch={entry.Branch}; before={entry.BeforeSha}; after={entry.AfterSha}",
-                entry.Outcome switch
-                {
-                    SubmoduleOperationOutcome.Success => "成功",
-                    SubmoduleOperationOutcome.Skipped => "跳过",
-                    SubmoduleOperationOutcome.Rejected => "拒绝",
-                    _ => "失败",
-                });
-        }
     }
 
     public static void RegisterAll(
@@ -346,8 +312,8 @@ public static partial class ProjectCommands
     {
         Name = "janus.proj.commit",
         CommandClass = "proj",
-        Summary = "提交单个项目到本地仓库；可按子模块先、父项目后联动提交",
-        Example = "janus.proj.commit name=2026-018-MyAPI msg=\"更新说明\" target=both",
+        Summary = "提交单个项目到本地仓库",
+        Example = "janus.proj.commit name=2026-018-MyAPI msg=\"更新说明\"",
         Parameters =
         [
             new ParameterSpec
@@ -368,14 +334,14 @@ public static partial class ProjectCommands
             new ParameterSpec
             {
                 Name = "submodules",
-                Description = "兼容参数：true=both，false=parent；target 存在时忽略",
+                Description = "保留的兼容参数。项目只有一份仓库，这个值不再另选范围",
                 Type = ParamType.Bool,
                 Default = "false",
             },
             new ParameterSpec
             {
                 Name = "submsg",
-                Description = "子模块统一提交描述；空时沿用 msg",
+                Description = "保留的兼容参数，不再使用",
             },
         ],
         Handler = async ctx =>
@@ -404,8 +370,8 @@ public static partial class ProjectCommands
     {
         Name = "janus.proj.commitall",
         CommandClass = "proj",
-        Summary = "一键提交全部工作树；可联动各项目直属子模块",
-        Example = "janus.proj.commitall msg=\"每日推送\" target=both",
+        Summary = "一键提交全部工作树",
+        Example = "janus.proj.commitall msg=\"每日推送\"",
         Parameters =
         [
             new ParameterSpec
@@ -419,14 +385,14 @@ public static partial class ProjectCommands
             new ParameterSpec
             {
                 Name = "submodules",
-                Description = "兼容参数：true=both，false=parent；target 存在时忽略",
+                Description = "保留的兼容参数。项目只有一份仓库，这个值不再另选范围",
                 Type = ParamType.Bool,
                 Default = "false",
             },
             new ParameterSpec
             {
                 Name = "submsg",
-                Description = "全部子模块统一提交描述；空时沿用 msg",
+                Description = "保留的兼容参数，不再使用",
             },
         ],
         Level = CommandLevel.Ask,
@@ -434,13 +400,7 @@ public static partial class ProjectCommands
             "确定要对全部工作树执行 git add . & git commit 吗?\n\n" +
             "每个项目提交前将检查文件大小:\n" +
             "• ≥ 警告阈值的文件会警告后继续\n" +
-            "• ≥ LFS 阈值的文件检查 LFS 状态,未启用则逐项目询问" +
-            (ResolveTarget(ctx) switch
-            {
-                RepositoryTarget.Submodules => "\n• 本次只提交子模块，父分支将保留待收口 gitlink",
-                RepositoryTarget.Both => "\n• 子模块先提交，父项目后提交；多仓库无法原子回退",
-                _ => string.Empty,
-            }),
+            "• ≥ LFS 阈值的文件检查 LFS 状态,未启用则逐项目询问",
         Handler = async ctx =>
         {
             var msg = ctx.RequireString("msg");

@@ -141,8 +141,8 @@ internal static partial class HistoryJanusUiCommands
     {
         var diff = await projects.ReadWorktreeDiffAsync(
             name, RepositoryTarget.Parent, context.Cancellation);
-        // 状态说脏、差异说干净：多半是只差索引记录的「幽灵修改」，收尾回写这一行时
-        // 刷新链路会顺手把它清掉（见 ProjectService.HealStatOnlyChangesAsync），操作列随之换成下一步。
+        // git 已经说没有可提交内容。收尾按同一结果重算这一行，操作列换成下一步，
+        // 而不是再被 porcelain 里那条没有内容的记录压回「提交」。
         if (!diff.IsDirty)
             return (CommandResult.Ok($"{name}: {diff.Summary}"), null);
 

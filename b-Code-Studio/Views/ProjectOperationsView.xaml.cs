@@ -209,10 +209,8 @@ public partial class ProjectOperationsView : UserControl
                                          && SelectedCommitMessageBox.Text.Trim().Length > 0;
         SelectedPushButton.IsEnabled = !_projectOperationRunning && scopeReady;
         SelectedCommitMessageBox.IsEnabled = !_projectOperationRunning;
-        CurrentSubmodulesModeButton.IsEnabled = !_projectOperationRunning;
-        CurrentBothModeButton.IsEnabled = !_projectOperationRunning;
-        AllSubmodulesModeButton.IsEnabled = !_projectOperationRunning;
-        AllBothModeButton.IsEnabled = !_projectOperationRunning;
+        CurrentModeButton.IsEnabled = !_projectOperationRunning;
+        AllModeButton.IsEnabled = !_projectOperationRunning;
         CreateProjectButton.IsEnabled = !_projectOperationRunning && hasCurrent && NewProjectName().Length > 0;
     }
 
@@ -237,13 +235,9 @@ public partial class ProjectOperationsView : UserControl
 
     private ProjectOperationMode CurrentOperationMode()
     {
-        if (CurrentSubmodulesModeButton.IsChecked == true)
-            return ProjectOperationMode.CurrentSubmodules;
-        if (AllSubmodulesModeButton.IsChecked == true)
-            return ProjectOperationMode.AllSubmodules;
-        if (AllBothModeButton.IsChecked == true)
-            return ProjectOperationMode.AllBoth;
-        return ProjectOperationMode.CurrentBoth;
+        if (AllModeButton.IsChecked == true)
+            return ProjectOperationMode.All;
+        return ProjectOperationMode.Current;
     }
 
 }

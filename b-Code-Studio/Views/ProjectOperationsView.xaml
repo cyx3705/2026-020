@@ -113,18 +113,12 @@
                 <Button x:Name="SelectedPushButton" Content="推送" Padding="14,3"
                         Margin="6,0,0,0" IsEnabled="False" Click="OnPushSelectedClick" />
             </StackPanel>
-            <UniformGrid Grid.Row="2" Grid.ColumnSpan="3" Columns="4">
-                <RadioButton x:Name="CurrentSubmodulesModeButton" GroupName="OperationMode"
-                             Content="当前&#10;仅子模块" Style="{StaticResource OperationSegment}"
-                             Click="OnOperationModeChanged" />
-                <RadioButton x:Name="CurrentBothModeButton" GroupName="OperationMode"
-                             Content="当前&#10;分支及子模块" Style="{StaticResource OperationSegment}"
+            <UniformGrid Grid.Row="2" Grid.ColumnSpan="3" Columns="2">
+                <RadioButton x:Name="CurrentModeButton" GroupName="OperationMode"
+                             Content="当前项目" Style="{StaticResource OperationSegment}"
                              IsChecked="True" Click="OnOperationModeChanged" />
-                <RadioButton x:Name="AllSubmodulesModeButton" GroupName="OperationMode"
-                             Content="全部&#10;仅子模块" Style="{StaticResource OperationSegment}"
-                             Click="OnOperationModeChanged" />
-                <RadioButton x:Name="AllBothModeButton" GroupName="OperationMode"
-                             Content="全部&#10;分支及子模块" Style="{StaticResource OperationSegment}"
+                <RadioButton x:Name="AllModeButton" GroupName="OperationMode"
+                             Content="全部项目" Style="{StaticResource OperationSegment}"
                              Click="OnOperationModeChanged" />
             </UniformGrid>
         </Grid>

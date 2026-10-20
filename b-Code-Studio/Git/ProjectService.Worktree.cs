@@ -3,7 +3,7 @@ using System.Text;
 
 namespace HistoryJanus.Git;
 
-/// <summary>一个仓（父仓或某个子模块）的脏工作树读数。</summary>
+/// <summary>项目仓库的脏工作树读数。</summary>
 public sealed record WorktreeDiffScope(
     string Label,
     int ChangedFiles,
@@ -34,8 +34,8 @@ public sealed record DiscardReport(
 /// <summary>
 /// ProjectService 的脏工作树切面：提交前的差异读数，以及「这次不提交了，全丢掉」。
 ///
-/// 两者共用同一套范围解析（父仓 / 子模块 / 两者），因此放在一起：预览里看到几个仓，
-/// 丢弃就动几个仓——两边各自解析范围的话，人看到的和实际删掉的迟早会对不上。
+/// 两者都只读项目自己的仓库，因此放在一起：预览里看到的路径，
+/// 丢弃就动这些路径——两边各自解析范围的话，人看到的和实际删掉的迟早会对不上。
 /// </summary>
 public sealed partial class ProjectService
 {
@@ -122,29 +122,18 @@ public sealed partial class ProjectService
                 touched, target);
     }
 
-    /// <summary>
-    /// 本次范围里真正要处理的仓。父仓恒在（除非只要子模块），子模块只收脏的那些——
-    /// 干净的子模块既没有可看的差异，也没有可丢弃的内容。
-    /// </summary>
-    private async Task<List<(string Label, string Path)>> ResolveScopesAsync(
+    /// <summary>差异和丢弃都只处理项目自己的工作树。</summary>
+    private static Task<List<(string Label, string Path)>> ResolveScopesAsync(
         WorktreeInfo worktree,
         RepositoryTarget target,
         CancellationToken cancellation)
     {
-        var scopes = new List<(string Label, string Path)>();
-        if (target != RepositoryTarget.Parent)
+        _ = target;
+        _ = cancellation;
+        return Task.FromResult(new List<(string Label, string Path)>
         {
-            var discovered = await _gitlinks.DiscoverAsync(worktree.WorktreePath, cancellation);
-            if (discovered.Success)
-            {
-                scopes.AddRange(discovered.Items
-                    .Where(link => link.IsDirty)
-                    .Select(link => ($"{worktree.BranchName}/{link.RelativePath}", link.FullPath)));
-            }
-        }
-        if (target != RepositoryTarget.Submodules)
-            scopes.Add((worktree.BranchName, worktree.WorktreePath));
-        return scopes;
+            (worktree.BranchName, worktree.WorktreePath),
+        });
     }
 
     private static async Task<WorktreeDiffScope> ReadScopeAsync(

@@ -128,6 +128,60 @@ public sealed class ProjectLifecycleContractTests : IDisposable
     }
 
     /// <summary>
+    /// gitlink 路径里只有打不开、也不会进本次提交的未跟踪文件时，git diff HEAD 是空的。
+    /// 操作列要按这个结果去到下一步，不能被 status 的 M 压在「提交」上。
+    /// 父仓库自己的新文件仍然要停在「提交」。
+    /// </summary>
+    [Fact]
+    public async Task EmptyGitDiffAdvancesPastSubmoduleStatus()
+    {
+        Directory.CreateDirectory(_root);
+        var service = CreateService();
+        const string projectName = "2026-906-Gitlink";
+        var project = Path.Combine(_root, projectName);
+        var child = Path.Combine(project, "child");
+        Directory.CreateDirectory(project);
+        await Git(project, "init", "-b", "main");
+        await Git(project, "config", "user.name", "Janus Test");
+        await Git(project, "config", "user.email", "janus@example.invalid");
+        await Git(project, "commit", "--allow-empty", "-m", "parent");
+        Directory.CreateDirectory(child);
+        await Git(child, "init", "-b", "main");
+        await Git(child, "config", "user.name", "Janus Test");
+        await Git(child, "config", "user.email", "janus@example.invalid");
+        File.WriteAllText(Path.Combine(child, "a.txt"), "a\n");
+        await Git(child, "add", "-A");
+        await Git(child, "commit", "-m", "child");
+        var sha = (await GitRunner.RunAsync(child, ["rev-parse", "HEAD"])).Output.Trim();
+        await Git(project, "update-index", "--add", "--cacheinfo", $"160000,{sha},child");
+        await Git(project, "commit", "-m", "link");
+        var weird = Path.Combine(child, "only-untracked.txt");
+        File.WriteAllText(weird, "u\n");
+
+        var advanced = await service.RefreshProjectAsync(projectName);
+        Assert.NotEqual("提交", advanced.Action);
+        Assert.Equal("推送", advanced.Action);
+
+        File.WriteAllText(Path.Combine(project, "new.txt"), "parent\n");
+        var dirty = await service.RefreshProjectAsync(projectName);
+        Assert.Equal("提交", dirty.Action);
+    }
+
+    /// <summary>目录里打不开的文件名不能让大小扫描抛异常，否则提交整单失败。</summary>
+    [Fact]
+    public void UnreadableDirectoryEntryDoesNotAbortSizeScan()
+    {
+        var root = Path.Combine(_root, "scan");
+        Directory.CreateDirectory(root);
+        var weird = @"\\?\" + Path.Combine(root, "psk.key.");
+        using (var stream = new FileStream(weird, FileMode.Create, FileAccess.Write, FileShare.Read))
+            stream.WriteByte((byte)'x');
+
+        var scanned = WorktreeFileScanner.ScanDirectory(root, 1, 1024L * 1024 * 1024);
+        Assert.DoesNotContain(scanned.LargeFiles, file => file.RelativePath.Contains("psk.key", StringComparison.Ordinal));
+    }
+
+    /// <summary>
     /// 远端连不上时「操作」格是「刷新」，不是「同步」。
     /// 推送后的缓存回写也不能拿陈旧的远端引用把它算回去。
     /// </summary>

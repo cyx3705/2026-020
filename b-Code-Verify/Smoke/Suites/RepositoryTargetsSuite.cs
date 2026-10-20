@@ -6,13 +6,11 @@ using static HistoryJanus.Smoke.SmokeKit;
 
 namespace HistoryJanus.Smoke.Suites;
 
-/// <summary>父仓库、子模块与批量提交推送范围。</summary>
+/// <summary>项目仓库的提交、推送和操作页范围。</summary>
 internal static class RepositoryTargetsSuite
 {
     private const string parentBranch = "2026-232-Parent";
     private const string noChildBranch = "2026-233-NoChild";
-    private const string childBranch = "child-main";
-    private const string childRelative = "child repo 中文";
 
     public static async Task RunAsync(string[] args)
     {
@@ -21,8 +19,6 @@ internal static class RepositoryTargetsSuite
         var noChildRemote = Path.Combine(root, "nochild-remote.git");
         var parent = Path.Combine(root, parentBranch);
         var noChild = Path.Combine(root, noChildBranch);
-        var child = Path.Combine(parent, childRelative);
-        var childRemote = Path.Combine(root, "child-remote.git");
         Directory.CreateDirectory(root);
 
         try
@@ -43,106 +39,40 @@ internal static class RepositoryTargetsSuite
             Ensure(await GitRunner.RunAsync(noChild, ["remote", "add", "origin", noChildRemote]), "set no-child origin");
             Ensure(await GitRunner.RunAsync(noChild, ["push", "-u", "origin", "HEAD"]), "push no-child baseline");
 
-            await CreateChild(child, childBranch, childRemote);
-            Ensure(await GitRunner.RunAsync(parent, ["add", "--", childRelative]), "stage gitlink");
-            Ensure(await GitRunner.RunAsync(parent, ["commit", "-m", "register child"]), "commit gitlink");
-            Ensure(await GitRunner.RunAsync(parent, ["push", "origin", "HEAD"]), "push parent with gitlink");
-
             var settings = new MemorySettings();
             BindLibrary(settings, root, parentBranch);
             var service = new ProjectService(settings, _ => true, root);
 
-            await File.AppendAllTextAsync(Path.Combine(child, "tracked.txt"), "child-only change\n");
-            var parentBeforeChildOnly = Sha(parent);
-            var parentRemoteBeforeChildOnly = RefSha(parentRemote, "main");
-            var childOnly = await service.CommitAsync(parentBranch, "统一描述", null,
-                RepositoryTarget.Submodules);
-            True(childOnly.Outcome == CommitOutcome.Success && !childOnly.ParentExecuted
-                 && childOnly.ParentPointerPending, $"child-only commit report: {childOnly.Message}");
-            Equal(parentBeforeChildOnly, Sha(parent), "child-only commit leaves parent HEAD unchanged");
-            Equal("统一描述", Subject(child), "single message is reused by child");
-            True(GitlinkSha(parent, childRelative) != Sha(child), "parent gitlink intentionally pending");
+            await File.WriteAllTextAsync(Path.Combine(parent, "note.txt"), "parent file\n");
+            var parentCommit = await service.CommitAsync(parentBranch, "parent file", null);
+            Equal(CommitOutcome.Success, parentCommit.Outcome, $"parent commit: {parentCommit.Message}");
+            var parentPush = await service.PushAsync(parentBranch);
+            True(parentPush.Success && parentPush.ParentPushed, $"parent push: {parentPush.Message}");
+            Equal(Sha(parent), RefSha(parentRemote, "main"), "parent push updates the project remote");
 
-            var childOnlyPush = await service.PushAsync(parentBranch, RepositoryTarget.Submodules);
-            True(childOnlyPush.Success && !childOnlyPush.ParentPushed && childOnlyPush.ParentPointerPending,
-                $"child-only push succeeds with pending pointer: {childOnlyPush.Message}");
-            Equal(Sha(child), RefSha(childRemote, childBranch), "child-only push updates child remote");
-            Equal(parentRemoteBeforeChildOnly, RefSha(parentRemote, "main"),
-                "child-only push leaves parent remote unchanged");
-
-            var closePointer = await service.CommitAsync(parentBranch, "收口父指针", null, RepositoryTarget.Both);
-            True(closePointer.Outcome == CommitOutcome.Success && closePointer.ParentExecuted
-                 && !closePointer.ParentPointerPending, $"both commit closes pointer: {closePointer.Message}");
-            Equal(Sha(child), GitlinkSha(parent, childRelative), "both commit records child HEAD");
-            var bothPush = await service.PushAsync(parentBranch, RepositoryTarget.Both);
-            True(bothPush.Success && bothPush.ParentPushed, "both push updates parent after child");
-            Equal(Sha(parent), RefSha(parentRemote, "main"), "both push updates parent remote");
-
-            await File.AppendAllTextAsync(Path.Combine(child, "tracked.txt"), "batch child-only\n");
-            var parentBeforeBatchChildren = Sha(parent);
-            var noChildBeforeBatch = Sha(noChild);
-            var parentRemoteBeforeBatch = RefSha(parentRemote, "main");
-            var allChildren = await service.CommitAllAsync(
-                "全部子模块描述", null, null, RepositoryTarget.Submodules);
-            True(allChildren.Success && allChildren.ParentPointerPendingCount == 1,
-                $"all submodules commit: {allChildren.Message}");
-            Equal(parentBeforeBatchChildren, Sha(parent), "all submodules does not commit parent");
-            Equal(noChildBeforeBatch, Sha(noChild), "all submodules does not commit no-child branch");
-            var allChildrenPush = await service.PushAllAsync(RepositoryTarget.Submodules);
-            True(allChildrenPush.Success && !allChildrenPush.ParentPushed
-                 && allChildrenPush.ParentPointerPendingCount == 1,
-                $"all submodules push: {allChildrenPush.Message}");
-            Equal(parentRemoteBeforeBatch, RefSha(parentRemote, "main"),
-                "all submodules push leaves all parent refs unchanged");
-
-            var allBoth = await service.CommitAllAsync("全部完整收口", null, null, RepositoryTarget.Both);
-            True(allBoth.Success && allBoth.ParentPointerPendingCount == 0,
-                $"all both commit closes all pointers: {allBoth.Message}");
-            var allBothPush = await service.PushAllAsync(RepositoryTarget.Both);
-            True(allBothPush.Success && allBothPush.ParentPushed, "all both pushes bare parent repo");
-            Equal(Sha(parent), RefSha(parentRemote, "main"), "all both updates parent remote");
-
-            var noChildren = await service.CommitAsync(
-                noChildBranch, "no child", null, RepositoryTarget.Submodules);
-            True(noChildren.Outcome == CommitOutcome.Skipped && !noChildren.ParentExecuted,
-                "submodules target skips project without children");
-            var noChildrenPush = await service.PushAsync(noChildBranch, RepositoryTarget.Submodules);
-            True(noChildrenPush.Success && !noChildrenPush.ParentPushed,
-                "submodules push skips project without children");
-
-            await File.AppendAllTextAsync(Path.Combine(child, "tracked.txt"), "legacy parent-only\n");
-            var legacyChildHead = Sha(child);
-            var legacyParentOnly = await service.CommitAsync(parentBranch, "legacy false", null,
-                includeSubmodules: false);
-            Equal(CommitOutcome.Skipped, legacyParentOnly.Outcome, "legacy false remains parent-only");
-            Equal(legacyChildHead, Sha(child), "legacy false does not commit child");
-            Ensure(await GitRunner.RunAsync(child, ["reset", "--hard", "HEAD"]), "clean legacy false change");
-            await File.AppendAllTextAsync(Path.Combine(child, "tracked.txt"), "legacy both\n");
-            var legacyBoth = await service.CommitAsync(parentBranch, "legacy parent", null,
-                includeSubmodules: true, submoduleMessage: "legacy child");
-            Equal(CommitOutcome.Success, legacyBoth.Outcome, "legacy true remains both");
-            Equal("legacy child", Subject(child), "legacy submsg remains supported");
+            await File.WriteAllTextAsync(Path.Combine(noChild, "note.txt"), "other project\n");
+            var all = await service.CommitAllAsync("全部项目", null);
+            True(all.Success, $"commit all: {all.Message}");
+            var allPush = await service.PushAllAsync();
+            True(allPush.Success && allPush.ParentPushed, $"push all: {allPush.Message}");
 
             Equal(RepositoryTarget.Parent,
                 ProjectCommands.ResolveRepositoryTarget(null, false), "resolver default parent");
-            Equal(RepositoryTarget.Both,
-                ProjectCommands.ResolveRepositoryTarget(null, true), "resolver legacy true both");
-            Equal(RepositoryTarget.Submodules,
-                ProjectCommands.ResolveRepositoryTarget("submodules", false), "target overrides false");
             Equal(RepositoryTarget.Parent,
-                ProjectCommands.ResolveRepositoryTarget("parent", true), "target overrides true");
+                ProjectCommands.ResolveRepositoryTarget("parent", true), "explicit parent stays parent");
 
-            Equal("janus.proj.commit name=Demo msg=说明 target=submodules",
+            Equal("janus.proj.commit name=Demo msg=说明",
                 ProjectOperationCommandBuilder.BuildCommit(
-                    ProjectOperationMode.CurrentSubmodules, "Demo", "说明"), "current child command");
-            Equal("janus.proj.commit name=Demo msg=说明 target=both",
+                    ProjectOperationMode.Current, "Demo", "说明"), "current project command");
+            Equal("janus.proj.commitall msg=说明",
                 ProjectOperationCommandBuilder.BuildCommit(
-                    ProjectOperationMode.CurrentBoth, "Demo", "说明"), "current both command");
-            Equal("janus.proj.commitall msg=说明 target=submodules",
-                ProjectOperationCommandBuilder.BuildCommit(
-                    ProjectOperationMode.AllSubmodules, null, "说明"), "all child command");
-            Equal("janus.proj.pushall target=both",
-                ProjectOperationCommandBuilder.BuildPush(ProjectOperationMode.AllBoth, null), "all both push command");
+                    ProjectOperationMode.All, null, "说明"), "all projects command");
+            Equal("janus.proj.push name=Demo",
+                ProjectOperationCommandBuilder.BuildPush(ProjectOperationMode.Current, "Demo"),
+                "current project push command");
+            Equal("janus.proj.pushall",
+                ProjectOperationCommandBuilder.BuildPush(ProjectOperationMode.All, null),
+                "all projects push command");
 
             var registry = new TestRegistrar();
             ProjectCommands.RegisterAll(registry, service, null!);
@@ -204,8 +134,8 @@ internal static class RepositoryTargetsSuite
                      "CurrentProjectBox", "RefreshProjectsButton",
                  })
             True(!named.Contains(removed), $"removed project operation control is absent: {removed}");
-        Equal(4, project.Descendants().Count(element => element.Name.LocalName == "RadioButton"
-            && element.Attribute("GroupName")?.Value == "OperationMode"), "four operation segments");
+        Equal(2, project.Descendants().Count(element => element.Name.LocalName == "RadioButton"
+            && element.Attribute("GroupName")?.Value == "OperationMode"), "two operation segments");
         var bottomSegments = project.Descendants().Where(element =>
                 element.Name.LocalName == "RadioButton"
                 && element.Attribute("GroupName")?.Value == "BottomPage").ToArray();
@@ -438,21 +368,4 @@ internal static class RepositoryTargetsSuite
                 .Contains(parentRow.PrimaryMeta!.FullPath, StringComparison.OrdinalIgnoreCase),
             "meta open command embeds the scanned FullPath");
     }
-
-    private static async Task CreateChild(string path, string branch, string remote)
-    {
-        Ensure(await GitRunner.RunAsync(Path.GetDirectoryName(path)!, ["init", "-b", branch, path]),
-            "init child");
-        await ConfigureIdentity(path);
-        await File.WriteAllTextAsync(Path.Combine(path, "tracked.txt"), "tracked\n");
-        Ensure(await GitRunner.RunAsync(path, ["add", "."]), "add child");
-        Ensure(await GitRunner.RunAsync(path, ["commit", "-m", "child seed"]), "commit child");
-        Ensure(await GitRunner.RunAsync(Path.GetDirectoryName(remote)!, ["init", "--bare", remote]),
-            "init child remote");
-        Ensure(await GitRunner.RunAsync(path, ["remote", "add", "origin", remote]), "add child origin");
-        Ensure(await GitRunner.RunAsync(path, ["push", "origin", branch]), "push child baseline");
-    }
-
-    private static Task ConfigureIdentity(string repository)
-        => SmokeKit.ConfigureIdentity(repository, "Repository Targets Smoke", "repository-targets@example.invalid");
 }

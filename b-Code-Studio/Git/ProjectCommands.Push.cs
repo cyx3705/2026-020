@@ -28,8 +28,8 @@ public static partial class ProjectCommands
     {
         Name = "janus.proj.push",
         CommandClass = "proj",
-        Summary = "推送单个分支；可先推直属子模块，全部成功后再推父项目；被拒时交 AI 检查分叉，无冲突则自动合并后重推",
-        Example = "janus.proj.push name=2026-018-MyAPI target=both",
+        Summary = "推送单个项目；被拒时交 AI 检查分叉，无冲突则自动合并后重推",
+        Example = "janus.proj.push name=2026-018-MyAPI",
         Parameters =
         [
             new ParameterSpec
@@ -43,7 +43,7 @@ public static partial class ProjectCommands
             new ParameterSpec
             {
                 Name = "submodules",
-                Description = "兼容参数：true=both，false=parent；target 存在时忽略",
+                Description = "保留的兼容参数。项目只有一份仓库，这个值不再另选范围",
                 Type = ParamType.Bool,
                 Default = "false",
             },
@@ -57,13 +57,11 @@ public static partial class ProjectCommands
             if (report.Success)
                 projects.InvalidateVerification(name);
             history.Record(name, "push",
-                $"target={report.Target}; 子模块={report.Submodules?.Count ?? 0}; " +
-                $"parentPushed={report.ParentPushed}; pointerPending={report.ParentPointerPending}" +
+                $"parentPushed={report.ParentPushed}" +
                 (report.RemoteCreated
                     ? $"; 新建远端={report.RemoteUrl}（{report.RemoteVisibility}）"
                     : string.Empty),
                 report.Success ? "成功" : "失败");
-            RecordSubmodules(history, name, "submodule.push", report.Submodules ?? []);
             return report.Success
                 ? CommandResult.Ok(report.Message, report)
                 : Fail(report.Message, report);
@@ -76,15 +74,15 @@ public static partial class ProjectCommands
     {
         Name = "janus.proj.pushall",
         CommandClass = "proj",
-        Summary = "推送全部分支；可先去重推送所有直属子模块；被拒的仓交 AI 检查分叉，无冲突则自动合并后重推",
-        Example = "janus.proj.pushall target=both",
+        Summary = "推送全部项目；被拒的仓交 AI 检查分叉，无冲突则自动合并后重推",
+        Example = "janus.proj.pushall",
         Parameters =
         [
             TargetParameter(),
             new ParameterSpec
             {
                 Name = "submodules",
-                Description = "兼容参数：true=both，false=parent；target 存在时忽略",
+                Description = "保留的兼容参数。项目只有一份仓库，这个值不再另选范围",
                 Type = ParamType.Bool,
                 Default = "false",
             },
@@ -93,13 +91,7 @@ public static partial class ProjectCommands
         Level = CommandLevel.Ask,
         ConfirmPrompt = ctx =>
             "确定要向各项目仓的 origin 推送当前 HEAD 吗?\n\n失败的仓会隔离报告，不会中止其余仓。" +
-            $"\n未配置 origin 的项目会按 visibility={ResolveVisibility(ctx)} 在 GitHub 上新建同名仓库。" +
-            (ResolveTarget(ctx) switch
-            {
-                RepositoryTarget.Submodules => "\n本次只推送全部直属子模块，父分支不会推送。",
-                RepositoryTarget.Both => "\n直属子模块将先推送，任一失败都会阻止父仓库推送。",
-                _ => string.Empty,
-            }),
+            $"\n未配置 origin 的项目会按 visibility={ResolveVisibility(ctx)} 在 GitHub 上新建同名仓库。",
         Handler = async ctx =>
         {
             var report = await projects.PushAllAsync(ResolveTarget(ctx),
@@ -107,12 +99,10 @@ public static partial class ProjectCommands
             var newRemotes = (report.CreatedRemotes ?? [])
                 .Where(remote => remote.Created).ToList();
             history.Record("(全部)", "pushall",
-                $"子模块={report.Submodules.Count}" +
-                (newRemotes.Count > 0
-                    ? $"; 新建远端={string.Join(", ", newRemotes.Select(remote => $"{remote.FullName}（{remote.Visibility}）"))}"
-                    : string.Empty),
+                newRemotes.Count > 0
+                    ? $"新建远端={string.Join(", ", newRemotes.Select(remote => $"{remote.FullName}（{remote.Visibility}）"))}"
+                    : "全部项目",
                 report.Success ? "成功" : "失败");
-            RecordSubmodules(history, "(全部)", "submodule.push", report.Submodules);
             return report.Success
                 ? CommandResult.Ok(report.Message, report)
                 : Fail(report.Message, report);

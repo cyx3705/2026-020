@@ -80,7 +80,6 @@ public sealed partial class ProjectService
 
     private readonly ISettingsService _settings;
     private readonly string _dataDir;
-    private readonly GitlinkService _gitlinks = new();
     private readonly BranchTreeService _tree;
     private readonly Func<string, bool> _confirm;
     private readonly ProjectLifecycleStore _lifecycle;

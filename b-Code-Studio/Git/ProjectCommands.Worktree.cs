@@ -28,7 +28,7 @@ public static partial class ProjectCommands
             new ParameterSpec
             {
                 Name = "submodules",
-                Description = "兼容参数；存在 target 时以 target 为准",
+                Description = "保留的兼容参数；不再另选范围",
                 Type = ParamType.Bool,
                 Default = "false",
             },
@@ -60,7 +60,7 @@ public static partial class ProjectCommands
             new ParameterSpec
             {
                 Name = "submodules",
-                Description = "兼容参数；存在 target 时以 target 为准",
+                Description = "保留的兼容参数；不再另选范围",
                 Type = ParamType.Bool,
                 Default = "false",
             },
