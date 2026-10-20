@@ -35,6 +35,10 @@ public sealed partial class ProjectService
         var created = remote.Creation;
         var result = await PushParentAsync(
             worktreePath, setUpstream: created != null, progress, cancellation);
+        // 5.16.4：推送作用在项目上——当前分支推完，再把 main 与其余没推上去的分支一并推上去，
+        // 否则停在别的分支上时 main 的提交、或另一条分支的提交永远推不上去，操作列一直是「推送」。
+        if (result.Success)
+            result = await PushRemainingBranchesAsync(worktreePath, result, progress, cancellation);
 
         // 建仓的结果必须同时出现在成功和失败两条消息里：推送失败时用户只看到 git 的报错，
         // 不说清楚就不知道 GitHub 上已经多了一个仓库。
@@ -55,6 +59,46 @@ public sealed partial class ProjectService
             RemoteCreated: created?.Created ?? false,
             RemoteUrl: created?.OriginUrl ?? string.Empty,
             RemoteVisibility: created?.Visibility ?? string.Empty);
+    }
+
+    /// <summary>
+    /// 当前分支之外还欠着的：main 领先 origin/main（或远端没有 main），以及
+    /// <see cref="BranchPushPlan.UnpushedSideBranchesAsync"/> 列出的分支。只推快进得上的；
+    /// 分叉的留给「同步」。任何一条失败都整体报失败，已推上去的照旧在远端。
+    /// </summary>
+    private static async Task<GitResult> PushRemainingBranchesAsync(
+        string worktreePath, GitResult first, IProgress<string>? progress, CancellationToken cancellation)
+    {
+        var head = await GitRunner.RunAsync(worktreePath, ["symbolic-ref", "--quiet", "--short", "HEAD"], cancellation);
+        var current = head.Success ? FirstLine(head.Output) : string.Empty;
+        var pending = new List<string>();
+        if (current != MainlineBranch)
+        {
+            var main = await GitRunner.RunAsync(worktreePath,
+                ["rev-parse", "--verify", "--quiet", $"refs/heads/{MainlineBranch}"], cancellation);
+            var tracked = await GitRunner.RunAsync(worktreePath,
+                ["rev-parse", "--verify", "--quiet", $"refs/remotes/origin/{MainlineBranch}"], cancellation);
+            if (main.Success && (!tracked.Success
+                || await BranchPushPlan.CountAsync(worktreePath, $"refs/heads/{MainlineBranch}", $"refs/remotes/origin/{MainlineBranch}", cancellation)
+                    is { Left: > 0, Right: 0 }))
+                pending.Add(MainlineBranch);
+        }
+        pending.AddRange((await BranchPushPlan.UnpushedSideBranchesAsync(worktreePath, cancellation))
+            .Where(branch => branch != current));
+        if (pending.Count == 0)
+            return first;
+
+        var outputs = new List<string> { first.Output };
+        foreach (var branch in pending)
+        {
+            progress?.Report($"[{branch}] 一并推送");
+            var pushed = await PushBranchAsync(worktreePath, branch, setUpstream: false, progress, cancellation);
+            if (!pushed.Success)
+                return new GitResult(pushed.ExitCode,
+                    $"当前分支已推送，但 {branch} 推送失败:\n{pushed.Output}");
+            outputs.Add(pushed.Output);
+        }
+        return new GitResult(0, string.Join("\n", outputs.Where(text => text.Length > 0)));
     }
 
     /// <summary>

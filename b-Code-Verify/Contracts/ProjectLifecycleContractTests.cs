@@ -318,11 +318,13 @@ public sealed class ProjectLifecycleContractTests : IDisposable
     }
 
     /// <summary>
-    /// 5.16.4：工作树在别的分支上时，推送推的是那条分支，判断也拿它比 origin 上的同名分支。
-    /// 此前一律比 origin/main，推上去之后操作列仍是「推送」。同步只对 main 做，在分支上被拒绝。
+    /// 5.16.4（用户定）：提交 / 推送 / 同步 / 归档作用在项目上，不看工作树停在哪条分支。
+    /// 停在别的分支上：分支没推是「推送」，推送把 main 与别的未推分支一并推上去；
+    /// 推完是「同步」（校验），同步在分支上也能做，做完是「归档」。
+    /// 此前拿 HEAD 比 origin/main，推上去之后操作列仍是「推送」。
     /// </summary>
     [Fact]
-    public async Task SideBranchIsComparedWithItsOwnRemoteBranch()
+    public async Task LifecycleIsProjectWideWhateverBranchIsCheckedOut()
     {
         Directory.CreateDirectory(_root);
         var service = CreateService();
@@ -340,24 +342,56 @@ public sealed class ProjectLifecycleContractTests : IDisposable
         await Git(project, "remote", "add", "origin", remote);
         await Git(project, "push", "-u", "origin", "main");
 
+        // 另一条没推的分支、main 上没推的提交，都算项目「要推送」，与当前在哪条分支无关。
+        await Git(project, "branch", "other");
+        await Git(project, "switch", "other");
+        File.WriteAllText(Path.Combine(project, "other.txt"), "o");
+        await Git(project, "add", "-A");
+        await Git(project, "commit", "-m", "other work");
+        await Git(project, "switch", "main");
+        File.AppendAllText(Path.Combine(project, "file.txt"), "two");
+        await Git(project, "add", "-A");
+        await Git(project, "commit", "-m", "main work");
         await Git(project, "switch", "-c", "feature");
         File.WriteAllText(Path.Combine(project, "feature.txt"), "f");
         await Git(project, "add", "-A");
         await Git(project, "commit", "-m", "feature work");
+        // 开发管线的 ai/ 分支不归人推，不算。
+        await Git(project, "branch", "ai/2026-903-Side/x-1-claude-y", "other");
+
         var unpushed = await service.RefreshProjectAsync(projectName);
         Assert.Equal("推送", unpushed.Action);
+        Assert.Contains("main 领先", unpushed.Message);
         Assert.Contains("feature", unpushed.Message);
+        Assert.Contains("other", unpushed.Message);
+        Assert.DoesNotContain("ai/", unpushed.Message);
 
         var pushed = await service.PushAsync(projectName);
         Assert.True(pushed.Success, pushed.Message);
-        var after = await service.RefreshProjectAsync(projectName, fetchRemote: false);
-        Assert.NotEqual("推送", after.Action);
-        Assert.Equal(ProjectService.RefreshAction, after.Action);
-        Assert.False((await service.SyncAsync(projectName)).Success);
+        var after = await service.RefreshProjectAsync(projectName);
+        Assert.Equal("同步", after.Action);
 
-        // 回到 main：照旧按 main 判断。
-        await Git(project, "switch", "main");
-        Assert.NotEqual("推送", (await service.RefreshProjectAsync(projectName)).Action);
+        var synced = await service.SyncAsync(projectName);
+        Assert.True(synced.Success, synced.Message);
+        Assert.Equal("归档", synced.Snapshot!.Action);
+        Assert.Equal("main", synced.Snapshot.Branch);
+
+        // 别人往 main 推了提交：停在分支上也能同步，main 直接快进，工作树不动。
+        var peer = Path.Combine(_root, "side-peer");
+        await Git(_root, "clone", "--branch", "main", remote, peer);
+        await Git(peer, "config", "user.name", "Janus Peer");
+        await Git(peer, "config", "user.email", "peer@example.invalid");
+        File.WriteAllText(Path.Combine(peer, "peer.txt"), "p");
+        await Git(peer, "add", "-A");
+        await Git(peer, "commit", "-m", "peer work");
+        await Git(peer, "push", "origin", "main");
+        var behind = await service.RefreshProjectAsync(projectName);
+        Assert.Equal("同步", behind.Action);
+        var caughtUp = await service.SyncAsync(projectName);
+        Assert.True(caughtUp.Success, caughtUp.Message);
+        Assert.Equal("归档", caughtUp.Snapshot!.Action);
+        Assert.True(File.Exists(Path.Combine(project, "feature.txt")));
+        Assert.False(File.Exists(Path.Combine(project, "peer.txt")));
     }
 
     [Fact]

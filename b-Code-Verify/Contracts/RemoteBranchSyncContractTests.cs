@@ -71,10 +71,12 @@ public sealed class RemoteBranchSyncContractTests : IDisposable
 
         // behind：远端又前进一步，本地不动。
         await PushMoreFromElsewhereAsync("feature/behind");
-        // diverged：本地分支自己走一步，远端不动。
+        // diverged：本地分支自己走一步，远端也走一步——真分叉。
         // 用 commit-tree 直接造提交、再 update-ref 挪分支——不碰 HEAD：
         // 在 main 上补一次提交会把项目整体变成「领先」，那时同步本来就会被拒，
         // 测到的就不是「分叉分支不碰」这件事了。
+        // 5.16.4 起只是本地领先的分支算项目「要推送」（同步被拒、先推），所以远端也得动一步。
+        await PushMoreFromElsewhereAsync("feature/diverged");
         var divergedBefore = await CommitOffToTheSideAsync(project, "feature/diverged");
 
         await projects.RefreshProjectAsync(ProjectName);
