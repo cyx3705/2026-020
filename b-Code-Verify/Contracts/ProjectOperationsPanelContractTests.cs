@@ -59,16 +59,17 @@ public sealed partial class ProjectOperationsPanelContractTests
     }
 
     /// <summary>
-    /// 两行（5.16.0）：第一行项目名 + 改名、新项目名 + 新建；第二行提交、推送与三个弹窗子页，均布。
-    /// 提交描述行删了：提交先摆差异，再弹窗要描述。
+    /// 三行：第一行项目名 + 改名、新项目名 + 新建；第二行提交、推送与三个弹窗子页，均布（5.16.0）；
+    /// 第三行分支控制（5.16.1）。提交描述行删了：提交先摆差异，再弹窗要描述。
     ///
     /// **行是声明出来的**（Aurora 协议 V3 / REQ-UI-060），判「rows 数组长什么样」最接近人看到的东西。
     /// </summary>
     [Fact]
-    public void TheOperationsPanelIsTwoDeclaredRows()
+    public void TheOperationsPanelIsThreeDeclaredRows()
     {
         var rows = OperationsPanel().GetProperty("rows").EnumerateArray().ToList();
-        Assert.Equal(2, rows.Count);
+        Assert.Equal(3, rows.Count);
+        Assert.Equal("choices", Assert.Single(Widgets(rows[2])).GetProperty("kind").GetString());
 
         var first = Widgets(rows[0]).ToList();
         Assert.Equal(
@@ -217,8 +218,8 @@ public sealed partial class ProjectOperationsPanelContractTests
             .Where(node => node.TryGetProperty("columns", out _))
             .SelectMany(node => node.GetProperty("columns").EnumerateArray())
             .Select(column => column.GetProperty("key").GetString()!)
-            // 不显示但在行里的字段：总览的 lifecycleAction、LFS 表的 name/next、GitHub 表的 name、分支表的 project。
-            .Concat(["lifecycleAction", "name", "next", "project"])
+            // 不显示但在行里的字段：总览的 lifecycleAction、LFS 表的 name/next、GitHub 表的 name。
+            .Concat(["lifecycleAction", "name", "next"])
             .ToHashSet(StringComparer.Ordinal);
 
         var bound = widgets.Where(w => w.GetProperty("kind").GetString() == "button")
@@ -230,7 +231,11 @@ public sealed partial class ProjectOperationsPanelContractTests
                     .Select(key => column.GetProperty(key).GetString()!)))
             .Concat(nodes.Where(node => node.TryGetProperty("rowActions", out _))
                 .SelectMany(node => node.GetProperty("rowActions").EnumerateArray())
-                .Select(rowAction => rowAction.GetProperty("action").GetString()!));
+                .Select(rowAction => rowAction.GetProperty("action").GetString()!))
+            // 选项条的右键菜单（5.16.1）。
+            .Concat(widgets.Where(w => w.TryGetProperty("menu", out _))
+                .SelectMany(w => w.GetProperty("menu").EnumerateArray())
+                .Select(item => item.GetProperty("action").GetString()!));
         foreach (var id in bound)
             Assert.True(declared.Contains(id), $"界面绑了未声明的动作: {id}");
 
@@ -450,7 +455,6 @@ public sealed partial class ProjectOperationsPanelContractTests
     {
         foreach (var (node, view) in new[]
                  {
-                     ("branch-rows", "branches"),
                      ("history-rows", "history"),
                      ("github-rows", "github"),
                      ("lfs-stat", "lfsstat"),
@@ -461,6 +465,11 @@ public sealed partial class ProjectOperationsPanelContractTests
             Assert.Equal(view, args.GetProperty("view").GetString());
             Assert.Equal("{selection." + Channel + ".name}", args.GetProperty("name").GetString());
         }
+
+        // 分支控制行的候选同样按选中项目取。
+        var branchArgs = BranchChoices().GetProperty("optionsSource").GetProperty("args");
+        Assert.Equal("branches", branchArgs.GetProperty("view").GetString());
+        Assert.Equal("{selection." + Channel + ".name}", branchArgs.GetProperty("name").GetString());
 
         // 图谱同样跟着选中走。此前它固定画项目清单的第一条——不报错，只是一直不对。
         var graph = Page("graph").GetProperty("content").GetProperty("dataSource").GetProperty("args");
@@ -473,42 +482,50 @@ public sealed partial class ProjectOperationsPanelContractTests
     }
 
     /// <summary>
-    /// 分支控制（5.16.0）：分支名可点（下面的历史换成它），四种操作只进右键菜单。
+    /// 分支控制（5.16.1）：面板第三行的选项条（Aurora 1.38.0 的 choices），不是表格。
+    /// 点一项发上 janus.branch 通道，历史表按它取数；右键一项是四种操作。
     ///
-    /// 历史表的取数参数里**没有**分支：要看哪条由模块记着。按通道取的话，
-    /// 表格不会自动选中首行，没点过分支之前历史表永远是空的。
+    /// 菜单动作的分支取 {value}——被右键的那一项，而不是当前选中的那一项：
+    /// 人可以在看着 main 的历史时右键删掉另一条分支。项目取选中行。
     /// </summary>
     [Fact]
-    public void TheBranchTableDrivesHistoryAndCarriesARightClickMenu()
+    public void TheBranchRowIsAChoiceStripThatDrivesHistoryAndCarriesAMenu()
     {
-        var table = Node("branch-rows");
-        var columns = table.GetProperty("columns").EnumerateArray().ToList();
-        Assert.Equal("branch", columns[0].GetProperty("key").GetString());
-        Assert.Equal("janus.branch.pick", columns[0].GetProperty("cellAction").GetString());
-        Assert.Equal("janus.ui.branchpick", Action("janus.branch.pick").GetProperty("command").GetString());
+        var strip = BranchChoices();
+        Assert.Equal("janus.branch", strip.GetProperty("channel").GetString());
+        Assert.True(strip.GetProperty("flex").GetBoolean());
 
-        var menu = table.GetProperty("rowActions").EnumerateArray().ToList();
+        var menu = strip.GetProperty("menu").EnumerateArray().ToList();
         Assert.Equal(
             new[] { "janus.branch.switch", "janus.branch.merge", "janus.branch.create", "janus.branch.delete" },
             menu.Select(item => item.GetProperty("action").GetString()).ToArray());
-        Assert.All(menu, item => Assert.False(item.GetProperty("inline").GetBoolean(), "分支操作只进右键菜单"));
+        Assert.Equal("danger", menu[3].GetProperty("style").GetString());
 
         foreach (var item in menu)
         {
             var action = Action(item.GetProperty("action").GetString()!);
             Assert.Equal("janus.ui.branchop", action.GetProperty("command").GetString());
             var args = action.GetProperty("args");
-            Assert.Equal("{project}", args.GetProperty("name").GetString());
-            Assert.Equal("{branch}", args.GetProperty("branch").GetString());
+            Assert.Equal("{selection." + Channel + ".name}", args.GetProperty("name").GetString());
+            Assert.Equal("{value}", args.GetProperty("branch").GetString());
             Assert.EndsWith("." + args.GetProperty("op").GetString(), action.GetProperty("id").GetString());
         }
 
-        // 分支表在历史表上面：先选分支，再看它的历史。
+        // 不再有分支表，也不再有「点分支名」那条动作：选中就是选项条自己的事。
+        Assert.DoesNotContain(AllNodes(), node => node.TryGetProperty("id", out var id) && id.GetString() == "branch-rows");
+        Assert.DoesNotContain(Actions.GetProperty("actions").EnumerateArray(),
+            action => action.GetProperty("id").GetString() == "janus.branch.pick");
+
+        // 面板下面直接是历史表，按分支通道取数。
         var order = Page("projops").GetProperty("content").GetProperty("children").EnumerateArray()
             .Select(node => node.TryGetProperty("id", out var id) ? id.GetString() : null).ToList();
-        Assert.Equal(new[] { "janus-projops", "branch-rows", "history-rows" }, order.ToArray());
-        Assert.False(Node("history-rows").GetProperty("dataSource").GetProperty("args").TryGetProperty("branch", out _));
+        Assert.Equal(new[] { "janus-projops", "history-rows" }, order.ToArray());
+        Assert.Equal("{selection.janus.branch.value}",
+            Node("history-rows").GetProperty("dataSource").GetProperty("args").GetProperty("branch").GetString());
     }
+
+    private static JsonElement BranchChoices()
+        => PanelWidgets(OperationsPanel()).Single(w => w.GetProperty("kind").GetString() == "choices");
 
     /// <summary>
     /// LFS 弹窗：上面一行汇总（合规、指针大小、≥100MB），下面文件、大小、操作三列，操作是多态按钮。

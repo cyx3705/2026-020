@@ -55,6 +55,12 @@ internal static partial class HistoryJanusUiCommands
     /// </summary>
     private const string ProjectChannel = "janus.project";
 
+    /// <summary>
+    /// 分支控制行（选项条）发布选中分支的通道（5.16.1）。历史表按它取数；
+    /// 选项条建好就发第一项（当前分支），所以历史表不会停在「还没选」的空表上。
+    /// </summary>
+    private const string BranchChannel = "janus.branch";
+
     /// <summary>动作参数里取「当前选中项目」的写法。只写一次，改通道名不必满文件找。</summary>
     private const string SelectedProject = "{selection." + ProjectChannel + ".name}";
 
@@ -146,7 +152,7 @@ internal static partial class HistoryJanusUiCommands
                 new ParameterSpec
                 {
                     Name = "view",
-                    Description = "页面视图：projects 项目总览、years 年份候选、graph 分支图谱、branches 本地分支、history 所看分支的提交历史、excludes 入库排除、lfs ≥100MB 文件表、lfsstat LFS 汇总一行、github 账号与远端",
+                    Description = "页面视图：projects 项目总览、years 年份候选、graph 分支图谱、branches 分支控制行候选（当前分支与未并入 main 的分支）、history 所选分支的提交历史、excludes 入库排除、lfs ≥100MB 文件表、lfsstat LFS 汇总一行、github 账号与远端",
                     Required = true,
                     AllowedValues = ["projects", "years", "graph", "branches", "history", "excludes", "lfs", "lfsstat", "github"],
                     Position = 0,
@@ -156,6 +162,11 @@ internal static partial class HistoryJanusUiCommands
                     Name = "name",
                     Description = "已登记项目的工作树名称，例如 2026-020-HistoryJanus；branches / history / graph / lfs / lfsstat / github 需要，页面按当前选中行填入",
                     Position = 1,
+                },
+                new ParameterSpec
+                {
+                    Name = "branch",
+                    Description = "history 视图要看的本地分支，例如 feature-x；页面按分支控制行的选中项填入，项目里没有它时看当前分支",
                 },
                 new ParameterSpec
                 {

@@ -188,7 +188,7 @@ internal static partial class HistoryJanusUiCommands
                             type = "panel",
                             id = "janus-projops",
                             text = "项目操作",
-                            // 两行（5.16.0）。提交描述行删了：「提交」先摆差异再弹窗要描述，
+                            // 三行：项目名与新建、操作按钮、分支控制（5.16.1）。提交描述行删了：「提交」先摆差异再弹窗要描述，
                             // 一个常驻的描述框只会让人以为不填就提交不了。
                             //
                             // 文本框都**不写必填**：Aurora 的 required 已在 V3 退役——
@@ -278,47 +278,53 @@ internal static partial class HistoryJanusUiCommands
                                         },
                                     },
                                 },
+                                // 第三行：分支控制（5.16.1，Aurora ≥ 1.38.0 的选项条）。
+                                // 候选是当前分支与还没并入 main 的分支，当前分支排第一、默认选中；
+                                // 点一项 → 下面的历史表换成那条分支；右键一项 → 切换 / 合并到当前 / 从此分出 / 删除。
+                                // 菜单动作成功后 Aurora 自己重取候选，删掉的、刚合并完的分支随即消失。
+                                new
+                                {
+                                    widgets = new object[]
+                                    {
+                                        new
+                                        {
+                                            kind = "choices",
+                                            id = "branch",
+                                            label = "分支",
+                                            flex = true,
+                                            channel = BranchChannel,
+                                            optionsSource = new
+                                            {
+                                                command = "janus.ui.data",
+                                                args = new { view = "branches", name = SelectedProject },
+                                            },
+                                            menu = new object[]
+                                            {
+                                                new { action = "janus.branch." + BranchOpSwitch, title = "切换到此分支" },
+                                                new { action = "janus.branch." + BranchOpMerge, title = "合并到当前分支" },
+                                                new { action = "janus.branch." + BranchOpCreate, title = "从此分出新分支" },
+                                                new { action = "janus.branch." + BranchOpDelete, title = "删除分支", style = "danger" },
+                                            },
+                                        },
+                                    },
+                                },
                             },
-                        },
-                        // 分支控制（5.16.0）：选中项目的本地分支，当前分支在最上。
-                        // 点分支名 → 下面的历史表换成那条分支；右键 → 切换 / 合并到当前 / 从此分出 / 删除。
-                        // 四条都只进右键菜单（inline=false）：每行挂四个按钮会把分支名挤成一条缝。
-                        new
-                        {
-                            type = "table",
-                            id = "branch-rows",
-                            dataSource = new
-                            {
-                                command = "janus.ui.data",
-                                args = new { view = "branches", name = SelectedProject },
-                            },
-                            columns = new object[]
-                            {
-                                new { key = "branch", title = "分支", width = "160", cellAction = "janus.branch.pick" },
-                                new { key = "state", title = "状态", width = "100" },
-                                new { key = "track", title = "上游", width = "90" },
-                                new { key = "time", title = "最近提交", width = "130" },
-                                new { key = "subject", title = "说明", width = "*" },
-                            },
-                            rowActions = new object[]
-                            {
-                                new { action = "janus.branch.switch", title = "切换到此分支", inline = false },
-                                new { action = "janus.branch.merge", title = "合并到当前分支", inline = false },
-                                new { action = "janus.branch.create", title = "从此分出新分支", inline = false },
-                                new { action = "janus.branch.delete", title = "删除分支", style = "danger", inline = false },
-                            },
-                            view = new { sortable = false, selection = "single" },
                         },
                         new
                         {
                             type = "table",
                             id = "history-rows",
-                            // 哪条分支由模块记着（点分支名时改），默认是当前分支；
-                            // 不走通道：表格不会自动选中首行，按通道取的话没点过分支就是一张空表。
+                            // 看哪条分支跟着分支控制行走：选项条一打开就选中第一项（当前分支）并发上通道，
+                            // 所以不会出现「没点过分支就是一张空表」。
                             dataSource = new
                             {
                                 command = "janus.ui.data",
-                                args = new { view = "history", name = SelectedProject },
+                                args = new
+                                {
+                                    view = "history",
+                                    name = SelectedProject,
+                                    branch = "{selection." + BranchChannel + ".value}",
+                                },
                             },
                             // 不列「提交」与「作者」。短 sha 在这一页上
                             // 没有可点的去处（要看某一次提交走分支图谱），
@@ -440,7 +446,10 @@ internal static partial class HistoryJanusUiCommands
         },
     }, new JsonSerializerOptions { WriteIndented = false });
 
-    /// <summary>分支表右键菜单的四条动作：参数都取被点那一行的项目与分支，具体怎么做由 janus.ui.branchop 决定。</summary>
+    /// <summary>
+    /// 分支控制行右键菜单的四条动作：项目取选中行，分支取被右键的那一项（选项条给的 {value}），
+    /// 具体怎么做由 janus.ui.branchop 决定。
+    /// </summary>
     private static object BranchAction(string op, string title, string summary, bool danger = false) => new
     {
         id = "janus.branch." + op,
@@ -448,8 +457,8 @@ internal static partial class HistoryJanusUiCommands
         command = "janus.ui.branchop",
         args = new Dictionary<string, string>
         {
-            ["name"] = "{project}",
-            ["branch"] = "{branch}",
+            ["name"] = SelectedProject,
+            ["branch"] = "{value}",
             ["op"] = op,
         },
         danger,
@@ -576,19 +585,6 @@ internal static partial class HistoryJanusUiCommands
             SectionAction("janus.section.rules", SectionRules),
             SectionAction("janus.section.lfs", SectionLfs),
             SectionAction("janus.section.github", SectionGitHub),
-            // 点分支名：下面的历史表换成这条分支（不切换工作树）。
-            new
-            {
-                id = "janus.branch.pick",
-                title = "查看分支历史",
-                command = "janus.ui.branchpick",
-                args = new Dictionary<string, string>
-                {
-                    ["name"] = "{project}",
-                    ["branch"] = "{branch}",
-                },
-                summary = "在下面的表格里显示这条分支的提交历史",
-            },
             BranchAction(BranchOpSwitch, "切换到此分支", "把项目工作树切换到这条分支；工作树有未提交内容时先弹提交窗口"),
             BranchAction(BranchOpMerge, "合并到当前分支", "把这条分支合并进当前分支；有冲突时什么都不动"),
             BranchAction(BranchOpCreate, "从此分出新分支", "以这条分支为起点新建一条分支"),

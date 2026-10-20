@@ -33,8 +33,8 @@ var expectedVersion = manifest.RootElement.GetProperty("version").GetString();
 // 5.9.0：业务命令增至 42（proj.diff / proj.discard / gitrule.lfs），UI 仍 8 条 → 51。
 // 5.11.0：业务命令增至 44（gitrule.lfsset / gitrule.lfsrepair），UI 增 ui.lfsdecide 到 9 条 → 54。
 // REQ-018：新增 ui.setremote，54 → 55。
-// 5.16.0：branch 类五条 + ui.branchpick / ui.branchop（ui.sectionenter 换成 ui.opensection），55 → 62。
-const int expectedRuntimeCommandCount = 62;
+// 5.16.0：branch 类五条 + ui.branchop（ui.sectionenter 换成 ui.opensection），55 → 61。
+const int expectedRuntimeCommandCount = 61;
 
 var listed = Probe(package, "vulcan.command.list domain=janus");
 var module = listed.GetProperty("data").GetProperty("module");
@@ -68,7 +68,7 @@ foreach (var name in new[] { "janus.ui.describe", "janus.ui.actions", "janus.ui.
     }
 }
 
-foreach (var name in new[] { "janus.ui.refreshprojects", "janus.ui.projectaction", "janus.ui.openmeta", "janus.ui.opensection", "janus.ui.branchpick", "janus.ui.branchop" })
+foreach (var name in new[] { "janus.ui.refreshprojects", "janus.ui.projectaction", "janus.ui.openmeta", "janus.ui.opensection", "janus.ui.branchop" })
 {
     if (!rows.TryGetValue(name, out var row)
         || row.GetProperty("readonly").GetBoolean()
@@ -108,7 +108,6 @@ foreach (var action in new[]
              "janus.project.action",
              "janus.graph.node.detail",
              "janus.section.github",
-             "janus.branch.pick",
              "janus.branch.switch",
          })
 {

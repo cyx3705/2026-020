@@ -54,10 +54,19 @@ public sealed class BranchServiceContractTests : IDisposable
         Assert.True((await branches.SwitchAsync(Name, "main")).Success);
         Assert.False(await branches.IsMergedAsync(Name, "feature"));
         Assert.False((await branches.DeleteAsync(Name, "feature", force: false)).Success);
+        // 未合并时分支控制行摆着它；合并进 main 之后就不再摆（5.16.1），当前分支始终在。
+        var unmerged = (await branches.ListAsync(Name)).Report!;
+        Assert.Equal(new[] { "main", "feature" },
+            HistoryJanus.Module.HistoryJanusUiCommands.UiBranchProjection.Options(unmerged).Select(row => row["value"]));
+        Assert.Equal("main · 当前", HistoryJanus.Module.HistoryJanusUiCommands.UiBranchProjection.Options(unmerged)[0]["text"]);
         var merged = await branches.MergeAsync(Name, "feature");
         Assert.True(merged.Success, merged.Message);
         Assert.True(File.Exists(Path.Combine(Project, "feature.txt")));
         Assert.True(await branches.IsMergedAsync(Name, "feature"));
+        var afterMerge = (await branches.ListAsync(Name)).Report!;
+        Assert.True(afterMerge.Branches.Single(b => b.Name == "feature").MergedIntoMain);
+        Assert.Equal(new[] { "main" },
+            HistoryJanus.Module.HistoryJanusUiCommands.UiBranchProjection.Options(afterMerge).Select(row => row["value"]));
         Assert.True((await branches.DeleteAsync(Name, "feature", force: false)).Success);
         Assert.Single((await branches.ListAsync(Name)).Report!.Branches);
         _ = projects;

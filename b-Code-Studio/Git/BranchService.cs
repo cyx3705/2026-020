@@ -7,7 +7,8 @@ public sealed record BranchInfo(
     string Time,
     string Subject,
     bool IsCurrent,
-    string Track);
+    string Track,
+    bool MergedIntoMain = false);
 
 public sealed record BranchListReport(string Project, string Current, IReadOnlyList<BranchInfo> Branches);
 
@@ -39,6 +40,15 @@ public sealed class BranchService(ProjectService projects)
         if (!refs.Success)
             return (false, $"读取分支失败:\n{refs.Output}", null);
 
+        // 已并入 main 的分支（5.16.1）：分支控制行只摆没合并的，合并完的不再占位。
+        var merged = await GitRunner.RunAsync(repo.Path,
+            ["branch", "--merged", $"refs/heads/{ProjectService.MainlineBranch}", "--format=%(refname:short)"],
+            cancellation);
+        var mergedNames = merged.Success
+            ? merged.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .ToHashSet(StringComparer.Ordinal)
+            : [];
+
         var branches = refs.Output
             .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Select(line => line.Split('\u001f'))
@@ -46,7 +56,8 @@ public sealed class BranchService(ProjectService projects)
             .Select(parts => new BranchInfo(
                 parts[0], parts[1], parts[2], parts[3],
                 parts[0].Equals(current, StringComparison.Ordinal),
-                parts.Length > 4 ? parts[4] : ""))
+                parts.Length > 4 ? parts[4] : "",
+                parts[0] != ProjectService.MainlineBranch && mergedNames.Contains(parts[0])))
             // 当前分支在最上，其次 main，其余按名字。
             .OrderByDescending(branch => branch.IsCurrent)
             .ThenByDescending(branch => branch.Name == ProjectService.MainlineBranch)

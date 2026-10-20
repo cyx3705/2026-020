@@ -169,7 +169,7 @@ foreach ($page in $expectedScenePlacements.GetEnumerator()) {
         $violations.Add("HistoryJanusUiModule.cs must declare $($page.Key) for HistoryJanus at $($page.Value) and visible by default")
     }
 }
-foreach ($uiCommand in @('janus.ui.describe', 'janus.ui.actions', 'janus.ui.data', 'janus.ui.graphnode', 'janus.ui.opensection', 'janus.ui.branchpick', 'janus.ui.branchop', 'janus.ui.refreshprojects', 'janus.ui.projectaction', 'janus.ui.openmeta')) {
+foreach ($uiCommand in @('janus.ui.describe', 'janus.ui.actions', 'janus.ui.data', 'janus.ui.graphnode', 'janus.ui.opensection', 'janus.ui.branchop', 'janus.ui.refreshprojects', 'janus.ui.projectaction', 'janus.ui.openmeta')) {
     if ($uiSource -notmatch ('Name = "' + [regex]::Escape($uiCommand) + '"')) {
         $violations.Add("Aurora UI command missing from source: $uiCommand")
     }
@@ -191,9 +191,9 @@ $expectedRuntimeCommandNames = @($businessCommandNames + 'janus.status' | Sort-O
 # janus.ui.refreshrules 改名为 janus.ui.sectionenter（REQ-017），UI 投影仍是 8 条。
 # 5.11.0 增加 gitrule.lfsset / gitrule.lfsrepair 与 janus.ui.lfsdecide（DEC-032）：50 → 53。
 # REQ-018：GitHub 子页面新增 ui.setremote，UI 投影共 10 条。
-# 5.16.0：branch 类五条；ui.sectionenter 换成 ui.opensection，另加 ui.branchpick / ui.branchop：54 → 61。
-if ($businessCommandNames.Count -ne 61 -or $expectedRuntimeCommandNames.Count -ne 62) {
-    $violations.Add("运行时命令总数应为 62（49 条业务命令 + 12 条 Aurora UI 投影命令 + janus.status）；源码为 $($businessCommandNames.Count) + 1")
+# 5.16.0：branch 类五条；ui.sectionenter 换成 ui.opensection，另加 ui.branchop：54 → 60（5.16.1 退役 ui.branchpick）。
+if ($businessCommandNames.Count -ne 60 -or $expectedRuntimeCommandNames.Count -ne 61) {
+    $violations.Add("运行时命令总数应为 61（49 条业务命令 + 11 条 Aurora UI 投影命令 + janus.status）；源码为 $($businessCommandNames.Count) + 1")
 }
 
 # --- 6. 候选边界（QA-004 日常化）：事务候选或版本化运行包 + 独立 history ---
