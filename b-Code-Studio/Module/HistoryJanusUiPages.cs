@@ -149,6 +149,15 @@ internal static partial class HistoryJanusUiCommands
                                 // 单元格写「动作 + 状态符号」；点它执行的仍是 lifecycleAction 那一格。
                                 new { key = "status", title = "操作", width = "120", cellAction = "janus.project.action" },
                             },
+                            // 5.17.0：右键一行的四条快捷操作，只进右键菜单（inline=false），竖栏里放不下行内按钮。
+                            // 都作用在被右键的那一行（{name}），不是总览里选中的那一行。
+                            rowActions = new object[]
+                            {
+                                new { action = "janus.project.menu." + ProjectOpCreate, title = "以此新建项目", inline = false },
+                                new { action = "janus.project.menu.pin", title = "固定到桌面", inline = false },
+                                new { action = "janus.project.menu." + ProjectOpBranch, title = "以现在的分支新建分支", inline = false },
+                                new { action = "janus.project.menu." + ProjectOpMerge, title = "合并当前分支", inline = false },
+                            },
                             view = new { filterable = true, sortable = true, selection = "single" },
                         },
                     },
@@ -465,6 +474,20 @@ internal static partial class HistoryJanusUiCommands
         summary,
     };
 
+    /// <summary>总览项目表右键菜单的动作：项目取被右键的那一行，具体怎么做由 janus.ui.projectop 决定。</summary>
+    private static object ProjectMenuAction(string op, string title, string summary) => new
+    {
+        id = "janus.project.menu." + op,
+        title,
+        command = "janus.ui.projectop",
+        args = new Dictionary<string, string>
+        {
+            ["name"] = "{name}",
+            ["op"] = op,
+        },
+        summary,
+    };
+
     /// <summary>弹窗子页按钮：浮出那一页并重取它的表。</summary>
     private static object SectionAction(string id, string section) => new
     {
@@ -582,6 +605,18 @@ internal static partial class HistoryJanusUiCommands
                 },
                 summary = "推送选中项目的分支",
             },
+            ProjectMenuAction(ProjectOpCreate, "以此新建项目", "弹窗要新项目名，以被右键的项目为模板新建"),
+            // 固定到桌面：跨域调 Mercury 的桌面扩展坞（坞上最多 12 个固定项，满了由它拒绝）。
+            new
+            {
+                id = "janus.project.menu.pin",
+                title = "固定到桌面",
+                command = "mercury.proj.pin",
+                args = new Dictionary<string, string> { ["name"] = "{name}" },
+                summary = "把被右键的项目固定到 Mercury 桌面扩展坞",
+            },
+            ProjectMenuAction(ProjectOpBranch, "以现在的分支新建分支", "弹窗要新分支名，从项目当前分支分出（不切换过去）"),
+            ProjectMenuAction(ProjectOpMerge, "合并当前分支", "把项目当前分支合并进 main，完成后工作树停在 main；有冲突时什么都不动"),
             SectionAction("janus.section.rules", SectionRules),
             SectionAction("janus.section.lfs", SectionLfs),
             SectionAction("janus.section.github", SectionGitHub),

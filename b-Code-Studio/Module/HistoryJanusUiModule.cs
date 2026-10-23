@@ -90,6 +90,13 @@ internal static partial class HistoryJanusUiCommands
 
     internal const string BranchOpDelete = "delete";
 
+    /// <summary>总览项目表右键菜单里交给 janus.ui.projectop 的三种操作（5.17.0）；「固定到桌面」直接调 mercury.proj.pin。</summary>
+    internal const string ProjectOpCreate = "create";
+
+    internal const string ProjectOpBranch = "branch";
+
+    internal const string ProjectOpMerge = "merge";
+
     /// <summary>
     /// 总览页顶栏的两个筛选通道。搜索框与年份框各占一个；
     /// 表格的取数参数按通道取值，通道一变 Aurora 就重取，不必自己写刷新。
@@ -261,6 +268,7 @@ internal static partial class HistoryJanusUiCommands
         RegisterRemoteCommand(registry, bus);
         RegisterLifecycleCommands(registry, bus, source, business);
         RegisterBranchCommands(registry, bus, business);
+        RegisterProjectMenuCommands(registry, bus, business);
     }
 
     /// <summary>

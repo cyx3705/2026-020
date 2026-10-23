@@ -608,6 +608,43 @@ public sealed partial class ProjectOperationsPanelContractTests
         => Actions.GetProperty("actions").EnumerateArray()
             .Single(action => action.GetProperty("id").GetString() == id);
 
+    /// <summary>
+    /// 5.17.0：总览项目表右键四条（用户定）。都只进右键、都取被右键那一行的 name 列；
+    /// 「固定到桌面」跨域调 Mercury，其余三条落到 janus.ui.projectop 且 op 在它的候选里。
+    /// 动作 id 写错的症状是菜单项点了没反应，两边都不报错。
+    /// </summary>
+    [Fact]
+    public void TheProjectTableOffersFourRightClickShortcuts()
+    {
+        var table = Page("overview").GetProperty("content").GetProperty("children")
+            .EnumerateArray()
+            .Single(node => node.GetProperty("type").GetString() == "table");
+        var rowActions = table.GetProperty("rowActions").EnumerateArray().ToList();
+
+        Assert.Equal(
+            ["以此新建项目", "固定到桌面", "以现在的分支新建分支", "合并当前分支"],
+            rowActions.Select(item => item.GetProperty("title").GetString()));
+        Assert.All(rowActions, item => Assert.False(item.GetProperty("inline").GetBoolean()));
+
+        var declared = Actions.GetProperty("actions").EnumerateArray().ToList();
+        foreach (var item in rowActions)
+        {
+            var id = item.GetProperty("action").GetString();
+            var action = declared.Single(candidate => candidate.GetProperty("id").GetString() == id);
+            Assert.Equal("{name}", action.GetProperty("args").GetProperty("name").GetString());
+            var command = action.GetProperty("command").GetString();
+            if (id == "janus.project.menu.pin")
+                Assert.Equal("mercury.proj.pin", command);
+            else
+            {
+                Assert.Equal("janus.ui.projectop", command);
+                Assert.Contains(
+                    action.GetProperty("args").GetProperty("op").GetString(),
+                    new[] { HistoryJanusUiCommands.ProjectOpCreate, HistoryJanusUiCommands.ProjectOpBranch, HistoryJanusUiCommands.ProjectOpMerge });
+            }
+        }
+    }
+
     [GeneratedRegex(@"\{([^{}\s]+)\}")]
     private static partial Regex Placeholder();
 }

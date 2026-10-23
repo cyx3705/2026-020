@@ -170,28 +170,35 @@ internal static partial class HistoryJanusUiCommands
             _ = await bus.ExecuteAsync("aurora.ui.refreshdata node=projects", context.Source);
         }
 
-        // 工作树脏就被拒的操作：直接弹提交窗口（先看差异，可提交也可丢弃）。
-        // 人提交或丢弃之后工作树干净了，就接着做原来的操作；取消则停在拒绝那一步。
-        async Task<BranchMutationResult> WithCleanWorktreeAsync(Func<Task<BranchMutationResult>> operation)
-        {
-            var first = await operation();
-            if (first.Success || !first.Dirty)
-                return first;
-            var decided = await DecideCommitAsync(context, bus, composition.Projects, name);
-            if (decided.Command != null)
-            {
-                var committed = await bus.ExecuteAsync(decided.Command, context.Source, context.Cancellation);
-                if (!committed.Success)
-                    return new(false, $"{first.Message}；提交失败：{committed.Message}");
-            }
-            else if (decided.Result is { Success: false } failed)
-            {
-                return new(false, $"{first.Message}；{failed.Message}");
-            }
+        Task<BranchMutationResult> WithCleanWorktreeAsync(Func<Task<BranchMutationResult>> operation)
+            => RunOnCleanWorktreeAsync(context, bus, composition, name, operation);
+    }
 
-            var diff = await composition.Projects.ReadWorktreeDiffAsync(name, RepositoryTarget.Parent, context.Cancellation);
-            return diff.IsDirty ? first : await operation();
+    /// <summary>
+    /// 工作树脏就被拒的操作：直接弹提交窗口（先看差异，可提交也可丢弃）。
+    /// 人提交或丢弃之后工作树干净了，就接着做原来的操作；取消则停在拒绝那一步。
+    /// </summary>
+    private static async Task<BranchMutationResult> RunOnCleanWorktreeAsync(
+        CommandContext context, ICommandBus bus, StudioBusinessComposition composition, string name,
+        Func<Task<BranchMutationResult>> operation)
+    {
+        var first = await operation();
+        if (first.Success || !first.Dirty)
+            return first;
+        var decided = await DecideCommitAsync(context, bus, composition.Projects, name);
+        if (decided.Command != null)
+        {
+            var committed = await bus.ExecuteAsync(decided.Command, context.Source, context.Cancellation);
+            if (!committed.Success)
+                return new(false, $"{first.Message}；提交失败：{committed.Message}");
         }
+        else if (decided.Result is { Success: false } failed)
+        {
+            return new(false, $"{first.Message}；{failed.Message}");
+        }
+
+        var diff = await composition.Projects.ReadWorktreeDiffAsync(name, RepositoryTarget.Parent, context.Cancellation);
+        return diff.IsDirty ? first : await operation();
     }
 
     private static CommandResult ToCommandResult(BranchMutationResult result)

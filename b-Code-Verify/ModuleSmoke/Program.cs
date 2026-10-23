@@ -34,7 +34,8 @@ var expectedVersion = manifest.RootElement.GetProperty("version").GetString();
 // 5.11.0：业务命令增至 44（gitrule.lfsset / gitrule.lfsrepair），UI 增 ui.lfsdecide 到 9 条 → 54。
 // REQ-018：新增 ui.setremote，54 → 55。
 // 5.16.0：branch 类五条 + ui.branchop（ui.sectionenter 换成 ui.opensection），55 → 61。
-const int expectedRuntimeCommandCount = 61;
+// 5.17.0：总览项目表右键菜单 ui.projectop，61 → 62。
+const int expectedRuntimeCommandCount = 62;
 
 var listed = Probe(package, "vulcan.command.list domain=janus");
 var module = listed.GetProperty("data").GetProperty("module");
