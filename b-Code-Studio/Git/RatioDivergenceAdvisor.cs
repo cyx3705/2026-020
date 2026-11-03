@@ -5,14 +5,14 @@ using HistoryVulcan.Core.Commands;
 namespace HistoryJanus.Git;
 
 /// <summary>
-/// 5.15.0：经命令总线请 HistoryApollo 判断一次分叉能不能自动合。
+/// 5.15.0：经命令总线请 Ratio（5.17.1 前叫 HistoryApollo、域 apollo）判断一次分叉能不能自动合。
 ///
-/// **软依赖**：不引用 Apollo 的程序集，只发一行 <c>apollo.chat.send json=true</c>。
+/// **软依赖**：不引用 Ratio 的程序集，只发一行 <c>ratio.chat.send json=true</c>。
 /// 用 send 而不是 ask，是因为差异和提交列表带换行，消息数组走 JSON 后整条指令是一行。
-/// 用安静执行（InvokeAsync）：控制台里提问与答复由 Apollo 自己逐轮报，这里不再回显上万字的指令文本。
-/// Apollo 没装、没密钥、断网、答非 JSON，都折成 <see cref="DivergenceAdvice.Failure"/>，调用方一律不执行。
+/// 用安静执行（InvokeAsync）：控制台里提问与答复由 Ratio 自己逐轮报，这里不再回显上万字的指令文本。
+/// Ratio 没装、没密钥、断网、答非 JSON，都折成 <see cref="DivergenceAdvice.Failure"/>，调用方一律不执行。
 /// </summary>
-public sealed class ApolloDivergenceAdvisor(ICommandBus bus) : IDivergenceAdvisor
+public sealed class RatioDivergenceAdvisor(ICommandBus bus) : IDivergenceAdvisor
 {
     public const string CommandSource = "module:HistoryJanus";
 
@@ -37,7 +37,7 @@ public sealed class ApolloDivergenceAdvisor(ICommandBus bus) : IDivergenceAdviso
             new { role = "system", content = SystemPrompt },
             new { role = "user", content = BuildPrompt(facts) },
         });
-        var command = "apollo.chat.send json=true temperature=0 maxtokens=300 timeout=120"
+        var command = "ratio.chat.send json=true temperature=0 maxtokens=300 timeout=120"
                       + " messages=" + CommandParser.QuoteArg(messages);
         var result = await bus.InvokeAsync(command, CommandSource, cancellation).ConfigureAwait(false);
         return Read(result);
@@ -59,7 +59,7 @@ public sealed class ApolloDivergenceAdvisor(ICommandBus bus) : IDivergenceAdviso
         return text.ToString();
     }
 
-    /// <summary>把 Apollo 的回执读成判定。json=true 时回执正文就是模型答复本身。</summary>
+    /// <summary>把 Ratio 的回执读成判定。json=true 时回执正文就是模型答复本身。</summary>
     internal static DivergenceAdvice Read(CommandResult result)
     {
         if (!result.Success)

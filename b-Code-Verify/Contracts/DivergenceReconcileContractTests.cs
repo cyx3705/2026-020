@@ -137,17 +137,17 @@ public sealed class DivergenceReconcileContractTests : IDisposable
     }
 
     [Fact]
-    public void ApolloAnswerIsReadStrictly()
+    public void RatioAnswerIsReadStrictly()
     {
-        var safe = ApolloDivergenceAdvisor.Read(CommandResult.Ok("{\"safe\": true, \"reason\": \"目录不交叠\"}"));
+        var safe = RatioDivergenceAdvisor.Read(CommandResult.Ok("{\"safe\": true, \"reason\": \"目录不交叠\"}"));
         Assert.True(safe.Proceed);
         Assert.Null(safe.Failure);
         Assert.Equal("目录不交叠", safe.Reason);
 
-        Assert.False(ApolloDivergenceAdvisor.Read(CommandResult.Ok("{\"safe\": false, \"reason\": \"x\"}")).Proceed);
-        Assert.NotNull(ApolloDivergenceAdvisor.Read(CommandResult.Ok("可以合并")).Failure);
-        Assert.NotNull(ApolloDivergenceAdvisor.Read(CommandResult.Ok("{\"safe\": \"yes\"}")).Failure);
-        Assert.NotNull(ApolloDivergenceAdvisor.Read(CommandResult.Fail("未知指令 apollo.chat.send")).Failure);
+        Assert.False(RatioDivergenceAdvisor.Read(CommandResult.Ok("{\"safe\": false, \"reason\": \"x\"}")).Proceed);
+        Assert.NotNull(RatioDivergenceAdvisor.Read(CommandResult.Ok("可以合并")).Failure);
+        Assert.NotNull(RatioDivergenceAdvisor.Read(CommandResult.Ok("{\"safe\": \"yes\"}")).Failure);
+        Assert.NotNull(RatioDivergenceAdvisor.Read(CommandResult.Fail("未知指令 ratio.chat.send")).Failure);
     }
 
     [Theory]

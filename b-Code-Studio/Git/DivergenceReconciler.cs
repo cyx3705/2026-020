@@ -16,7 +16,7 @@ public sealed record DivergenceFacts(
 
 /// <summary>AI 的判定。</summary>
 /// <param name="Proceed">true = 简单情况，可以自动合并。</param>
-/// <param name="Failure">调用本身失败（Apollo 没装、没密钥、断网、答非 JSON）时的原因；有值时一律不执行。</param>
+/// <param name="Failure">调用本身失败（Ratio 没装、没密钥、断网、答非 JSON）时的原因；有值时一律不执行。</param>
 public sealed record DivergenceAdvice(bool Proceed, string Reason, string? Failure = null);
 
 /// <summary>分叉检查通道。为空时分叉照旧不自动处理。</summary>
