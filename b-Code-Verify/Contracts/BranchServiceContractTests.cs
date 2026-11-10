@@ -132,6 +132,45 @@ public sealed class BranchServiceContractTests : IDisposable
         Assert.False((await history.GetHistoryAsync(Name, branch: "missing")).Success);
     }
 
+    /// <summary>REQ-BRANCH-023：SHA 不同但补丁已进入 main 的分支退出操作页；新改动重新出现。</summary>
+    [Fact]
+    public async Task EquivalentPatchesHideFromOperationsButRemainInTheGraph()
+    {
+        var (projects, branches) = await CreateAsync();
+        await Git(Project, "switch", "-c", "feature");
+        File.WriteAllText(Path.Combine(Project, "feature.txt"), "feature");
+        await Git(Project, "add", "-A");
+        await Git(Project, "commit", "-m", "feature work");
+        var featureSha = (await GitRunner.RunAsync(Project, ["rev-parse", "HEAD"])).Output.Trim();
+        await Git(Project, "switch", "main");
+        File.WriteAllText(Path.Combine(Project, "main.txt"), "main advanced");
+        await Git(Project, "add", "-A");
+        await Git(Project, "commit", "-m", "advance main");
+        await Git(Project, "cherry-pick", featureSha);
+        Assert.False(await branches.IsMergedAsync(Name, "feature"));
+
+        var listed = (await branches.ListAsync(Name)).Report!;
+        Assert.True(listed.Branches.Single(b => b.Name == "feature").MergedIntoMain);
+        Assert.Equal(new[] { "main" },
+            HistoryJanus.Module.HistoryJanusUiCommands.UiBranchProjection.Options(listed).Select(row => row["value"]));
+        var graph = new GraphService(projects);
+        var history = await graph.GetBranchesAsync(Name);
+        Assert.True(history.Success, history.Message);
+        Assert.Contains(history.Report!.Parallels, b => b.Name == "feature");
+
+        // 同一分支接着提交独立改动，就必须重新出现；只判断 tip 是否相同会漏掉这种情况。
+        await Git(Project, "switch", "feature");
+        File.WriteAllText(Path.Combine(Project, "new.txt"), "new independent work");
+        await Git(Project, "add", "-A");
+        await Git(Project, "commit", "-m", "continue evolving");
+        await Git(Project, "switch", "main");
+        listed = (await branches.ListAsync(Name)).Report!;
+        Assert.False(listed.Branches.Single(b => b.Name == "feature").MergedIntoMain);
+        Assert.Equal(new[] { "main", "feature" },
+            HistoryJanus.Module.HistoryJanusUiCommands.UiBranchProjection.Options(listed).Select(row => row["value"]));
+        Assert.Equal("", (await GitRunner.RunAsync(Project, ["status", "--porcelain"])).Output.Trim());
+    }
+
     private async Task<(ProjectService Projects, BranchService Branches)> CreateAsync()
     {
         Directory.CreateDirectory(Project);

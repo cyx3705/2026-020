@@ -48,6 +48,18 @@ public sealed class BranchService(ProjectService projects)
             ? merged.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                 .ToHashSet(StringComparer.Ordinal)
             : [];
+        // REQ-BRANCH-023：项目操作页按独立改动筛选，等价补丁也算已进入 main；图谱仍保留历史。
+        if (merged.Success)
+        {
+            foreach (var line in refs.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+            {
+                var branch = line.Split('\u001f')[0].Trim();
+                if (branch != ProjectService.MainlineBranch && !mergedNames.Contains(branch)
+                    && !await BranchIndependence.HasIndependentChangesAsync(repo.Path,
+                        $"refs/heads/{ProjectService.MainlineBranch}", $"refs/heads/{branch}", cancellation))
+                    mergedNames.Add(branch);
+            }
+        }
         // 5.16.2：刚分出来、一次都没提交过的分支同样指向 main 历史里的提交，`--merged` 也会列它——
         // 不剔掉的话「从此分出」点完什么都看不见。它不是「合并完了」，是「还没开始」，要摆出来。
         foreach (var fresh in await FreshBranchesAsync(repo.Path, mergedNames, cancellation))
