@@ -35,7 +35,7 @@ public sealed class BranchService(ProjectService projects)
         var current = await CurrentAsync(repo.Path, cancellation);
         var refs = await GitRunner.RunAsync(repo.Path,
             ["for-each-ref", "refs/heads",
-                "--format=%(refname:short)%1f%(objectname:short)%1f%(committerdate:format:%Y-%m-%d %H:%M)%1f%(subject)%1f%(upstream:track,nobracket)"],
+                "--format=%(refname:short)%1f%(objectname:short)%1f%(committerdate:format:%Y-%m-%d %H:%M)%1f%(subject)%1f%(upstream:track,nobracket)%1f%(upstream)"],
             cancellation);
         if (!refs.Success)
             return (false, $"读取分支失败:\n{refs.Output}", null);
@@ -62,7 +62,13 @@ public sealed class BranchService(ProjectService projects)
         }
         // 5.16.2：刚分出来、一次都没提交过的分支同样指向 main 历史里的提交，`--merged` 也会列它——
         // 不剔掉的话「从此分出」点完什么都看不见。它不是「合并完了」，是「还没开始」，要摆出来。
-        foreach (var fresh in await FreshBranchesAsync(repo.Path, mergedNames, cancellation))
+        // 从远端建立的跟踪分支即使只有一条创建 reflog，也不是尚未开始的本地开发。
+        var trackingNames = refs.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(line => line.TrimEnd('\r').Split('\u001f'))
+            .Where(parts => parts.Length > 5 && parts[5].Length > 0)
+            .Select(parts => parts[0]).ToHashSet(StringComparer.Ordinal);
+        foreach (var fresh in await FreshBranchesAsync(repo.Path,
+                     mergedNames.Where(branch => !trackingNames.Contains(branch)), cancellation))
             mergedNames.Remove(fresh);
 
         var branches = refs.Output

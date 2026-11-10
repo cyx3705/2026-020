@@ -171,6 +171,30 @@ public sealed class BranchServiceContractTests : IDisposable
         Assert.Equal("", (await GitRunner.RunAsync(Project, ["status", "--porcelain"])).Output.Trim());
     }
 
+    [Fact]
+    public async Task MergedRemoteTrackingBranchIsNotFreshDevelopment()
+    {
+        var (projects, branches) = await CreateAsync();
+        await Git(Project, "switch", "-c", "feature");
+        File.WriteAllText(Path.Combine(Project, "feature.txt"), "feature");
+        await Git(Project, "add", "-A");
+        await Git(Project, "commit", "-m", "feature work");
+        var featureSha = (await GitRunner.RunAsync(Project, ["rev-parse", "HEAD"])).Output.Trim();
+        await Git(Project, "switch", "main");
+        await Git(Project, "merge", "--no-ff", "feature", "-m", "merge feature");
+        await Git(Project, "remote", "add", "origin", ".");
+        await Git(Project, "update-ref", "refs/remotes/origin/imported", featureSha);
+        await Git(Project, "branch", "--track", "imported", "origin/imported");
+
+        var listed = (await branches.ListAsync(Name)).Report!;
+        Assert.True(listed.Branches.Single(b => b.Name == "imported").MergedIntoMain);
+        Assert.Equal(new[] { "main" },
+            HistoryJanus.Module.HistoryJanusUiCommands.UiBranchProjection.Options(listed).Select(row => row["value"]));
+        var history = await new GraphService(projects).GetBranchesAsync(Name);
+        Assert.True(history.Success, history.Message);
+        Assert.Contains(history.Report!.Parallels, b => b.Name == "imported" && !b.IsOpen);
+    }
+
     private async Task<(ProjectService Projects, BranchService Branches)> CreateAsync()
     {
         Directory.CreateDirectory(Project);
