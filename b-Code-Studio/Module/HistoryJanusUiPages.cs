@@ -406,12 +406,17 @@ internal static partial class HistoryJanusUiCommands
                                 new { key = "oversize", title = "≥100MB", width = "80" },
                             },
                         },
-                        // 「操作」格与总览一样是多态按钮（5.12.1）：未决显示「未决」，点了弹窗二选一；
-                        // 未纳入显示「纳入」，点了走 LFS 指针；已纳入显示「取消纳入」，点了取消 LFS 指针。
+                        // 去向直接从行右键菜单选择；状态格只展示当前规则。
                         new
                         {
                             type = "table",
                             id = "lfs-files",
+                            rowActions = new[]
+                            {
+                                new { action = "janus.lfs.none", title = "未决", inline = false },
+                                new { action = "janus.lfs.lfs", title = "加入 LFS", inline = false },
+                                new { action = "janus.lfs.ignore", title = "不入库", inline = false },
+                            },
                             dataSource = new
                             {
                                 command = "janus.ui.data",
@@ -421,7 +426,7 @@ internal static partial class HistoryJanusUiCommands
                             {
                                 new { key = "path", title = "文件", width = "*" },
                                 new { key = "size", title = "大小", width = "90" },
-                                new { key = "op", title = "操作", width = "110", cellAction = "janus.lfs.toggle" },
+                                new { key = "op", title = "状态", width = "110" },
                             },
                             view = new { filterable = true, sortable = true, selection = "single" },
                         },
@@ -624,21 +629,10 @@ internal static partial class HistoryJanusUiCommands
             BranchAction(BranchOpMerge, "合并到当前分支", "把这条分支合并进当前分支；有冲突时什么都不动"),
             BranchAction(BranchOpCreate, "从此分出新分支", "以这条分支为起点新建一条分支"),
             BranchAction(BranchOpDelete, "删除分支", "删除这条本地分支；当前分支与 main 不能删", danger: true),
-            // LFS 规则表「操作」格（5.12.0；5.12.1 改文字与去向）。{name}/{path}/{next} 取被点那一行：
-            // next 是投影按当前决定算好的下一步，页面不自己判断（choose = 弹窗让人定）。
-            new
-            {
-                id = "janus.lfs.toggle",
-                title = "切换 LFS 去向",
-                command = "janus.ui.lfsdecide",
-                args = new Dictionary<string, string>
-                {
-                    ["name"] = "{name}",
-                    ["path"] = "{path}",
-                    ["decision"] = "{next}",
-                },
-                summary = "未决的弹窗定去向；未纳入的纳入 LFS 指针；已纳入的取消纳入。下次提交生效，历史不变",
-            },
+            // Captured row, explicit decision, no extra dialog.
+            LfsDecisionAction("none", "未决"),
+            LfsDecisionAction("lfs", "加入 LFS"),
+            LfsDecisionAction("ignore", "不入库"),
             new
             {
                 id = "janus.graph.node.detail",
@@ -649,4 +643,12 @@ internal static partial class HistoryJanusUiCommands
             },
         },
     }, new JsonSerializerOptions { WriteIndented = false });
+    private static object LfsDecisionAction(string decision, string title) => new
+    {
+        id = "janus.lfs." + decision,
+        title,
+        command = "janus.ui.lfsdecide",
+        args = new Dictionary<string, string> { ["name"] = "{name}", ["path"] = "{path}", ["decision"] = decision },
+        summary = "直接记录去向，不打开对话框；下次提交生效，已有历史需另行处理",
+    };
 }

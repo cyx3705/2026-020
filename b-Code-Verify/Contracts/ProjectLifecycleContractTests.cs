@@ -64,6 +64,7 @@ public sealed class ProjectLifecycleContractTests : IDisposable
             },
         });
         string? displayed = null;
+        var refreshReply = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         registry.Register(new CommandDescriptor
         {
             Name = "aurora.ui.refreshdata", Domain = "aurora", CommandClass = "ui", Summary = "test", Readonly = true,
@@ -73,13 +74,17 @@ public sealed class ProjectLifecycleContractTests : IDisposable
                 var data = await bus.ExecuteAsync("janus.ui.data view=projects", "UI");
                 Assert.True(data.Success, data.Message);
                 displayed = data.Message;
+                await refreshReply.Task;
                 return CommandResult.Ok("refreshed");
             },
         });
         HistoryJanusUiCommands.RequestProjectRefresh();
         Assert.True((await bus.ExecuteAsync("janus.ui.data view=projects", "UI")).Success);
-        var result = await bus.ExecuteAsync($"janus.ui.projectaction name={name} action=推送", "UI");
+        CommandResult result;
+        try { result = await bus.ExecuteAsync($"janus.ui.projectaction name={name} action=推送", "UI").WaitAsync(TimeSpan.FromSeconds(5)); }
+        finally { refreshReply.TrySetResult(); }
         Assert.Equal(succeeds, result.Success);
+        if (!succeeds) Assert.Contains("test push failure", result.Message);
         Assert.Equal(1, lists); // 操作结束没有全库扫描。
         // 5.15.3：失败也回写这一行并让表格重取——每条出路都要对上现场。
         Assert.NotNull(displayed);

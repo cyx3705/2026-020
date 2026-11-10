@@ -116,7 +116,17 @@ internal static partial class HistoryJanusUiCommands
         async Task ShowRowAsync(ProjectLifecycleSnapshot? snapshot)
         {
             await RefreshCachedProjectAsync(projects, name, snapshot);
-            _ = await bus.ExecuteAsync("aurora.ui.refreshdata node=projects", context.Source);
+            // UI acknowledgement must not hold the completed Git outcome.
+            _ = NotifyAsync();
+        }
+        async Task NotifyAsync()
+        {
+            try
+            {
+                var refreshed = await bus.ExecuteAsync("aurora.ui.refreshdata node=projects", context.Source);
+                if (!refreshed.Success) context.Progress?.Report("项目动作已结束，界面刷新失败：" + refreshed.Message);
+            }
+            catch (Exception error) { context.Progress?.Report("项目动作已结束，界面刷新失败：" + error.Message); }
         }
     }
 

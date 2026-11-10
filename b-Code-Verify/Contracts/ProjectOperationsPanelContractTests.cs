@@ -547,10 +547,17 @@ public sealed partial class ProjectOperationsPanelContractTests
         Assert.Equal(
             new[] { "path", "size", "op" },
             table.GetProperty("columns").EnumerateArray().Select(c => c.GetProperty("key").GetString()).ToArray());
-        Assert.False(table.TryGetProperty("rowActions", out _), "去向只由操作格切换，不再挂行操作");
-        var op = table.GetProperty("columns").EnumerateArray().Last();
-        Assert.Equal("janus.lfs.toggle", op.GetProperty("cellAction").GetString());
-        Assert.Equal("{next}", Action("janus.lfs.toggle").GetProperty("args").GetProperty("decision").GetString());
+        var menu = table.GetProperty("rowActions").EnumerateArray().ToArray();
+        Assert.Equal(new[] { "未决", "加入 LFS", "不入库" }, menu.Select(item => item.GetProperty("title").GetString()));
+        Assert.All(menu, item => Assert.False(item.GetProperty("inline").GetBoolean()));
+        Assert.False(table.GetProperty("columns").EnumerateArray().Last().TryGetProperty("cellAction", out _));
+        foreach (var decision in new[] { "none", "lfs", "ignore" })
+        {
+            var args = Action("janus.lfs." + decision).GetProperty("args");
+            Assert.Equal(decision, args.GetProperty("decision").GetString());
+            Assert.Equal("{name}", args.GetProperty("name").GetString());
+            Assert.Equal("{path}", args.GetProperty("path").GetString());
+        }
     }
 
     // REQ-018：远端在原表格中编辑，提交使用行快照的项目名，不能取后来切换的选择通道。

@@ -15,7 +15,7 @@
       "appshell-module"
     ],
     "status": "active",
-    "version": "5.17.1",
+    "version": "5.17.2",
     "branch": "main"
   },
   "paths": {
@@ -36,6 +36,7 @@
       "z-Publish"
     ],
     "archiveRoots": [
+      "b-Office/history",
       "z-Publish/history"
     ],
     "releaseRoots": [

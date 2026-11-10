@@ -214,9 +214,8 @@ internal static class VersionProjectionSuite
         var officeRoot = Path.Combine(ParentDir, "b-Office");
         // 长期文档只剩现行约定，并且直接放在 office 文件夹里。说明书来自指令注册时的自描述，命名合同在 Contracts。
         True(!Directory.Exists(Path.Combine(officeRoot, "current"))
-             && !Directory.Exists(Path.Combine(officeRoot, "history"))
              && !Directory.Exists(Path.Combine(officeRoot, "package")),
-            "office folder has no internal structure");
+            "office has no retired active-document structure");
         True(!File.Exists(Path.Combine(officeRoot, "文档中心.md")),
             "documentation center is retired");
         True(!Directory.Exists(Path.Combine(officeRoot, "HistoryJanus")),
@@ -230,7 +229,11 @@ internal static class VersionProjectionSuite
             .ToHashSet(StringComparer.Ordinal);
         True(officeDocuments.SetEquals(["现行约定.md"]),
             "office contains only the project conventions");
-        Equal(0, Directory.EnumerateFiles(officeRoot, "README.md", SearchOption.AllDirectories).Count(),
+        using var projectManifest = JsonDocument.Parse(File.ReadAllText(Path.Combine(ParentDir, "project.manifest.json")));
+        True(projectManifest.RootElement.GetProperty("paths").GetProperty("archiveRoots")
+                .EnumerateArray().Any(path => path.GetString() == "b-Office/history"),
+            "existing documentation history is explicitly archived");
+        Equal(0, Directory.EnumerateFiles(officeRoot, "README.md", SearchOption.TopDirectoryOnly).Count(),
             "b-Office contains no independent README");
 
         foreach (var path in Directory.EnumerateFiles(officeRoot, "*.md"))
