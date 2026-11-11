@@ -196,6 +196,40 @@ public sealed class BranchServiceContractTests : IDisposable
     }
 
     [Fact]
+    public async Task ReconnectedHistoryDoesNotResurrectAnEarlierEquivalentPatch()
+    {
+        var (projects, branches) = await CreateAsync();
+        await Git(Project, "switch", "-c", "old");
+        File.WriteAllText(Path.Combine(Project, "done.txt"), "done");
+        await Git(Project, "add", "-A");
+        await Git(Project, "commit", "-m", "shared change");
+        var old = (await GitRunner.RunAsync(Project, ["rev-parse", "HEAD"])).Output.Trim();
+        await Git(Project, "switch", "main");
+        File.WriteAllText(Path.Combine(Project, "advance.txt"), "advance");
+        await Git(Project, "add", "-A");
+        await Git(Project, "commit", "-m", "advance");
+        await Git(Project, "cherry-pick", old);
+        await Git(Project, "commit", "--amend", "-m", "shared change (#1)");
+        await Git(Project, "switch", "-c", "claude/history");
+        await Git(Project, "merge", "--no-ff", "-s", "ours", "old", "-m", "connect old history only");
+        await Git(Project, "switch", "main");
+        Assert.Contains("+ ", (await GitRunner.RunAsync(Project, ["cherry", "main", "claude/history"])).Output);
+
+        var listed = (await branches.ListAsync(Name)).Report!;
+        Assert.True(listed.Branches.Single(b => b.Name == "claude/history").MergedIntoMain);
+        var graph = await new GraphService(projects).GetBranchesAsync(Name);
+        Assert.Contains(graph.Report!.Parallels, b => b.Name == "claude/history");
+
+        // 同题但不同补丁不能当作等价；随后新增的独立改动仍必须显示。
+        await Git(Project, "switch", "claude/history");
+        File.WriteAllText(Path.Combine(Project, "done.txt"), "different");
+        await Git(Project, "commit", "-am", "shared change");
+        await Git(Project, "switch", "main");
+        listed = (await branches.ListAsync(Name)).Report!;
+        Assert.False(listed.Branches.Single(b => b.Name == "claude/history").MergedIntoMain);
+    }
+
+    [Fact]
     public async Task AuditSeparatesIntegratedWorkingAndUnattachedBranchesWithoutChangingRefs()
     {
         var (_, branches) = await CreateAsync();
