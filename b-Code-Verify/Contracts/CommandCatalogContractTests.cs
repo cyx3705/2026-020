@@ -29,7 +29,7 @@ public sealed class CommandCatalogContractTests
     // 5.11.0 LFS 规则拆成独立子页：gitrule.lfsset（≥100MB 文件定去向）
     // 与 gitrule.lfsrepair（不足 100MB 的指针转回普通入库），42 → 44（DEC-032）。
     // 5.16.0 新增 branch 类五条（列举、分出、切换、合并、删除），44 → 49；用户定。
-    private const int ExpectedCommandCount = 49;
+    private const int ExpectedCommandCount = 50;
 
     // DEC-012：janus 域内类清单；新增类需同级决策（5.16.0 加 branch，用户定）。
     private static readonly string[] ExpectedClasses =
@@ -43,7 +43,7 @@ public sealed class CommandCatalogContractTests
         "janus.gitrule.list", "janus.gitrule.lfs",
         "janus.github.status", "janus.github.accounts", "janus.github.test",
         "janus.graph.summary", "janus.graph.branches", "janus.graph.commits", "janus.graph.node",
-        "janus.branch.list",
+        "janus.branch.list", "janus.branch.audit",
     ];
 
     private static readonly string[] ConfirmedCommands =

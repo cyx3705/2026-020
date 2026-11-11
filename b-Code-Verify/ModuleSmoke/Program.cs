@@ -35,7 +35,7 @@ var expectedVersion = manifest.RootElement.GetProperty("version").GetString();
 // REQ-018：新增 ui.setremote，54 → 55。
 // 5.16.0：branch 类五条 + ui.branchop（ui.sectionenter 换成 ui.opensection），55 → 61。
 // 5.17.0：总览项目表右键菜单 ui.projectop，61 → 62。
-const int expectedRuntimeCommandCount = 62;
+const int expectedRuntimeCommandCount = 63;
 
 var listed = Probe(package, "vulcan.command.list domain=janus");
 var module = listed.GetProperty("data").GetProperty("module");

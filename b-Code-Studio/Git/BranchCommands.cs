@@ -8,6 +8,7 @@ public static class BranchCommands
     public static void RegisterAll(ICommandRegistrar registry, BranchService service)
     {
         registry.Register(BuildList(service));
+        registry.Register(BuildAudit(service));
         registry.Register(BuildCreate(service));
         registry.Register(BuildSwitch(service));
         registry.Register(BuildMerge(service));
@@ -28,6 +29,21 @@ public static class BranchCommands
             return result.Success
                 ? CommandResult.Ok(result.Message, result.Report)
                 : CommandResult.Fail(result.Message);
+        },
+    };
+
+    private static CommandDescriptor BuildAudit(BranchService service) => new()
+    {
+        Name = "janus.branch.audit",
+        CommandClass = "branch",
+        Summary = "巡检本地项目库 AI 分支：已收口、工作区中、待核查；只读，不联网、不删分支",
+        Readonly = true,
+        Example = "janus.branch.audit",
+        Parameters = [Text("name", "已登记项目名；省略时显式巡检全库，跳过归档项目", position: 0)],
+        Handler = async ctx =>
+        {
+            var result = await service.AuditAsync(ctx.GetString("name"), ctx.Cancellation);
+            return new CommandResult { Success = result.Success, Message = result.Message, Data = result.Report };
         },
     };
 

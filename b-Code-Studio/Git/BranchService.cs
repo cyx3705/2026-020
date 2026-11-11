@@ -23,7 +23,7 @@ public sealed record BranchMutationResult(bool Success, string Message, bool Dir
 /// 事后都分不清哪些改动属于哪条分支。拒绝时带 <see cref="BranchMutationResult.Dirty"/>，
 /// 由界面接着弹提交窗口，而不是替人决定这些改动的去处。
 /// </summary>
-public sealed class BranchService(ProjectService projects)
+public sealed partial class BranchService(ProjectService projects)
 {
     public async Task<(bool Success, string Message, BranchListReport? Report)> ListAsync(
         string name, CancellationToken cancellation = default)

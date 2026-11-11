@@ -195,6 +195,47 @@ public sealed class BranchServiceContractTests : IDisposable
         Assert.Contains(history.Report!.Parallels, b => b.Name == "imported" && !b.IsOpen);
     }
 
+    [Fact]
+    public async Task AuditSeparatesIntegratedWorkingAndUnattachedBranchesWithoutChangingRefs()
+    {
+        var (_, branches) = await CreateAsync();
+        await Git(Project, "switch", "-c", "claude/integrated");
+        File.WriteAllText(Path.Combine(Project, "done.txt"), "done");
+        await Git(Project, "add", "-A");
+        await Git(Project, "commit", "-m", "done");
+        await Git(Project, "switch", "main");
+        await Git(Project, "merge", "--ff-only", "claude/integrated");
+        await Git(Project, "branch", "codex/pending");
+        await Git(Project, "branch", "ordinary");
+        await Git(Project, "switch", "-c", "ai/working");
+        var before = (await GitRunner.RunAsync(Project, ["show-ref"])).Output;
+
+        var audited = await branches.AuditAsync();
+
+        Assert.True(audited.Success, audited.Message);
+        Assert.Equal(1, audited.Report.ScannedProjects);
+        Assert.Empty(audited.Report.Errors);
+        Assert.Equal(3, audited.Report.Branches.Count);
+        var integrated = Assert.Single(audited.Report.Branches, b => b.State == "integrated");
+        Assert.Equal("claude/integrated", integrated.Branch);
+        Assert.False(integrated.VisibleInOperations);
+        Assert.Empty(integrated.WorktreePaths);
+        Assert.Equal("codex/pending", Assert.Single(audited.Report.Branches, b => b.State == "review").Branch);
+        var working = Assert.Single(audited.Report.Branches, b => b.State == "working");
+        Assert.Equal("ai/working", working.Branch);
+        Assert.True(working.IsCurrent);
+        Assert.Single(working.WorktreePaths);
+        Assert.Equal(before, (await GitRunner.RunAsync(Project, ["show-ref"])).Output);
+        Assert.Equal("", (await GitRunner.RunAsync(Project, ["status", "--porcelain"])).Output.Trim());
+        Assert.False((await branches.AuditAsync("missing")).Success);
+
+        // 缺主线必须明确列为检查失败，不能静默报零遗留。
+        await Git(Project, "branch", "-D", "main");
+        var failed = await branches.AuditAsync(Name);
+        Assert.False(failed.Success);
+        Assert.Single(failed.Report.Errors);
+    }
+
     private async Task<(ProjectService Projects, BranchService Branches)> CreateAsync()
     {
         Directory.CreateDirectory(Project);
