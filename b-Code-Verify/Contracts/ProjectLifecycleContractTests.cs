@@ -17,9 +17,11 @@ public sealed class ProjectLifecycleContractTests : IDisposable
     private readonly string _data = Path.Combine(Path.GetTempPath(), "HistoryJanus-LifecycleData", Guid.NewGuid().ToString("N"));
 
     [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public async Task PushActionUpdatesCachedRowBeforeAutomaticRefresh(bool succeeds)
+    [InlineData(true, true)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(false, false)]
+    public async Task PushActionUpdatesCachedRowBeforeAutomaticRefresh(bool succeeds, bool cacheLoaded)
     {
         Directory.CreateDirectory(_root);
         var remote = Path.Combine(_root, "remote.git");
@@ -34,6 +36,10 @@ public sealed class ProjectLifecycleContractTests : IDisposable
         await Git(project, "remote", "add", "origin", remote);
         await Git(project, "push", "-u", "origin", "main");
         await Git(project, "commit", "--allow-empty", "-m", "next");
+        const string otherName = "2026-903-Unchanged";
+        var otherProject = Path.Combine(_root, otherName);
+        Directory.CreateDirectory(Path.Combine(otherProject, "z-Notes"));
+        await Git(otherProject, "init", "-b", "main");
         var service = CreateService();
         var initial = (await service.ReadLifecycleStatusesAsync([new WorktreeInfo(name, project)], false))[0];
         Assert.Equal("推送", initial.LifecycleAction);
@@ -78,21 +84,31 @@ public sealed class ProjectLifecycleContractTests : IDisposable
                 return CommandResult.Ok("refreshed");
             },
         });
-        HistoryJanusUiCommands.RequestProjectRefresh();
-        Assert.True((await bus.ExecuteAsync("janus.ui.data view=projects", "UI")).Success);
+        if (cacheLoaded)
+        {
+            HistoryJanusUiCommands.RequestProjectRefresh();
+            Assert.True((await bus.ExecuteAsync("janus.ui.data view=projects", "UI")).Success);
+        }
+        else
+        {
+            // REQ-LIST-025：模块热重载后界面还留着旧表，但新模块尚未取过全表。
+            typeof(HistoryJanusUiCommands).GetField("_projectCache",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!.SetValue(null, null);
+        }
         CommandResult result;
         try { result = await bus.ExecuteAsync($"janus.ui.projectaction name={name} action=推送", "UI").WaitAsync(TimeSpan.FromSeconds(5)); }
         finally { refreshReply.TrySetResult(); }
         Assert.Equal(succeeds, result.Success);
         if (!succeeds) Assert.Contains("test push failure", result.Message);
-        Assert.Equal(1, lists); // 操作结束没有全库扫描。
+        Assert.Equal(cacheLoaded ? 1 : 0, lists); // 动作不经命令总线发起全库 fetch。
         // 5.15.3：失败也回写这一行并让表格重取——每条出路都要对上现场。
         Assert.NotNull(displayed);
         using var json = JsonDocument.Parse(displayed!);
         var row = json.RootElement.EnumerateArray().Single(item => item.GetProperty("name").GetString() == name);
         Assert.Equal(succeeds ? "同步 ↔" : "推送 ↑", row.GetProperty("status").GetString());
         var other = json.RootElement.EnumerateArray().Single(item => item.GetProperty("name").GetString() == "2026-903-Unchanged");
-        Assert.Equal("提交 ●", other.GetProperty("status").GetString());
+        Assert.Equal(cacheLoaded ? "提交 ●" : "刷新 ?", other.GetProperty("status").GetString());
+        if (!cacheLoaded) Assert.Contains("z-Notes", other.GetProperty("zFolders").GetString());
     }
 
     /// <summary>

@@ -205,7 +205,16 @@ internal static partial class HistoryJanusUiCommands
         await ProjectCacheGate.WaitAsync(cancellation);
         try
         {
-            var cached = _projectCache ?? [];
+            var cached = _projectCache;
+            if (cached == null)
+            {
+                // 热重载后旧表仍可触发动作，新模块却还没取过全表。
+                // 单行不能冒充完整缓存，否则下次取数会只剩刚操作的项目。
+                // 仅在冷缓存时补本地名单，不 fetch、不读取其余项目的工作树状态。
+                var listed = await projects.ListWorktreesAsync();
+                if (!listed.Git.Success) return; // 保持未初始化，让后续全表取数重试。
+                cached = listed.Worktrees;
+            }
             var previous = cached.FirstOrDefault(item => item.BranchName.Equals(name, StringComparison.OrdinalIgnoreCase))
                 ?? new WorktreeInfo(name, Path.Combine(projects.LibraryRoot, name));
             // 推送/同步命令已更新远端引用；只读当前项目，不再次 fetch 全库。
