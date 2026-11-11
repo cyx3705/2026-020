@@ -21,7 +21,7 @@ internal static partial class HistoryJanusUiCommands
             Name = "janus.ui.projectop",
             Domain = Domain,
             CommandClass = "ui",
-            Summary = "总览项目表右键菜单：以此新建项目、以现在的分支新建分支、合并当前分支",
+            Summary = "对选中项目执行新建或合并分支等操作",
             Example = "janus.ui.projectop 2026-020-HistoryJanus merge",
             HiddenReason = "本机界面动作（要弹窗）；模型请用 janus.proj.create / janus.branch.*",
             Parameters =

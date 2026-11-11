@@ -21,7 +21,7 @@ public static partial class ProjectCommands
     {
         Name = "janus.proj.sync",
         CommandClass = "proj",
-        Summary = "fetch 后同步项目（含把远端分支落成本地分支），并记录两端已验证 SHA；已分叉时交 AI 检查，无冲突则自动合并并推送，真冲突不动",
+        Summary = "同步项目分支，分叉时检查后尝试合并",
         Example = "janus.proj.sync name=2026-018-MyAPI",
         Parameters = [ProjectNameParameter()],
         Handler = async ctx =>
@@ -63,7 +63,7 @@ public static partial class ProjectCommands
     {
         Name = "janus.proj.pull",
         CommandClass = "proj",
-        Summary = "从归档记录分段取回远端并优先恢复本地 z/Z 内容（逐段报进度，可取消）",
+        Summary = "分段取回远端并优先恢复本地 z 资产",
         Example = "janus.proj.pull name=2026-018-MyAPI",
         Parameters = [ProjectNameParameter()],
         Handler = async ctx =>

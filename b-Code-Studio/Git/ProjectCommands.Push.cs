@@ -28,7 +28,7 @@ public static partial class ProjectCommands
     {
         Name = "janus.proj.push",
         CommandClass = "proj",
-        Summary = "推送单个项目；被拒时交 AI 检查分叉，无冲突则自动合并后重推",
+        Summary = "推送单个项目，分叉时检查后尝试合并",
         Example = "janus.proj.push name=2026-018-MyAPI",
         Parameters =
         [
@@ -74,7 +74,7 @@ public static partial class ProjectCommands
     {
         Name = "janus.proj.pushall",
         CommandClass = "proj",
-        Summary = "推送全部项目；被拒的仓交 AI 检查分叉，无冲突则自动合并后重推",
+        Summary = "推送全部项目，分叉时检查后尝试合并",
         Example = "janus.proj.pushall",
         Parameters =
         [

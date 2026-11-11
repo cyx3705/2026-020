@@ -26,7 +26,7 @@ public static class GitRuleCommands
     {
         Name = "janus.gitrule.lfs",
         CommandClass = "gitrule",
-        Summary = "列出该项目仓的 LFS 指针文件与 ≥100MB 文件，带各自的决定与违规汇总",
+        Summary = "检查仓库的大文件、LFS 指针和违规",
         Readonly = true,
         Example = "janus.gitrule.lfs name=2026-018-MyAPI",
         Parameters =
@@ -51,7 +51,7 @@ public static class GitRuleCommands
     {
         Name = "janus.gitrule.lfsset",
         CommandClass = "gitrule",
-        Summary = "给一个 ≥100MB 的文件定去向：LFS 指针或不再纳入 git，下次提交生效，历史不变",
+        Summary = "为大文件选择 LFS 跟踪或排除",
         Example = "janus.gitrule.lfsset name=2026-018-MyAPI path=b-Data/big.bin decision=lfs",
         Parameters =
         [
@@ -86,7 +86,7 @@ public static class GitRuleCommands
     {
         Name = "janus.gitrule.lfsrepair",
         CommandClass = "gitrule",
-        Summary = "把一个仓修回 LFS 规则：不足 100MB 的指针转回普通入库，≥100MB 的按精确路径保留",
+        Summary = "按大小规则修复仓库的 LFS 配置",
         Example = "janus.gitrule.lfsrepair name=2026-018-MyAPI dryrun=true",
         Parameters =
         [
@@ -161,7 +161,7 @@ public static class GitRuleCommands
     {
         Name = "janus.gitrule.excludes",
         CommandClass = "gitrule",
-        Summary = "改写全库共用的不纳入仓库清单（目录以 / 结尾，后缀写 *.xxx）",
+        Summary = "改写项目库共用的 Git 排除清单",
         Example = "janus.gitrule.excludes list=\"bin/, obj/, venv/, *.user, *.log\"",
         Parameters =
         [

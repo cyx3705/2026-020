@@ -45,7 +45,7 @@ public static partial class ProjectCommands
     {
         Name = "janus.proj.discard",
         CommandClass = "proj",
-        Summary = "丢弃项目脏工作树：回到 HEAD 并删除未跟踪文件（不删被忽略的文件）",
+        Summary = "丢弃工作树改动和未跟踪文件",
         Example = "janus.proj.discard name=2026-018-MyAPI",
         Parameters =
         [

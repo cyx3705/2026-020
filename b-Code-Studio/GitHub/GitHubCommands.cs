@@ -26,7 +26,7 @@ public static class GitHubCommands
     {
         Name = "janus.github.status",
         CommandClass = "github",
-        Summary = "查看服务器 Git、GCM、提交身份、origin 和 SSH 状态",
+        Summary = "查看服务器的 Git 身份、远端和连接状态",
         Readonly = true,
         Example = "janus.github.status name=2026-020-HistoryJanus",
         Parameters = [new ParameterSpec { Name = "name", Description = "已登记项目名（目录名）", Required = true }],
@@ -45,7 +45,7 @@ public static class GitHubCommands
     {
         Name = "janus.github.accounts",
         CommandClass = "github",
-        Summary = "列出服务器 GCM 中已知的 GitHub HTTPS 凭据账号",
+        Summary = "列出凭据管理器已知的 GitHub 账号",
         Readonly = true,
         Example = "janus.github.accounts",
         Handler = async _ =>
@@ -59,7 +59,7 @@ public static class GitHubCommands
     {
         Name = "janus.github.test",
         CommandClass = "github",
-        Summary = "只读检测服务器 GitHub SSH 或 HTTPS 连接，不执行 push",
+        Summary = "只读检测 GitHub SSH 或 HTTPS 连接",
         Readonly = true,
         Example = "janus.github.test transport=auto timeout=15",
         Parameters =
@@ -94,7 +94,7 @@ public static class GitHubCommands
     {
         Name = "janus.github.login",
         CommandClass = "github",
-        Summary = "在服务器本机启动 Git Credential Manager 登录",
+        Summary = "启动服务器的 Git 凭据管理器登录",
         Example = "janus.github.login account=octocat",
         Parameters = [new ParameterSpec { Name = "account", Description = "可选 GitHub 账号" }],
         Level = CommandLevel.Ask,
@@ -152,7 +152,7 @@ public static class GitHubCommands
     {
         Name = "janus.github.remote",
         CommandClass = "github",
-        Summary = "预览或修改指定项目的远端地址；新项目保存预填地址，首次推送再配置 origin",
+        Summary = "预览或修改项目远端地址",
         Example = "janus.github.remote name=2026-041-VideoStudio fetch=https://github.com/Cloudsflee/video-studio push=https://github.com/Cloudsflee/video-studio apply=false",
         Parameters =
         [

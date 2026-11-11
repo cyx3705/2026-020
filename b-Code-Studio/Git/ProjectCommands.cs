@@ -159,7 +159,7 @@ public static partial class ProjectCommands
     {
         Name = "janus.proj.create",
         CommandClass = "proj",
-        Summary = "创建新项目:复制模板、初始化独立仓并预填远端（首次推送才创建或复用），不继承根下 z/Z 文件夹",
+        Summary = "从模板创建独立项目仓并预填远端",
         Example = "janus.proj.create name=2026-025-新项目",
         Parameters =
         [
@@ -275,7 +275,7 @@ public static partial class ProjectCommands
     {
         Name = "janus.proj.tree",
         CommandClass = "proj",
-        Summary = "输出分支继承树(默认读文件缓存秒开;refresh=true 重新扫描并更新缓存)",
+        Summary = "查看项目分支继承树，可刷新缓存",
         Readonly = true,
         Example = "janus.proj.tree refresh=true",
         Parameters =
@@ -421,7 +421,7 @@ public static partial class ProjectCommands
     {
         Name = "janus.proj.open",
         CommandClass = "proj",
-        Summary = "在系统资源管理器中打开项目工作树(不带 name 打开工作树根目录)",
+        Summary = "在资源管理器中打开项目工作树",
         Example = "janus.proj.open name=2026-018-MyAPI",
         Parameters =
         [
@@ -471,7 +471,7 @@ public static partial class ProjectCommands
     {
         Name = "janus.proj.repair",
         CommandClass = "proj",
-        Summary = "逐仓诊断独立 .git 与 status；指向旧裸仓的指针只报告，不删盘",
+        Summary = "逐仓诊断 Git 状态和旧裸仓指针",
         Example = "janus.proj.repair",
         Level = CommandLevel.Ask,
         ConfirmPrompt = _ =>
@@ -491,7 +491,7 @@ public static partial class ProjectCommands
     {
         Name = "janus.proj.note",
         CommandClass = "proj",
-        Summary = "写入/更新分支的项目描述(继承树与 janus.proj.tree 优先显示此描述)",
+        Summary = "写入或更新分支的项目描述",
         Example = "janus.proj.note name=2026-018-MyAPI text=\"基础设施整合项目\"",
         Parameters =
         [
@@ -599,7 +599,7 @@ public static partial class ProjectCommands
     {
         Name = "janus.proj.metaopen",
         CommandClass = "proj",
-        Summary = "在系统资源管理器中打开指定元文件夹(path= 或 name=+meta=)",
+        Summary = "在资源管理器中打开指定元文件夹",
         Example = "janus.proj.metaopen name=2026-016-AD学习 meta=z-AD库文件汇总",
         Parameters =
         [

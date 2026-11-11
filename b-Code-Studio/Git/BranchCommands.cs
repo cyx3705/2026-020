@@ -36,7 +36,7 @@ public static class BranchCommands
     {
         Name = "janus.branch.audit",
         CommandClass = "branch",
-        Summary = "巡检本地项目库 AI 分支：已收口、工作区中、待核查；只读，不联网、不删分支",
+        Summary = "只读巡检本地 AI 分支的收口状态",
         Readonly = true,
         Example = "janus.branch.audit",
         Parameters = [Text("name", "已登记项目名；省略时显式巡检全库，跳过归档项目", position: 0)],
@@ -97,7 +97,7 @@ public static class BranchCommands
     {
         Name = "janus.branch.delete",
         CommandClass = "branch",
-        Summary = "删除一条本地分支；不能删当前分支与 main，未合并的要 force=true",
+        Summary = "删除本地非保护分支，可强制删未合并项",
         Example = "janus.branch.delete name=2026-020-HistoryJanus branch=feature-x",
         Parameters =
         [

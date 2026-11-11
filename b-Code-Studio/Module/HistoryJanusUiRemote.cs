@@ -12,7 +12,7 @@ internal static partial class HistoryJanusUiCommands
             Name = "janus.ui.setremote",
             Domain = Domain,
             CommandClass = "ui",
-            Summary = "保存选中项目的 origin 拉取与推送地址并刷新 GitHub 子页面",
+            Summary = "保存项目拉取与推送地址并刷新页面",
             Example = "janus.ui.setremote name=2026-041-VideoStudio url=https://github.com/Cloudsflee/video-studio",
             HiddenReason = "界面内部协议；模型请用 janus.github.remote",
             Parameters =

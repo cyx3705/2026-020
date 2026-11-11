@@ -8,6 +8,7 @@ public sealed class HistoryJanusCommands
 {
     // 版本号的唯一权威源是 JanusVersion.props，经程序集 InformationalVersion 投影到此处；
     // 不得在本类硬编码版本常量（代码管道化:版本身份单源,下游只读投影）。
+    /// <summary>查看 Janus 模块运行状态</summary>
     [ModuleCommand(Readonly = true, CommandClass = "core")]
     public string status()
     {

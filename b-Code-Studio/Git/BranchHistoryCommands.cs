@@ -139,7 +139,7 @@ public static class BranchHistoryCommands
         {
             Name = "janus.history.forcepush",
             CommandClass = "history",
-            Summary = "使用 --force-with-lease 更新非保护远端分支",
+            Summary = "用租约保护强推非保护远端分支",
             Example = "janus.history.forcepush name=2026-018-MyAPI",
             Parameters = [Text("name", "已登记项目名（目录名）", required: true, position: 0)],
             Level = CommandLevel.Ask,

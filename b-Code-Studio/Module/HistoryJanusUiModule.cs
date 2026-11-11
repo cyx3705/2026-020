@@ -253,7 +253,7 @@ internal static partial class HistoryJanusUiCommands
             Name = "janus.ui.lfsdecide",
             Domain = Domain,
             CommandClass = "ui",
-            Summary = "LFS 规则表的行操作：记住一个 ≥100MB 文件的去向并刷新表格",
+            Summary = "记录大文件处理决定并刷新表格",
             Example = "janus.ui.lfsdecide 2026-020-HistoryJanus assets/demo.mp4 choose",
             HiddenReason = "界面内部协议；模型请用 janus.gitrule.lfsset",
             Parameters =

@@ -19,7 +19,7 @@ public static class GraphCommands
     {
         Name = "janus.graph.summary",
         CommandClass = "graph",
-        Summary = "查看编号项目图谱摘要：HEAD、节点数、分支与工作树 dirty 状态",
+        Summary = "查看项目提交图、分支和工作树状态",
         Readonly = true,
         Example = "janus.graph.summary name=2026-020-HistoryJanus limit=200",
         Parameters =
@@ -61,7 +61,7 @@ public static class GraphCommands
     {
         Name = "janus.graph.commits",
         CommandClass = "graph",
-        Summary = "按时间序分页读取项目窗口内的提交节点与父边（含 merge parent）",
+        Summary = "分页读取项目提交图的节点与父边",
         Readonly = true,
         Example = "janus.graph.commits name=2026-020-HistoryJanus limit=200 skip=0",
         Parameters =
